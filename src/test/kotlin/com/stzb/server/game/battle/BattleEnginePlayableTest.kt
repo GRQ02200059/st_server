@@ -198,7 +198,7 @@ class BattleEnginePlayableTest {
         )
         val buffResult = BattleEngine.resolve(
             BattleRequest(
-                attacker = BattleTeam(listOf(hero(100036, 0, skillIds = listOf(200036)))),
+                attacker = BattleTeam(listOf(hero(100036, 0, skillIds = listOf(200001)))),
                 defender = BattleTeam(listOf(hero(2, 0))),
                 maxRounds = 2,
             ),
@@ -206,8 +206,12 @@ class BattleEnginePlayableTest {
             FixedBattleRandom(0),
         )
 
-        assertTrue(dotResult.events.filterIsInstance<BattleEvent.OngoingDamage>().all { it.skillId == 200002 })
-        assertTrue(buffResult.events.filterIsInstance<BattleEvent.StatChanged>().all { it.skillId == 200036 })
+        val dotEvents = dotResult.events.filterIsInstance<BattleEvent.OngoingDamage>()
+        val statChangedEvents = buffResult.events.filterIsInstance<BattleEvent.StatChanged>()
+        assertTrue(dotEvents.isNotEmpty(), "expected DOT events, got: ${dotResult.events}")
+        assertTrue(statChangedEvents.isNotEmpty(), "expected stat-change events, got: ${buffResult.events}")
+        assertTrue(dotEvents.all { it.skillId == 200002 })
+        assertTrue(statChangedEvents.all { it.skillId == 200001 })
     }
 
     private fun hero(
