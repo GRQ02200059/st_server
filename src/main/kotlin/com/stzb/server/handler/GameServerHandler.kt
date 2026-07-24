@@ -264,17 +264,18 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     /** 下发 20003/98702 服务器列表; 广播的 host:port 即本进程监听地址。 */
     private fun sendServerList(ctx: ChannelHandlerContext, cmd: Int) {
         val localPort = (ctx.channel().localAddress() as? InetSocketAddress)?.port ?: 59979
+        val advertisedHost = GameServerConfig.advertisedHost()
         val json = GameResponses.serverList(
             serverId = GameServerConfig.SERVER_ID,
             serverName = GameServerConfig.SERVER_NAME,
-            host = GameServerConfig.HOST,
+            host = advertisedHost,
             port = localPort,
             runServerId = GameServerConfig.RUN_SERVER_ID,
             cfgDbId = GameServerConfig.CFG_DB_ID,
             openTime = GameServerConfig.OPEN_TIME_SEC,
         )
         ctx.writeAndFlush(DownPacket.json(cmd, json, dataType = DownType.PLAIN))
-        log.info(">> cmd=$cmd 服务器列表已下发 (host=${GameServerConfig.HOST}:$localPort, ${json.length}B)")
+        log.info(">> cmd=$cmd 服务器列表已下发 (host=$advertisedHost:$localPort, ${json.length}B)")
     }
 
     /** 下发 99991 登录成功 + 最小存档, 让客户端进主城。 */

@@ -15,11 +15,18 @@ curl -fsSL https://raw.githubusercontent.com/GRQ02200059/st_server/main/scripts/
 - 使用 Gradle wrapper 构建服务端
 - 创建并启动 systemd 服务 `st_server`
 - 默认监听端口 `59979`
+- 默认向客户端下发服务器地址 `152.136.236.184`
 
 自定义端口示例：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/GRQ02200059/st_server/main/scripts/bootstrap_remote.sh | STZB_PORT=60000 bash
+```
+
+自定义下发给客户端的服务器 IP：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/GRQ02200059/st_server/main/scripts/bootstrap_remote.sh | STZB_PUBLIC_HOST=152.136.236.184 bash
 ```
 
 常用运维命令：
@@ -37,4 +44,19 @@ systemctl restart st_server
 ```bash
 git pull
 ./gradlew run
+```
+
+## 客户端选服后连到 127.0.0.1
+
+如果日志出现 `服务器列表已下发 (host=127.0.0.1:59979)`，说明服务端没有配置公网 IP。更新代码并带公网 IP 启动：
+
+```bash
+git pull
+STZB_PUBLIC_HOST=152.136.236.184 ./gradlew run
+```
+
+systemd 部署则重新执行一键脚本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/GRQ02200059/st_server/main/scripts/bootstrap_remote.sh | STZB_PUBLIC_HOST=152.136.236.184 bash
 ```

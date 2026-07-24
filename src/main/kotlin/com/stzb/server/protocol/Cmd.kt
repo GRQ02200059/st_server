@@ -69,12 +69,21 @@ object GameServerConfig {
     const val SERVER_NAME = "本地一区"
     // 真机联调使用 adb reverse: 手机 127.0.0.1:59979 -> Mac 127.0.0.1:59979。
     // AVD 联调时可改回 10.0.2.2; 同网段真机直连可改为 Mac 局域网 IP。
-    const val HOST = "127.0.0.1"
+    const val DEFAULT_HOST = "127.0.0.1"
     const val ROLE_NAME = "主公"
     /** 主城 wid (= Tb_user.city_wid = Tb_user_city.city_wid = Tb_world_city.wid)。 */
     const val CITY_WID = 100001
     /** 开服秒级时间戳 (固定一个较早的值, 让各种 end_time 判定处于 "已过期/无进行中")。 */
     const val OPEN_TIME_SEC = 1_600_000_000L
+
+    fun advertisedHost(): String =
+        System.getProperty("stzb.publicHost")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: System.getenv("STZB_PUBLIC_HOST")
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+            ?: DEFAULT_HOST
 }
 
 /** 上行包体编码标志 (帧头 flag 字节)。 */

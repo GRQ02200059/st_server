@@ -6,6 +6,7 @@ BRANCH="${BRANCH:-main}"
 APP_DIR="${APP_DIR:-/opt/st_server}"
 SERVICE_NAME="${SERVICE_NAME:-st_server}"
 STZB_PORT="${STZB_PORT:-59979}"
+STZB_PUBLIC_HOST="${STZB_PUBLIC_HOST:-152.136.236.184}"
 JAVA_PACKAGE="${JAVA_PACKAGE:-openjdk-17-jdk}"
 GRADLE_DISTRIBUTION_URL="${GRADLE_DISTRIBUTION_URL:-https\\://mirrors.cloud.tencent.com/gradle/gradle-8.7-bin.zip}"
 
@@ -95,6 +96,7 @@ Type=simple
 User=$RUN_USER
 WorkingDirectory=$APP_DIR
 Environment=STZB_PORT=$STZB_PORT
+Environment=STZB_PUBLIC_HOST=$STZB_PUBLIC_HOST
 ExecStart=$APP_DIR/build/install/stzb-server/bin/stzb-server
 Restart=on-failure
 RestartSec=3
@@ -113,5 +115,6 @@ echo
 echo "Installed."
 echo "Service: $SERVICE_NAME"
 echo "Port: $STZB_PORT"
+echo "Public host: $STZB_PUBLIC_HOST"
 echo "Status: systemctl status $SERVICE_NAME --no-pager"
 echo "Logs: journalctl -u $SERVICE_NAME -f"
