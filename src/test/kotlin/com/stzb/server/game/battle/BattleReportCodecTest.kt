@@ -33,8 +33,9 @@ class BattleReportCodecTest {
         assertTrue(compressed.startsWith("zzz"))
         assertTrue(!unzipped.trimStart().startsWith("{"))
         assertTrue(unzipped.contains("#"))
-        assertTrue(unzipped.split("#").any { it.startsWith("04") })
-        assertTrue(unzipped.split("#").any { it.startsWith("0u") })
+        assertTrue(unzipped.split("#").none { it.startsWith("0u") })
+        assertEquals(1, unzipped.split("#").count { it == "04" })
+        assertTrue(unzipped.split("#").any { it.startsWith("1o") })
         assertTrue(unzipped.split("#").any { it.startsWith("09") })
     }
 
