@@ -1,6 +1,7 @@
 package com.stzb.server.game.battle
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class BattleEnginePlayableTest {
@@ -92,6 +93,33 @@ class BattleEnginePlayableTest {
         assertTrue(dotEvents.any { it.status == BattleStatus.BURN && it.round == 2 })
         assertTrue(dotEvents.any { it.status == BattleStatus.BURN && it.round == 3 })
         assertTrue(dotEvents.none { it.status == BattleStatus.BURN && it.round == 4 })
+    }
+
+    @Test
+    fun `stacked damage over time statuses update target troops between ticks`() {
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(
+                    listOf(hero(heroId = 1, position = 0, troops = 100, statuses = setOf(BattleStatus.DISARM))),
+                ),
+                defender = BattleTeam(
+                    listOf(
+                        hero(
+                            heroId = 2,
+                            position = 0,
+                            troops = 100,
+                            statuses = setOf(BattleStatus.BURN, BattleStatus.PANIC, BattleStatus.DISARM),
+                        ),
+                    ),
+                ),
+                maxRounds = 1,
+            ),
+        )
+
+        val dotEvents = result.events.filterIsInstance<BattleEvent.OngoingDamage>()
+
+        assertEquals(listOf(99, 98), dotEvents.map { it.targetTroopsAfter })
+        assertEquals(98, result.defender.heroes.single().troops)
     }
 
     @Test

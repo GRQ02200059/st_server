@@ -46,35 +46,45 @@ internal object ClientBattleTextReplayAdapter {
                     )
                 }
                 is BattleEvent.Recovery -> {
-                    actions += skillCast(event.source, event.skillId)
-                    actions += ClientReportAction(
-                        ClientBattleTextReplayProtocol.RECOVERY,
-                        listOf(
-                            ClientBattleTextReplayProtocol.position(event.source),
-                            event.skillId,
-                            ClientBattleTextReplayProtocol.position(event.target),
-                            event.amount,
-                            event.targetTroopsAfter,
-                        ),
-                    )
+                    if (event.skillId > 0) {
+                        actions += skillCast(event.source, event.skillId)
+                        actions += ClientReportAction(
+                            ClientBattleTextReplayProtocol.RECOVERY,
+                            listOf(
+                                ClientBattleTextReplayProtocol.position(event.source),
+                                event.skillId,
+                                ClientBattleTextReplayProtocol.position(event.target),
+                                event.amount,
+                                event.targetTroopsAfter,
+                            ),
+                        )
+                    }
                 }
-                is BattleEvent.StatusApplied -> actions += statusActions(
-                    source = event.source,
-                    target = event.target,
-                    skillId = event.skillId,
-                    effectId = ClientBattleTextReplayProtocol.effectId(event.status),
-                )
-                is BattleEvent.OngoingDamage -> actions += ClientReportAction(
-                    ClientBattleTextReplayProtocol.ONGOING_DAMAGE,
-                    listOf(
-                        ClientBattleTextReplayProtocol.position(event.source),
-                        event.skillId,
-                        ClientBattleTextReplayProtocol.position(event.target),
-                        event.damage,
-                        event.targetTroopsAfter,
-                        ClientBattleTextReplayProtocol.effectId(event.status),
-                    ),
-                )
+                is BattleEvent.StatusApplied -> {
+                    if (event.skillId > 0) {
+                        actions += statusActions(
+                            source = event.source,
+                            target = event.target,
+                            skillId = event.skillId,
+                            effectId = ClientBattleTextReplayProtocol.effectId(event.status),
+                        )
+                    }
+                }
+                is BattleEvent.OngoingDamage -> {
+                    if (event.skillId > 0) {
+                        actions += ClientReportAction(
+                            ClientBattleTextReplayProtocol.ONGOING_DAMAGE,
+                            listOf(
+                                ClientBattleTextReplayProtocol.position(event.source),
+                                event.skillId,
+                                ClientBattleTextReplayProtocol.position(event.target),
+                                event.damage,
+                                event.targetTroopsAfter,
+                                ClientBattleTextReplayProtocol.effectId(event.status),
+                            ),
+                        )
+                    }
+                }
                 is BattleEvent.Evaded -> actions += statusActions(
                     source = event.source,
                     target = event.target,
@@ -83,7 +93,7 @@ internal object ClientBattleTextReplayAdapter {
                 )
                 is BattleEvent.StatChanged -> {
                     val effectId = ClientBattleTextReplayProtocol.effectId(event.stat, event.delta)
-                    if (effectId != 0) {
+                    if (event.skillId > 0 && effectId != 0) {
                         actions += statusActions(event.source, event.target, event.skillId, effectId)
                     }
                 }

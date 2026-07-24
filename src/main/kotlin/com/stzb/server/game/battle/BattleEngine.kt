@@ -373,9 +373,12 @@ object BattleEngine {
         events: MutableList<BattleEvent>,
     ) {
         statuses.forEach { (targetRef, activeStatuses) ->
-            val target = currentHero(targetRef.side, targetRef.position, attacker, defender) ?: return@forEach
-            if (target.troops <= 0) return@forEach
-            activeStatuses.filter { it.status.isDamageOverTime() }.forEach { active ->
+            if ((currentHero(targetRef.side, targetRef.position, attacker, defender)?.troops ?: 0) <= 0) {
+                return@forEach
+            }
+            activeStatuses.filter { it.status.isDamageOverTime() }.forEach dotStatus@{ active ->
+                val target = currentHero(targetRef.side, targetRef.position, attacker, defender)
+                    ?: return@dotStatus
                 val damage = ongoingDamage(active, target)
                 val newTarget = target.copy(troops = (target.troops - damage).coerceAtLeast(0))
                 if (targetRef.side == Side.ATTACKER) {

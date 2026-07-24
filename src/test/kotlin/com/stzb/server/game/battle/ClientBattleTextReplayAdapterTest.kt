@@ -65,13 +65,29 @@ class ClientBattleTextReplayAdapterTest {
     }
 
     @Test
+    fun `omits unattributed effect text actions while retaining evade`() {
+        val actions = ClientBattleTextReplayAdapter.adapt(unattributedEffectsResult())
+
+        assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.RECOVERY })
+        assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.ONGOING_DAMAGE })
+        assertEquals(
+            listOf(listOf<Any>(1, 4, 0, 515)),
+            actions.filter { it.id == ClientBattleTextReplayProtocol.STATUS }.map { it.params },
+        )
+        assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.SKILL_CAST })
+    }
+
+    @Test
     fun `ends the report before writing final troops for both sides`() {
         val actions = ClientBattleTextReplayAdapter.adapt(eventResult())
         val endIndex = actions.indexOfFirst { it.id == ClientBattleTextReplayProtocol.END }
+        assertTrue(endIndex >= 0)
+        assertTrue(
+            actions.take(endIndex).none { it.id == ClientBattleTextReplayProtocol.FINAL_TROOPS },
+        )
         val finalTroops = actions.drop(endIndex + 1)
             .filter { it.id == ClientBattleTextReplayProtocol.FINAL_TROOPS }
 
-        assertTrue(endIndex >= 0)
         assertEquals(3, finalTroops.size)
         assertEquals(listOf<Any>(1, 950, 50), finalTroops[0].params)
         assertEquals(listOf<Any>(2, 1000, 0), finalTroops[1].params)
@@ -107,6 +123,23 @@ class ClientBattleTextReplayAdapterTest {
                 BattleEvent.NormalAttack(1, attacker, defender, 120, 880),
                 BattleEvent.SkillDamage(1, 200012, 301, attacker, defender, 180, 700),
                 BattleEvent.Recovery(1, attacker, attacker, 70, 950, skillId = 200001),
+            ),
+        )
+    }
+
+    private fun unattributedEffectsResult(): BattleResult {
+        val attacker = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val defender = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
+        return BattleResult(
+            outcome = BattleOutcome.ATTACKER_WIN,
+            attacker = BattleTeam(listOf(hero(1, 0))),
+            defender = BattleTeam(listOf(hero(4, 0))),
+            events = listOf(
+                BattleEvent.Recovery(1, attacker, attacker, 70, 950),
+                BattleEvent.StatusApplied(1, attacker, defender, BattleStatus.BURN, 2),
+                BattleEvent.OngoingDamage(2, attacker, defender, BattleStatus.BURN, 60, 640),
+                BattleEvent.StatChanged(2, attacker, attacker, BattleStat.ATTACK, 10, 2),
+                BattleEvent.Evaded(2, attacker, defender),
             ),
         )
     }
