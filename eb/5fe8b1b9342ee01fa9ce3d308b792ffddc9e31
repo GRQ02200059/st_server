@@ -1,0 +1,854 @@
+src/main/kotlin/com/stzb/server/game/battle/BattleModel.kt
+  s_5fac4ed5c07518::t_7717ef0359ba0d 156-222 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a63b30bf6e34bbeed765645","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[156,222]}]}]}
+  s_5fac4ed5c07518::t_24866e1f28d8a7 153-155
+  s_5fac4ed5c07518::t_6cd7f29a849766 223-225
+src/test/kotlin/com/stzb/server/game/battle/BattleEnginePlayableTest.kt
+  s_5fac4ed5c07518::t_cc288b61893147 9,13,19-20,29,31,34,38-41,43,47-50,54,56,59,63-66,71,73,76,86-89,95,97,100,104-107,111,113,116,120-123,127,129,132,136-139,143,145,148,151-155,159,161,164,168-171,173,176-180,186,188-212,232 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a63b272f6e34bbeed765619","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":9},{"Single":13},{"Range":[19,20]},{"Single":29},{"Single":31},{"Single":34},{"Range":[38,41]},{"Single":43},{"Range":[47,50]},{"Single":54},{"Single":56},{"Single":59},{"Range":[63,66]},{"Single":71},{"Single":73},{"Single":76},{"Range":[86,89]},{"Single":95},{"Single":97},{"Single":100},{"Range":[104,107]},{"Single":111},{"Single":113},{"Single":116},{"Range":[120,123]},{"Single":127},{"Single":129},{"Single":132},{"Range":[136,139]},{"Single":143},{"Single":145},{"Single":148},{"Range":[151,155]},{"Single":159},{"Single":161},{"Single":164},{"Range":[168,171]},{"Single":173},{"Range":[176,180]},{"Single":186},{"Range":[188,212]},{"Single":232}]}]}
+  s_5fac4ed5c07518::t_32c5fa19c9506a 6-8
+  s_5fac4ed5c07518::t_2352e27c9cc7f6 10-12
+  s_5fac4ed5c07518::t_9ad38eb4ace21b 14-18
+  s_5fac4ed5c07518::t_e80e2115904bb0 21-23,26-28
+  s_5fac4ed5c07518::t_704535d71cef06 30
+  s_5fac4ed5c07518::t_fa4f446a08b1f9 32-33
+  s_5fac4ed5c07518::t_933dff7d19d3cd 35-37
+  s_5fac4ed5c07518::t_7059a0fd18fb1c 42
+  s_5fac4ed5c07518::t_1aa6a8254f2ecf 44-46
+  s_5fac4ed5c07518::t_ae50f7f78e3716 51-53
+  s_5fac4ed5c07518::t_d13b7811037aeb 55
+  s_5fac4ed5c07518::t_daadd586e08d00 57-58
+  s_5fac4ed5c07518::t_944212f063dbcb 60-62
+  s_5fac4ed5c07518::t_9624df7eaa3e5b 67-70
+  s_5fac4ed5c07518::t_291c700c0c8a82 72
+  s_5fac4ed5c07518::t_32d3146a2acf73 74-75
+  s_5fac4ed5c07518::t_9cc1f2c9807df7 77-79,83-85
+  s_5fac4ed5c07518::t_f3d9217c23088c 90-94
+  s_5fac4ed5c07518::t_c1dac32163532f 96
+  s_5fac4ed5c07518::t_d1148b46265de8 98-99
+  s_5fac4ed5c07518::t_41595899f59542 101-103
+  s_5fac4ed5c07518::t_b5a87f5f0656d4 108-110
+  s_5fac4ed5c07518::t_d1aa2a4410b614 112
+  s_5fac4ed5c07518::t_a28a44acc2e729 114-115
+  s_5fac4ed5c07518::t_832a618b1f822d 117-119
+  s_5fac4ed5c07518::t_80b3662389ca45 124-126
+  s_5fac4ed5c07518::t_71c9c5cc4d094b 128
+  s_5fac4ed5c07518::t_e792ebd5cb2da3 130-131
+  s_5fac4ed5c07518::t_784b40ca736fa7 133-135
+  s_5fac4ed5c07518::t_5b53bda9aa8868 140-142
+  s_5fac4ed5c07518::t_67d402194371d7 144
+  s_5fac4ed5c07518::t_c4c5d20a9f9909 146-147
+  s_5fac4ed5c07518::t_3ef991b3975ecb 149-150
+  s_5fac4ed5c07518::t_52e0d3896a40ea 156-158
+  s_5fac4ed5c07518::t_bcd911d90240d0 160
+  s_5fac4ed5c07518::t_6d56bd69c887e3 162-163
+  s_5fac4ed5c07518::t_05dee8ca666a3c 165-167
+  s_5fac4ed5c07518::t_5b7d2302a201df 172
+  s_5fac4ed5c07518::t_d087ce2c4e1327 174-175
+  s_5fac4ed5c07518::t_3ac45dae433e94 181-185
+  s_5fac4ed5c07518::t_159a1fcbb5c890 187
+  s_5fac4ed5c07518::t_05001c3d93a0ff 213-215,229-231
+  s_5fac4ed5c07518::t_436c2bbc5e13b6 233
+src/main/kotlin/com/stzb/server/game/battle/BattleReportCodec.kt
+  s_5fac4ed5c07518::t_4cf50c0156f61b 64,78-135 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a63b40ef6e34bbeed76568d","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":64},{"Range":[78,135]}]}]}
+  s_5fac4ed5c07518::t_d9d9abb77aaa83 61-63
+  s_5fac4ed5c07518::t_7d5d15e05de88e 65-67,75-77
+  s_5fac4ed5c07518::t_c326406827ed0b 136-138
+src/main/kotlin/com/stzb/server/game/battle/BattleSkillRuntime.kt
+  s_5fac4ed5c07518::t_4080d7c15434a2 100,118-168 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a63b34ff6e34bbeed76565c","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":100},{"Range":[118,168]}]}]}
+  s_5fac4ed5c07518::t_9df5531f6cb92f 97-99
+  s_5fac4ed5c07518::t_2f2fd2394c2e91 101-103,115-117
+  s_5fac4ed5c07518::t_357123e1faf9bd 169-171
+src/main/kotlin/com/stzb/server/game/battle/BattleEngine.kt
+  s_5fac4ed5c07518::t_dba7f008d16863 173-393 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a63b390f6e34bbeed765661","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[173,393]}]}]}
+  s_5fac4ed5c07518::t_41ba8563108d42 170-172
+  s_5fac4ed5c07518::t_029ddd289a51b5 394-396
+src/test/kotlin/com/stzb/server/game/battle/BattleSkillRuntimeTest.kt
+  s_5fac4ed5c07518::t_24f7a8dc9db48c 12,27,29,43,45,47-48,50,60,62-92 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a63b21ef6e34bbeed7655f1","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":12},{"Single":27},{"Single":29},{"Single":43},{"Single":45},{"Range":[47,48]},{"Single":50},{"Single":60},{"Range":[62,92]}]}]}
+  s_5fac4ed5c07518::t_b1a079631e9eab 9-11
+  s_5fac4ed5c07518::t_721f45fa74c4ee 13-15,24-26
+  s_5fac4ed5c07518::t_bf0593a375b0ec 28
+  s_5fac4ed5c07518::t_7c51ccab3b09b6 30-32,40-42
+  s_5fac4ed5c07518::t_32fc22fc4bf4b2 44
+  s_5fac4ed5c07518::t_5cdebdd4770dd6 46
+  s_5fac4ed5c07518::t_24c4bb2cb4ac37 49
+  s_5fac4ed5c07518::t_13c55df8923162 51-53,57-59
+  s_5fac4ed5c07518::t_92057bac9bb735 61
+  s_5fac4ed5c07518::t_a7fcfc426ccbad 93-95
+src/test/kotlin/com/stzb/server/game/battle/BattleReportCodecTest.kt
+  s_5fac4ed5c07518::t_31a8c8642f9108 11,15,22,24,39,41-64,67-70,83-84,92 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a63b2c3f6e34bbeed765634","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":11},{"Single":15},{"Single":22},{"Single":24},{"Single":39},{"Range":[41,64]},{"Range":[67,70]},{"Range":[83,84]},{"Single":92}]}]}
+  s_5fac4ed5c07518::t_d112922beacaf5 8-10
+  s_5fac4ed5c07518::t_86be9a0cda9cab 12-14
+  s_5fac4ed5c07518::t_b0a8e2c7179c84 16-21
+  s_5fac4ed5c07518::t_0e3a19b0646824 23
+  s_5fac4ed5c07518::t_27352056e7c06b 25-27,36-38
+  s_5fac4ed5c07518::t_0781228c90697c 40
+  s_5fac4ed5c07518::t_894f2f716586db 65-66
+  s_5fac4ed5c07518::t_823b7695c82d00 71-73,80-82
+  s_5fac4ed5c07518::t_06757f599a28c2 85-87,89-91
+  s_5fac4ed5c07518::t_a4a78922f9b158 93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "eb5fe8b1b9342ee01fa9ce3d308b792ffddc9e31",
+  "prompts": {},
+  "sessions": {
+    "s_5fac4ed5c07518": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a62f05ef6e34bbeed7614b6",
+        "model": "gpt-5.6-terra__max"
+      },
+      "human_author": "guoruiqiang <guoruiqiang@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "src/main/kotlin/com/stzb/server/game/battle/BattleEngine.kt": [
+      {
+        "hash": "s_5fac4ed5c07518::t_dba7f008d16863",
+        "line_ranges": [
+          {
+            "Range": [
+              173,
+              393
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a63b390f6e34bbeed765661",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  173,
+                  393
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/main/kotlin/com/stzb/server/game/battle/BattleModel.kt": [
+      {
+        "hash": "s_5fac4ed5c07518::t_7717ef0359ba0d",
+        "line_ranges": [
+          {
+            "Range": [
+              156,
+              222
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a63b30bf6e34bbeed765645",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  156,
+                  222
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/main/kotlin/com/stzb/server/game/battle/BattleReportCodec.kt": [
+      {
+        "hash": "s_5fac4ed5c07518::t_4cf50c0156f61b",
+        "line_ranges": [
+          {
+            "Single": 64
+          },
+          {
+            "Range": [
+              78,
+              135
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a63b40ef6e34bbeed76568d",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 64
+              },
+              {
+                "Range": [
+                  78,
+                  135
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/main/kotlin/com/stzb/server/game/battle/BattleSkillRuntime.kt": [
+      {
+        "hash": "s_5fac4ed5c07518::t_4080d7c15434a2",
+        "line_ranges": [
+          {
+            "Single": 100
+          },
+          {
+            "Range": [
+              118,
+              168
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a63b34ff6e34bbeed76565c",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 100
+              },
+              {
+                "Range": [
+                  118,
+                  168
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/test/kotlin/com/stzb/server/game/battle/BattleEnginePlayableTest.kt": [
+      {
+        "hash": "s_5fac4ed5c07518::t_cc288b61893147",
+        "line_ranges": [
+          {
+            "Single": 9
+          },
+          {
+            "Single": 13
+          },
+          {
+            "Range": [
+              19,
+              20
+            ]
+          },
+          {
+            "Single": 29
+          },
+          {
+            "Single": 31
+          },
+          {
+            "Single": 34
+          },
+          {
+            "Range": [
+              38,
+              41
+            ]
+          },
+          {
+            "Single": 43
+          },
+          {
+            "Range": [
+              47,
+              50
+            ]
+          },
+          {
+            "Single": 54
+          },
+          {
+            "Single": 56
+          },
+          {
+            "Single": 59
+          },
+          {
+            "Range": [
+              63,
+              66
+            ]
+          },
+          {
+            "Single": 71
+          },
+          {
+            "Single": 73
+          },
+          {
+            "Single": 76
+          },
+          {
+            "Range": [
+              86,
+              89
+            ]
+          },
+          {
+            "Single": 95
+          },
+          {
+            "Single": 97
+          },
+          {
+            "Single": 100
+          },
+          {
+            "Range": [
+              104,
+              107
+            ]
+          },
+          {
+            "Single": 111
+          },
+          {
+            "Single": 113
+          },
+          {
+            "Single": 116
+          },
+          {
+            "Range": [
+              120,
+              123
+            ]
+          },
+          {
+            "Single": 127
+          },
+          {
+            "Single": 129
+          },
+          {
+            "Single": 132
+          },
+          {
+            "Range": [
+              136,
+              139
+            ]
+          },
+          {
+            "Single": 143
+          },
+          {
+            "Single": 145
+          },
+          {
+            "Single": 148
+          },
+          {
+            "Range": [
+              151,
+              155
+            ]
+          },
+          {
+            "Single": 159
+          },
+          {
+            "Single": 161
+          },
+          {
+            "Single": 164
+          },
+          {
+            "Range": [
+              168,
+              171
+            ]
+          },
+          {
+            "Single": 173
+          },
+          {
+            "Range": [
+              176,
+              180
+            ]
+          },
+          {
+            "Single": 186
+          },
+          {
+            "Range": [
+              188,
+              212
+            ]
+          },
+          {
+            "Single": 232
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a63b272f6e34bbeed765619",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 9
+              },
+              {
+                "Single": 13
+              },
+              {
+                "Range": [
+                  19,
+                  20
+                ]
+              },
+              {
+                "Single": 29
+              },
+              {
+                "Single": 31
+              },
+              {
+                "Single": 34
+              },
+              {
+                "Range": [
+                  38,
+                  41
+                ]
+              },
+              {
+                "Single": 43
+              },
+              {
+                "Range": [
+                  47,
+                  50
+                ]
+              },
+              {
+                "Single": 54
+              },
+              {
+                "Single": 56
+              },
+              {
+                "Single": 59
+              },
+              {
+                "Range": [
+                  63,
+                  66
+                ]
+              },
+              {
+                "Single": 71
+              },
+              {
+                "Single": 73
+              },
+              {
+                "Single": 76
+              },
+              {
+                "Range": [
+                  86,
+                  89
+                ]
+              },
+              {
+                "Single": 95
+              },
+              {
+                "Single": 97
+              },
+              {
+                "Single": 100
+              },
+              {
+                "Range": [
+                  104,
+                  107
+                ]
+              },
+              {
+                "Single": 111
+              },
+              {
+                "Single": 113
+              },
+              {
+                "Single": 116
+              },
+              {
+                "Range": [
+                  120,
+                  123
+                ]
+              },
+              {
+                "Single": 127
+              },
+              {
+                "Single": 129
+              },
+              {
+                "Single": 132
+              },
+              {
+                "Range": [
+                  136,
+                  139
+                ]
+              },
+              {
+                "Single": 143
+              },
+              {
+                "Single": 145
+              },
+              {
+                "Single": 148
+              },
+              {
+                "Range": [
+                  151,
+                  155
+                ]
+              },
+              {
+                "Single": 159
+              },
+              {
+                "Single": 161
+              },
+              {
+                "Single": 164
+              },
+              {
+                "Range": [
+                  168,
+                  171
+                ]
+              },
+              {
+                "Single": 173
+              },
+              {
+                "Range": [
+                  176,
+                  180
+                ]
+              },
+              {
+                "Single": 186
+              },
+              {
+                "Range": [
+                  188,
+                  212
+                ]
+              },
+              {
+                "Single": 232
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/test/kotlin/com/stzb/server/game/battle/BattleReportCodecTest.kt": [
+      {
+        "hash": "s_5fac4ed5c07518::t_31a8c8642f9108",
+        "line_ranges": [
+          {
+            "Single": 11
+          },
+          {
+            "Single": 15
+          },
+          {
+            "Single": 22
+          },
+          {
+            "Single": 24
+          },
+          {
+            "Single": 39
+          },
+          {
+            "Range": [
+              41,
+              64
+            ]
+          },
+          {
+            "Range": [
+              67,
+              70
+            ]
+          },
+          {
+            "Range": [
+              83,
+              84
+            ]
+          },
+          {
+            "Single": 92
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a63b2c3f6e34bbeed765634",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 11
+              },
+              {
+                "Single": 15
+              },
+              {
+                "Single": 22
+              },
+              {
+                "Single": 24
+              },
+              {
+                "Single": 39
+              },
+              {
+                "Range": [
+                  41,
+                  64
+                ]
+              },
+              {
+                "Range": [
+                  67,
+                  70
+                ]
+              },
+              {
+                "Range": [
+                  83,
+                  84
+                ]
+              },
+              {
+                "Single": 92
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "src/test/kotlin/com/stzb/server/game/battle/BattleSkillRuntimeTest.kt": [
+      {
+        "hash": "s_5fac4ed5c07518::t_24f7a8dc9db48c",
+        "line_ranges": [
+          {
+            "Single": 12
+          },
+          {
+            "Single": 27
+          },
+          {
+            "Single": 29
+          },
+          {
+            "Single": 43
+          },
+          {
+            "Single": 45
+          },
+          {
+            "Range": [
+              47,
+              48
+            ]
+          },
+          {
+            "Single": 50
+          },
+          {
+            "Single": 60
+          },
+          {
+            "Range": [
+              62,
+              92
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a63b21ef6e34bbeed7655f1",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 12
+              },
+              {
+                "Single": 27
+              },
+              {
+                "Single": 29
+              },
+              {
+                "Single": 43
+              },
+              {
+                "Single": 45
+              },
+              {
+                "Range": [
+                  47,
+                  48
+                ]
+              },
+              {
+                "Single": 50
+              },
+              {
+                "Single": 60
+              },
+              {
+                "Range": [
+                  62,
+                  92
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_5fac4ed5c07518": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_00e890f90d6948": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_24f7a8dc9db48c": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_31a8c8642f9108": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_4080d7c15434a2": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_4cf50c0156f61b": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_4f1113bddce8b5": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_69a72d58f765ed": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_6d8c26ce53f20d": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_7717ef0359ba0d": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_c14caa07e93105": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_cc288b61893147": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_dba7f008d16863": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_de97aeee021ccf": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_5fac4ed5c07518::t_f3421ccee89ea1": {
+      "tool": "trae",
+      "conversation_id": "6a62f05ef6e34bbeed7614b6",
+      "session_id": "6a62f05ef6e34bbeed7614b6",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
