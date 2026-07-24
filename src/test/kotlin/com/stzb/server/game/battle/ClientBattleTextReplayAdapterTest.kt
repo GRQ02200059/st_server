@@ -78,6 +78,34 @@ class ClientBattleTextReplayAdapterTest {
     }
 
     @Test
+    fun `retains unsupported skill effects in json without emitting client text actions`() {
+        val baseResult = twoRoundResult()
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val resultWithUnsupportedEffect = baseResult.copy(
+            events = baseResult.events + BattleEvent.UnsupportedSkillEffect(
+                round = 2,
+                skillId = 200999,
+                effectId = 999,
+                source = source,
+                rawDescription = "unsupported effect",
+            ),
+        )
+
+        val json = BattleReportCodec.toJson(resultWithUnsupportedEffect)
+
+        assertTrue(json.contains("UnsupportedSkillEffect"))
+        assertTrue(json.contains("\"skillId\":200999"))
+        assertEquals(
+            ClientBattleTextReplayAdapter.adapt(baseResult),
+            ClientBattleTextReplayAdapter.adapt(resultWithUnsupportedEffect),
+        )
+        assertEquals(
+            ClientReportTextEncoder.encode(baseResult),
+            ClientReportTextEncoder.encode(resultWithUnsupportedEffect),
+        )
+    }
+
+    @Test
     fun `ends the report before writing final troops for both sides`() {
         val actions = ClientBattleTextReplayAdapter.adapt(eventResult())
         val endIndex = actions.indexOfFirst { it.id == ClientBattleTextReplayProtocol.END }

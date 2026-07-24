@@ -79,10 +79,8 @@ class BattleIntegrationTest {
         val records = text.split("#")
 
         assertEquals(1, records.count { it == "04" })
-        assertEquals(
-            result.events.filterIsInstance<BattleEvent.RoundStart>().size,
-            records.count { it.startsWith("09") },
-        )
+        assertEquals(8, result.events.filterIsInstance<BattleEvent.RoundStart>().size)
+        assertEquals(8, records.count { it.startsWith("09") })
         assertTrue(records.none { it.startsWith("0u") })
         assertTrue(records.any { it.startsWith("68") })
         assertTrue(records.any { it == "0d" })
