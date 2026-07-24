@@ -7,6 +7,7 @@ APP_DIR="${APP_DIR:-/opt/st_server}"
 SERVICE_NAME="${SERVICE_NAME:-st_server}"
 STZB_PORT="${STZB_PORT:-59979}"
 JAVA_PACKAGE="${JAVA_PACKAGE:-openjdk-17-jdk}"
+GRADLE_DISTRIBUTION_URL="${GRADLE_DISTRIBUTION_URL:-https\\://mirrors.cloud.tencent.com/gradle/gradle-8.7-bin.zip}"
 
 if [ "$(id -u)" -eq 0 ]; then
   SUDO=""
@@ -65,6 +66,13 @@ else
 fi
 
 echo "[4/5] Building server..."
+WRAPPER_PROPERTIES="$APP_DIR/gradle/wrapper/gradle-wrapper.properties"
+run_as_user sed -i \
+  -e "s#^distributionUrl=.*#distributionUrl=$GRADLE_DISTRIBUTION_URL#" \
+  -e "s#^networkTimeout=.*#networkTimeout=60000#" \
+  -e "s#^retries=.*#retries=3#" \
+  -e "s#^retryBackOffMs=.*#retryBackOffMs=2000#" \
+  "$WRAPPER_PROPERTIES"
 run_as_user bash -c 'cd "$1" && ./gradlew --no-daemon clean installDist' _ "$APP_DIR"
 
 if ! command -v systemctl >/dev/null 2>&1; then

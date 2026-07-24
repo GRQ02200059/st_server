@@ -29,3 +29,12 @@ systemctl status st_server --no-pager
 journalctl -u st_server -f
 systemctl restart st_server
 ```
+
+## Gradle 下载超时处理
+
+仓库已将 Gradle wrapper 切到腾讯云镜像。如果服务器上已经 clone 过旧版本，在服务器仓库目录执行：
+
+```bash
+git pull
+./gradlew run
+```
