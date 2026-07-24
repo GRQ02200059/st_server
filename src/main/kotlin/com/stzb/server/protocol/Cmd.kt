@@ -80,9 +80,6 @@ object GameServerConfig {
         System.getProperty("stzb.publicHost")
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
-            ?: System.getenv("STZB_PUBLIC_HOST")
-                ?.trim()
-                ?.takeIf { it.isNotEmpty() }
             ?: DEFAULT_HOST
 }
 

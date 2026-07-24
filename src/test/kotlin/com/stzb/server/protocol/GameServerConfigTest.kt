@@ -20,4 +20,23 @@ class GameServerConfigTest {
             }
         }
     }
+
+    @Test
+    fun `advertised host falls back to default for absent or blank override`() {
+        val key = "stzb.publicHost"
+        val previous = System.getProperty(key)
+        try {
+            System.clearProperty(key)
+            assertEquals(GameServerConfig.DEFAULT_HOST, GameServerConfig.advertisedHost())
+
+            System.setProperty(key, "  ")
+            assertEquals(GameServerConfig.DEFAULT_HOST, GameServerConfig.advertisedHost())
+        } finally {
+            if (previous == null) {
+                System.clearProperty(key)
+            } else {
+                System.setProperty(key, previous)
+            }
+        }
+    }
 }

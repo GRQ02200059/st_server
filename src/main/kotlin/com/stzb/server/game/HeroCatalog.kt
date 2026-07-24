@@ -37,16 +37,24 @@ object HeroCatalog {
     fun defaultFiveStarHeroIds(): List<Int> = defaultFiveStarHeroIds
 
     private fun loadHeroes(): LinkedHashMap<Int, HeroInfo> {
+        HeroCatalog::class.java.classLoader
+            ?.getResourceAsStream("hero_table.csv")
+            ?.use { input ->
+                return input.bufferedReader().useLines(::parseHeroes)
+            }
+
         val heroTable = generateSequence(Path.of("").toAbsolutePath()) { it.parent }
             .map { it.resolve("hero_table.csv") }
             .firstOrNull(Files::exists)
             ?: error("无法定位 hero_table.csv")
 
-        return Files.newBufferedReader(heroTable).useLines { lines ->
-            lines.drop(1)
-                .mapNotNull(::parseHero)
-                .toMap(LinkedHashMap())
-        }
+        return Files.newBufferedReader(heroTable).useLines(::parseHeroes)
+    }
+
+    private fun parseHeroes(lines: Sequence<String>): LinkedHashMap<Int, HeroInfo> {
+        return lines.drop(1)
+            .mapNotNull(::parseHero)
+            .toMap(LinkedHashMap())
     }
 
     private fun parseHero(line: String): Pair<Int, HeroInfo>? {

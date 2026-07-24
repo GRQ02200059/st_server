@@ -6,6 +6,13 @@ import kotlin.test.assertTrue
 
 class HeroCatalogTest {
     @Test
+    fun `hero table is packaged as runtime resource`() {
+        val resource = Thread.currentThread().contextClassLoader.getResource("hero_table.csv")
+
+        assertTrue(resource != null)
+    }
+
+    @Test
     fun `catalog exposes every recruitable hero with a valid troop type`() {
         val heroIds = HeroCatalog.recruitableHeroIds()
 
