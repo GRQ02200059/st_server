@@ -1,0 +1,276 @@
+package com.stzb.server.game.battle
+
+data class SkillRuntimeState(
+    val defaultCooldownRounds: Int = 0,
+    val preparing: MutableSet<Pair<Int, Int>> = mutableSetOf(),
+    val cooldownUntilRound: MutableMap<Pair<Int, Int>, Int> = mutableMapOf(),
+)
+
+class BattleSkillRuntime(
+    private val config: BattleConfigRepository,
+) {
+    fun tryAct(
+        round: Int,
+        sourceRef: BattleHeroRef,
+        source: BattleHero,
+        targets: BattleTeam,
+        allies: BattleTeam,
+        random: BattleRandom,
+        state: SkillRuntimeState,
+        allowedKinds: Set<SkillKind> = setOf(SkillKind.ACTIVE, SkillKind.PURSUIT),
+    ): SkillCastResult? {
+        for (skillId in source.skillIds) {
+            val skill = config.skill(skillId) ?: continue
+            if (skill.kind !in allowedKinds) continue
+            val key = source.id.value to skillId
+            if ((state.cooldownUntilRound[key] ?: 0) >= round) continue
+            if (random.nextInt(100) >= skill.probabilityMax) continue
+
+            if (skill.prepareRounds > 0 && key !in state.preparing) {
+                state.preparing += key
+                return SkillCastResult(skillId, targets, emptyList(), allies)
+            }
+            state.preparing -= key
+
+            val result = executeDetails(round, skillId, sourceRef, source, targets, allies, random, state)
+            val cooldown = if (skillId == 200002) 3 else state.defaultCooldownRounds
+            state.cooldownUntilRound[key] = round + cooldown
+            return result
+        }
+        return null
+    }
+
+    private fun executeDetails(
+        round: Int,
+        skillId: Int,
+        sourceRef: BattleHeroRef,
+        source: BattleHero,
+        enemies: BattleTeam,
+        allies: BattleTeam,
+        random: BattleRandom,
+        state: SkillRuntimeState,
+    ): SkillCastResult {
+        val updatedEnemies = enemies.heroes.associateBy { it.position }.toMutableMap()
+        val updatedAllies = allies.heroes.associateBy { it.position }.toMutableMap()
+        val events = mutableListOf<BattleEvent>()
+        var selfStatDelta = BattleStats.ZERO
+        var selfBuffDuration: Int? = null
+        val details = config.skillDetails(skillId).ifEmpty {
+            listOf(
+                SkillDetailConfig(
+                    detailId = skillId * 100,
+                    effectId = 0,
+                    attackType = 0,
+                    targetType = 0,
+                    selectType = 0,
+                    constantParam = 0,
+                    intelParam = 0,
+                    probabilityInit = 0,
+                    probabilityMax = 0,
+                    availableRounds = 0,
+                    attackMax = 0,
+                    effectName = "missing detail",
+                ),
+            )
+        }
+
+        val executableDetails = if (skillId == 200002) {
+            selectDisorderEffects(details, random)
+        } else {
+            details
+        }
+
+        executableDetails.forEach { detail ->
+            val targetSide = resolveTargetSide(detail)
+            when (detail.effectId) {
+                301, 302 -> {
+                    val pool = when (targetSide) {
+                        TargetSide.ENEMY -> updatedEnemies
+                        TargetSide.ALLY -> updatedAllies
+                        TargetSide.SELF -> updatedAllies
+                    }
+                    val selected = selectTargets(pool.values, detail, sourceRef, random, targetSide == TargetSide.SELF)
+                    selected.forEach { target ->
+                        val damage = skillDamage(source, target, detail)
+                        val newTarget = target.copy(troops = (target.troops - damage).coerceAtLeast(0))
+                        pool[target.position] = newTarget
+                        val refSide = if (targetSide == TargetSide.ENEMY) sourceRef.side.opposite() else sourceRef.side
+                        events += BattleEvent.SkillDamage(
+                            round = round,
+                            skillId = skillId,
+                            effectId = detail.effectId,
+                            source = sourceRef,
+                            target = BattleHeroRef(refSide, target.position, target.id),
+                            damage = damage,
+                            targetTroopsAfter = newTarget.troops,
+                        )
+                    }
+                    if (skillId == 200002 && detail.effectId == 302 && selected.isNotEmpty()) {
+                        val target = selected.first()
+                        val duration = detail.availableRounds.takeIf { it > 0 } ?: 2
+                        events += BattleEvent.StatusApplied(
+                            round = round,
+                            source = sourceRef,
+                            target = BattleHeroRef(sourceRef.side.opposite(), target.position, target.id),
+                            status = BattleStatus.BURN,
+                            durationRounds = duration,
+                            power = (source.stats.strategy / 5).coerceAtLeast(1),
+                            skillId = skillId,
+                        )
+                    }
+                }
+                401, 402 -> {
+                    val pool = updatedAllies
+                    val selected = selectTargets(pool.values, detail, sourceRef, random, preferSelf = true)
+                    selected.forEach { target ->
+                        val amount = (source.stats.strategy + detail.constantParam).coerceAtLeast(1)
+                        val newTarget = target.copy(troops = (target.troops + amount).coerceAtMost(target.maxTroops))
+                        pool[target.position] = newTarget
+                        events += BattleEvent.Recovery(
+                            round = round,
+                            source = sourceRef,
+                            target = BattleHeroRef(sourceRef.side, target.position, target.id),
+                            amount = amount,
+                            targetTroopsAfter = newTarget.troops,
+                            skillId = skillId,
+                        )
+                    }
+                }
+                303, 304, 305, 306, 501, 502, 552 -> {
+                    val pool = when (targetSide) {
+                        TargetSide.ENEMY -> updatedEnemies
+                        TargetSide.ALLY -> updatedAllies
+                        TargetSide.SELF -> updatedAllies
+                    }
+                    val selected = selectTargets(pool.values, detail, sourceRef, random, targetSide == TargetSide.SELF)
+                    selected.forEach { target ->
+                        val status = when (detail.effectId) {
+                            303 -> BattleStatus.SHAKE
+                            304 -> BattleStatus.PANIC
+                            305 -> BattleStatus.BURN
+                            306 -> BattleStatus.HEX
+                            501 -> BattleStatus.CONFUSION
+                            502 -> BattleStatus.HESITATION
+                            else -> BattleStatus.DISARM
+                        }
+                        val power = when (detail.effectId) {
+                            303, 304, 305, 306 -> source.stats.strategy
+                            else -> 0
+                        }
+                        val refSide = if (targetSide == TargetSide.ENEMY) sourceRef.side.opposite() else sourceRef.side
+                        events += BattleEvent.StatusApplied(
+                            round = round,
+                            source = sourceRef,
+                            target = BattleHeroRef(refSide, target.position, target.id),
+                            status = status,
+                            durationRounds = detail.availableRounds.coerceAtLeast(1),
+                            power = power,
+                            skillId = skillId,
+                        )
+                    }
+                }
+                101, 102, 103, 104 -> {
+                    selfStatDelta = statDeltaForEffect(detail.effectId, detail.constantParam)
+                    selfBuffDuration = detail.availableRounds.coerceAtLeast(2)
+                }
+                else -> events += BattleEvent.UnsupportedSkillEffect(
+                    round = round,
+                    skillId = skillId,
+                    effectId = detail.effectId,
+                    source = sourceRef,
+                    rawDescription = detail.effectName,
+                )
+            }
+        }
+
+        return SkillCastResult(
+            skillId = skillId,
+            updatedEnemies = BattleTeam(updatedEnemies.values.sortedBy { it.position }, enemies.armyBonuses),
+            events = events,
+            updatedAllies = BattleTeam(updatedAllies.values.sortedBy { it.position }, allies.armyBonuses),
+            selfStatDelta = selfStatDelta,
+            selfBuffDuration = selfBuffDuration,
+        )
+    }
+
+    private enum class TargetSide { ENEMY, ALLY, SELF }
+
+    private fun resolveTargetSide(detail: SkillDetailConfig): TargetSide {
+        if (detail.targetType == 0) {
+            return when (detail.effectId) {
+                in 301..399, in 500..599 -> TargetSide.ENEMY
+                in 400..499, in 100..199 -> TargetSide.SELF
+                else -> TargetSide.ENEMY
+            }
+        }
+        val ones = detail.targetType % 10
+        return when (ones) {
+            2 -> TargetSide.ALLY
+            3 -> TargetSide.SELF
+            else -> TargetSide.ENEMY
+        }
+    }
+
+    private fun selectTargets(
+        pool: Collection<BattleHero>,
+        detail: SkillDetailConfig,
+        sourceRef: BattleHeroRef,
+        random: BattleRandom,
+        preferSelf: Boolean,
+    ): List<BattleHero> {
+        val alive = pool.filter { it.troops > 0 }
+        if (alive.isEmpty()) return emptyList()
+        if (preferSelf) {
+            val self = alive.firstOrNull { it.position == sourceRef.position && it.id == sourceRef.heroId }
+            if (self != null) return listOf(self)
+        }
+        val tens = (detail.targetType / 10) % 10
+        val isAoe = tens >= 2
+        val candidates = when (detail.selectType) {
+            3, 4, 33, 34 -> alive.sortedBy { it.troops }
+            5 -> alive.sortedByDescending { it.troops }
+            else -> alive.sortedBy { it.position }
+        }
+        return if (isAoe) candidates else listOf(candidates.first())
+    }
+
+    private fun statDeltaForEffect(effectId: Int, constantParam: Int): BattleStats {
+        val amount = constantParam / 10
+        return when (effectId) {
+            101 -> BattleStats(attack = amount, defense = 0, strategy = 0, speed = 0, siege = 0, hitRange = 0)
+            102 -> BattleStats(attack = 0, defense = amount, strategy = 0, speed = 0, siege = 0, hitRange = 0)
+            103 -> BattleStats(attack = 0, defense = 0, strategy = amount, speed = 0, siege = 0, hitRange = 0)
+            104 -> BattleStats(attack = 0, defense = 0, strategy = 0, speed = amount, siege = 0, hitRange = 0)
+            else -> BattleStats.ZERO
+        }
+    }
+
+    private fun selectDisorderEffects(
+        details: List<SkillDetailConfig>,
+        random: BattleRandom,
+    ): List<SkillDetailConfig> {
+        val groups = listOf(
+            details.firstOrNull { it.effectId == 305 },
+            details.firstOrNull { it.effectId == 501 },
+            details.firstOrNull { it.effectId == 552 },
+        ).filterNotNull()
+        if (groups.size == 3) return groups
+
+        val candidates = details.filter { it.effectId in setOf(303, 304, 305, 306, 501, 502, 503, 552, 505) }
+        if (candidates.size <= 3) return candidates
+        return List(3) { candidates[random.nextInt(candidates.size)] }
+    }
+
+    private fun skillDamage(source: BattleHero, target: BattleHero, detail: SkillDetailConfig): Int {
+        val sourcePower = if (detail.effectId == 302) source.stats.strategy else source.stats.attack
+        val targetGuard = if (detail.effectId == 302) target.stats.strategy / 3 else target.stats.defense / 2
+        val rate = detail.constantParam.coerceAtLeast(1) / 100.0
+        val base = ((sourcePower - targetGuard).coerceAtLeast(1) * rate).toInt().coerceAtLeast(1)
+        val kind = if (detail.effectId == 302) DamageKind.STRATEGY else DamageKind.PHYSICAL
+        val bonusPercent = source.modifiers
+            .filterIsInstance<BattleModifier.DamageDealtPercent>()
+            .filter { it.kind == null || it.kind == kind || it.kind == DamageKind.ACTIVE_SKILL }
+            .sumOf { it.percent }
+        return (base * (100 + bonusPercent) / 100).coerceAtLeast(1).coerceAtMost(target.troops)
+    }
+}
