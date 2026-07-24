@@ -1,0 +1,358 @@
+package com.stzb.server.game.battle
+
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlin.io.path.exists
+
+enum class SkillKind {
+    PASSIVE,
+    COMMAND,
+    ACTIVE,
+    PURSUIT,
+    UNKNOWN,
+}
+
+data class HeroBattleConfig(
+    val id: Int,
+    val name: String,
+    val cost: Double,
+    val hitRange: Int,
+    val stats: BattleStats,
+    val growth: BattleStats,
+    val initialSkillId: Int,
+)
+
+data class SkillBattleConfig(
+    val id: Int,
+    val name: String,
+    val kind: SkillKind,
+    val hitRange: Int?,
+    val prepareRounds: Int,
+    val probabilityInit: Int,
+    val probabilityMax: Int,
+    val mainDetailId: Int,
+    val mainDetail: SkillDetailConfig?,
+    val mainEffect: SkillEffectConfig?,
+)
+
+data class SkillDetailConfig(
+    val detailId: Int,
+    val effectId: Int,
+    val attackType: Int,
+    val targetType: Int,
+    val selectType: Int,
+    val constantParam: Int,
+    val intelParam: Int,
+    val probabilityInit: Int,
+    val probabilityMax: Int,
+    val availableRounds: Int,
+    val attackMax: Int,
+    val effectName: String,
+)
+
+data class SkillEffectConfig(
+    val effectId: Int,
+    val name: String,
+    val buffType: Int,
+    val valueType: Int,
+)
+
+data class HeroExtraConfig(
+    val id: Int,
+    val name: String,
+    val methodDesc: String,
+)
+
+data class SkillExtraConfig(
+    val id: Int,
+    val name: String,
+    val description: String,
+)
+
+data class ArmyBonusConfig(
+    val id: Int,
+    val name: String,
+    val heroIds: Set<Int>,
+    val stats: BattleStats,
+)
+
+class BattleConfigRepository private constructor(
+    private val heroes: Map<Int, HeroBattleConfig>,
+    private val skills: Map<Int, SkillBattleConfig>,
+    private val details: Map<Int, SkillDetailConfig>,
+    private val heroExtras: Map<Int, HeroExtraConfig>,
+    private val skillExtras: Map<Int, SkillExtraConfig>,
+    private val armyBonuses: List<ArmyBonusConfig>,
+) {
+    fun hero(heroId: Int): HeroBattleConfig? = heroes[heroId]
+
+    fun skill(skillId: Int): SkillBattleConfig? = skills[skillId]
+
+    fun allHeroIds(): Set<Int> = heroes.keys
+
+    fun allSkillIds(): Set<Int> = skills.keys
+
+    fun heroExtra(heroId: Int): HeroExtraConfig? = heroExtras[heroId]
+
+    fun skillExtra(skillId: Int): SkillExtraConfig? = skillExtras[skillId]
+
+    fun skillDetails(skillId: Int): List<SkillDetailConfig> {
+        val detailIdStart = skillId * 100
+        val detailIdEnd = detailIdStart + 99
+        return details.values
+            .filter { it.detailId in detailIdStart..detailIdEnd }
+            .sortedBy { it.detailId }
+    }
+
+    fun armyBonusesFor(heroIds: Collection<Int>): List<ArmyBonusConfig> {
+        val teamHeroIds = heroIds.toSet()
+        return armyBonuses.filter { bonus -> bonus.heroIds.count { it in teamHeroIds } >= 3 }
+    }
+
+    fun toBattleHero(heroId: Int, position: Int, troops: Int): BattleHero {
+        val config = hero(heroId) ?: error("未知武将配置: $heroId")
+        return BattleHero(
+            id = BattleHeroId(heroId),
+            position = position,
+            stats = config.stats,
+            troops = troops,
+            maxTroops = troops,
+        )
+    }
+
+    companion object {
+        fun loadDefault(): BattleConfigRepository =
+            load(resolveProjectRoot())
+
+        fun load(projectRoot: Path): BattleConfigRepository {
+            val effects = Csv.read(projectRoot.resolve("skill_effect_table.csv"))
+                .associate { row ->
+                    val effect = SkillEffectConfig(
+                        effectId = row.int("effect_id"),
+                        name = row["name"].orEmpty(),
+                        buffType = row.int("buff_type"),
+                        valueType = row.int("value_type"),
+                    )
+                    effect.effectId to effect
+                }
+            val details = Csv.read(projectRoot.resolve("skill_detail_table.csv"))
+                .associate { row ->
+                    val detail = SkillDetailConfig(
+                        detailId = row.int("detail_id"),
+                        effectId = row.int("effect_id"),
+                        attackType = row.int("attack_type"),
+                        targetType = row.int("target_type"),
+                        selectType = row.int("select_type"),
+                        constantParam = row.int("constant_param"),
+                        intelParam = row.int("intel_param"),
+                        probabilityInit = row.int("prob_init_param"),
+                        probabilityMax = row.int("prob_max_param"),
+                        availableRounds = row.int("available_round"),
+                        attackMax = row.int("attack_max"),
+                        effectName = row["effect_name"].orEmpty(),
+                    )
+                    detail.detailId to detail
+                }
+            val skills = Csv.read(projectRoot.resolve("skill_table.csv"))
+                .associate { row ->
+                    val skillId = row.int("skill_id")
+                    val mainDetail = row.int("main_detail")
+                    val detail = details[mainDetail]
+                    skillId to SkillBattleConfig(
+                        id = skillId,
+                        name = row["name"].orEmpty(),
+                        kind = parseSkillKind(row.int("skill_type"), row["name"].orEmpty()),
+                        hitRange = row.intOrNull("hit_range")?.takeIf { it > 0 },
+                        prepareRounds = row.int("prepare"),
+                        probabilityInit = row.int("probability_init"),
+                        probabilityMax = row.int("probability_max"),
+                        mainDetailId = mainDetail,
+                        mainDetail = detail,
+                        mainEffect = detail?.effectId?.let { effects[it] },
+                    )
+                }
+            val heroes = Csv.read(projectRoot.resolve("hero_table.csv"))
+                .associate { row ->
+                    val heroId = row.int("heroid")
+                    heroId to HeroBattleConfig(
+                        id = heroId,
+                        name = row["name"].orEmpty(),
+                        cost = row.int("cost") / 10.0,
+                        hitRange = row.int("hit_range"),
+                        stats = BattleStats(
+                            attack = row.scaledStat("attack_base"),
+                            defense = row.scaledStat("defence_base"),
+                            strategy = row.scaledStat("intel_base"),
+                            speed = row.scaledStat("speed_base"),
+                            siege = row.scaledStat("destroy_base"),
+                            hitRange = row.int("hit_range"),
+                        ),
+                        growth = BattleStats(
+                            attack = row.scaledStat("attack_grow"),
+                            defense = row.scaledStat("defence_grow"),
+                            strategy = row.scaledStat("intel_grow"),
+                            speed = row.scaledStat("speed_grow"),
+                            siege = row.scaledStat("destroy_grow"),
+                            hitRange = 0,
+                        ),
+                        initialSkillId = row.int("skill_init"),
+                    )
+                }
+            val cfgRoot = projectRoot.resolve("server/assent/cfg")
+            return BattleConfigRepository(
+                heroes = heroes,
+                skills = skills,
+                details = details,
+                heroExtras = loadHeroExtras(cfgRoot.resolve("hero_extra.json")),
+                skillExtras = loadSkillExtras(cfgRoot.resolve("skill_extra.json")),
+                armyBonuses = loadArmyBonuses(cfgRoot.resolve("army_extra.json")),
+            )
+        }
+
+        private fun loadHeroExtras(path: Path): Map<Int, HeroExtraConfig> =
+            Json.readArray(path).associate { row ->
+                val id = row.int("id")
+                id to HeroExtraConfig(
+                    id = id,
+                    name = row.string("name"),
+                    methodDesc = row.string("methodDesc"),
+                )
+            }
+
+        private fun loadSkillExtras(path: Path): Map<Int, SkillExtraConfig> =
+            Json.readArray(path).associate { row ->
+                val id = row.int("id")
+                id to SkillExtraConfig(
+                    id = id,
+                    name = row.string("name"),
+                    description = listOf(
+                        row.string("targetShow"),
+                        row.string("targetType"),
+                        row.string("desc"),
+                    ).filter { it.isNotBlank() }.distinct().joinToString("\n"),
+                )
+            }
+
+        private fun loadArmyBonuses(path: Path): List<ArmyBonusConfig> =
+            Json.readArray(path).mapNotNull { row ->
+                val heroIds = row.string("heroId")
+                    .split(',')
+                    .mapNotNull { it.trim().toIntOrNull() }
+                    .toSet()
+                if (heroIds.isEmpty()) {
+                    null
+                } else {
+                    ArmyBonusConfig(
+                        id = row.int("armyId"),
+                        name = row.string("armyName"),
+                        heroIds = heroIds,
+                        stats = parseArmyBonusStats(row.string("armyEffect")),
+                    )
+                }
+            }
+
+        private fun parseArmyBonusStats(text: String): BattleStats {
+            fun value(pattern: String): Int =
+                Regex(pattern).find(text)?.groupValues?.get(1)?.toDoubleOrNull()?.toInt() ?: 0
+
+            return BattleStats(
+                attack = value("""攻击(?:属性)?\+([0-9.]+)"""),
+                defense = value("""防御(?:属性)?\+([0-9.]+)"""),
+                strategy = value("""谋略(?:属性)?\+([0-9.]+)"""),
+                speed = value("""速度(?:属性)?\+([0-9.]+)"""),
+                siege = value("""攻城(?:属性)?\+([0-9.]+)"""),
+                hitRange = value("""攻击距离\+([0-9.]+)"""),
+            )
+        }
+
+        private fun parseSkillKind(skillType: Int, name: String): SkillKind =
+            when (skillType) {
+                1 -> SkillKind.PASSIVE
+                2 -> SkillKind.COMMAND
+                3 -> SkillKind.ACTIVE
+                4 -> SkillKind.PURSUIT
+                else -> when {
+                    name.contains("追击") -> SkillKind.PURSUIT
+                    else -> SkillKind.UNKNOWN
+                }
+            }
+
+        private fun resolveProjectRoot(): Path {
+            val cwd = Path.of("").toAbsolutePath()
+            return sequenceOf(cwd, cwd.parent)
+                .filterNotNull()
+                .firstOrNull { it.resolve("hero_table.csv").exists() }
+                ?: error("无法定位项目根目录: $cwd")
+        }
+
+        private fun Map<String, String>.int(name: String): Int =
+            intOrNull(name) ?: 0
+
+        private fun Map<String, String>.intOrNull(name: String): Int? =
+            this[name]?.takeIf { it.isNotBlank() && it != "--" }?.toDoubleOrNull()?.toInt()
+
+        private fun Map<String, String>.scaledStat(name: String): Int =
+            (int(name) / 100.0).toInt()
+    }
+}
+
+private object Json {
+    private val mapper = jacksonObjectMapper()
+    private val rowsType = object : TypeReference<List<Map<String, Any?>>>() {}
+
+    fun readArray(path: Path): List<Map<String, Any?>> {
+        if (!path.exists()) return emptyList()
+        return mapper.readValue(path.toFile(), rowsType)
+    }
+}
+
+private fun Map<String, Any?>.string(name: String): String =
+    this[name]?.toString().orEmpty()
+
+private fun Map<String, Any?>.int(name: String): Int =
+    when (val value = this[name]) {
+        is Number -> value.toInt()
+        is String -> value.toDoubleOrNull()?.toInt() ?: 0
+        else -> 0
+    }
+
+private object Csv {
+    fun read(path: Path): List<Map<String, String>> {
+        val lines = Files.readAllLines(path)
+        if (lines.isEmpty()) return emptyList()
+        val header = parseLine(lines.first()).map { it.removePrefix("\uFEFF") }
+        return lines.drop(1)
+            .filter { it.isNotBlank() }
+            .map { line ->
+                val values = parseLine(line)
+                header.mapIndexed { index, name -> name to values.getOrElse(index) { "" } }.toMap()
+            }
+    }
+
+    private fun parseLine(line: String): List<String> {
+        val out = mutableListOf<String>()
+        val current = StringBuilder()
+        var quoted = false
+        var i = 0
+        while (i < line.length) {
+            val c = line[i]
+            when {
+                c == '"' && quoted && i + 1 < line.length && line[i + 1] == '"' -> {
+                    current.append('"')
+                    i++
+                }
+                c == '"' -> quoted = !quoted
+                c == ',' && !quoted -> {
+                    out += current.toString()
+                    current.clear()
+                }
+                else -> current.append(c)
+            }
+            i++
+        }
+        out += current.toString()
+        return out
+    }
+}

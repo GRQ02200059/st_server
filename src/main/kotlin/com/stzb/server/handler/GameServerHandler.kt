@@ -1,0 +1,722 @@
+package com.stzb.server.handler
+
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.stzb.server.game.ArmyBattleRequestParser
+import com.stzb.server.game.ConscriptRequestParser
+import com.stzb.server.game.GameResponses
+import com.stzb.server.game.PlayerBattleService
+import com.stzb.server.game.PlayerConscriptService
+import com.stzb.server.game.PlayerStateRepository
+import com.stzb.server.game.RecruitResultParser
+import com.stzb.server.game.TeamRequestParser
+import com.stzb.server.game.battle.ClientBattleReportStore
+import com.stzb.server.protocol.Cmd
+import com.stzb.server.protocol.DownPacket
+import com.stzb.server.protocol.DownType
+import com.stzb.server.protocol.GameServerConfig
+import com.stzb.server.protocol.NetworkResponsePolicy
+import com.stzb.server.protocol.SysPackets
+import com.stzb.server.protocol.UpPacket
+import com.stzb.server.session.Session
+import io.netty.channel.ChannelHandlerContext
+import io.netty.channel.SimpleChannelInboundHandler
+import io.netty.util.AttributeKey
+import io.netty.util.concurrent.ScheduledFuture
+import org.slf4j.LoggerFactory
+import java.net.InetSocketAddress
+import java.util.concurrent.TimeUnit
+
+/**
+ * P1 核心处理器 (离线推演路线):
+ *  - 连接建立: 分配会话并下发 98888 握手
+ *  - 20003 / 98702: 下发服务器列表 (让客户端选服并回连本服)
+ *  - 99991: 下发登录成功响应 + 最小存档 UserInitTable, 让客户端进主城
+ *  - 心跳 90003 / ACK 90009 / 校验 90008: 保持连接
+ *  - 其它 cmd: 仅记录 (待后续实现)
+ */
+class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
+
+    override fun channelActive(ctx: ChannelHandlerContext) {
+        val session = Session.create()
+        ctx.channel().attr(SESSION).set(session)
+        log.info("[+] 连接建立 ${ctx.channel().remoteAddress()}, 分配 userId=${session.userId}, 下发 98888 握手")
+        SysPackets.writeNotifySid(ctx.channel(), session.userId, session.cmdIndex.get(), session.sid)
+        armKeepAlive(ctx)
+    }
+
+    override fun channelInactive(ctx: ChannelHandlerContext) {
+        cancelKeepAlive(ctx)
+        log.info("[-] 连接断开 ${ctx.channel().remoteAddress()}")
+    }
+
+    /**
+     * 客户端 socket 层有 3s "recv-timeout" 看门狗 (MAX_RECEIVE_DATA_TIMEOUT):
+     * 连上后若 3s 内没收到任何下行包就主动关连接重连 (见 DotnetBaseSocket.CheckRecvDataTimeout)。
+     * 而握手用的 98888 会重新 "武装" 看门狗 (SetLastSendTimeWhenZero), 只有其它下行包能真正解除。
+     * 因此这里在连接期内每 KEEP_ALIVE_MS 补发一个空包 (PackageReceivedComplex) 喂狗,
+     * 让 socket 存活足够久, 登录 FSM (Youth->Classic->99992) 才能推进。
+     */
+    private fun armKeepAlive(ctx: ChannelHandlerContext) {
+        val task = ctx.channel().eventLoop().scheduleAtFixedRate({
+            if (ctx.channel().isActive) {
+                SysPackets.writeComplex(ctx.channel(), Cmd.SYS_HEART_BEAT)
+            }
+        }, KEEP_ALIVE_MS, KEEP_ALIVE_MS, TimeUnit.MILLISECONDS)
+        ctx.channel().attr(KEEP_ALIVE).set(task)
+    }
+
+    private fun cancelKeepAlive(ctx: ChannelHandlerContext) {
+        ctx.channel().attr(KEEP_ALIVE).getAndSet(null)?.cancel(false)
+    }
+
+    override fun channelRead0(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val session = ctx.channel().attr(SESSION).get()
+        session?.lastRecvTime = System.currentTimeMillis()
+
+        when (msg.cmdId) {
+            Cmd.SYS_HEART_BEAT -> log.debug("♥ 心跳 90003 (uid=${msg.userId})")
+            Cmd.SYS_ACKNOWLEDGE -> log.debug("✓ ACK 90009")
+            Cmd.SYS_CHECK_SID -> {
+                log.info("↻ 校验 SID 90008 (uid=${msg.userId})")
+                SysPackets.writeComplex(ctx.channel(), Cmd.SYS_CHECK_SID)
+            }
+
+            Cmd.SYS_PLATFORM_LOGIN_CHECK -> {
+                logIn(msg)
+                sendPlatformLoginCheck(ctx, session)
+            }
+
+            Cmd.GET_ALL_SERVER_INFO_NEW,
+            Cmd.GET_CLASSIC_AND_YOUTH_SERVER_LIST -> {
+                logIn(msg)
+                sendServerList(ctx, msg.cmdId)
+            }
+
+            Cmd.SYS_PRE_SERVER_TOKEN_CHECK -> {
+                logIn(msg)
+                sendPreServerTokenCheck(ctx)
+            }
+
+            Cmd.SYS_LOGIN -> {
+                logIn(msg)
+                sendLoginSuccess(ctx, session)
+            }
+
+            Cmd.RANDOM_ROLE_NAME -> {
+                logIn(msg)
+                sendRandomRoleName(ctx)
+            }
+
+            Cmd.CREATE_ROLE -> {
+                logIn(msg)
+                sendCreateRoleSuccess(ctx, session, msg)
+            }
+
+            Cmd.GET_SERVER_TIME -> {
+                logIn(msg)
+                sendServerTime(ctx)
+            }
+
+            Cmd.SYNC_SERVER_TIME -> {
+                logIn(msg)
+                sendServerTimeMillis(ctx)
+            }
+
+            Cmd.BATTLE_REPORT_PROFILE -> {
+                logIn(msg)
+                sendBattleReportProfile(ctx, msg)
+            }
+
+            Cmd.ARMY_BATTLE -> {
+                logIn(msg)
+                sendArmyBattle(ctx, session, msg)
+            }
+
+            Cmd.BATTLE_REPORT_DETAIL,
+            Cmd.BATTLE_REPORT_SHORT_DETAIL -> {
+                logIn(msg)
+                sendBattleReportDetail(ctx, msg)
+            }
+
+            Cmd.BUILD_BUILDING,
+            Cmd.UPGRADE_BUILDING -> {
+                logIn(msg)
+                sendBuildingUpgrade(ctx, session, msg)
+            }
+
+            Cmd.LAND_INFO -> {
+                logIn(msg)
+                sendLandInfo(ctx, msg)
+            }
+
+            Cmd.ADD_HERO_TO_ARMY -> {
+                logIn(msg)
+                sendAddHeroToArmy(ctx, session, msg)
+            }
+
+            Cmd.REMOVE_HERO_FROM_ARMY -> {
+                logIn(msg)
+                sendRemoveHeroFromArmy(ctx, session, msg)
+            }
+
+            Cmd.SWITCH_HERO_IN_ARMY -> {
+                logIn(msg)
+                sendSwitchHeroInArmy(ctx, session, msg)
+            }
+
+            Cmd.CONSCRIPT,
+            Cmd.CONSCRIPT_IMMEDIATELY -> {
+                logIn(msg)
+                sendConscript(ctx, session, msg)
+            }
+
+            Cmd.CARD_RECRUIT -> {
+                logIn(msg)
+                sendCardRecruit(ctx, session, msg)
+            }
+
+            Cmd.CARD_QUICK_RECRUIT -> {
+                logIn(msg)
+                sendQuickCardRecruit(ctx, session, msg)
+            }
+
+            Cmd.CARD_SET_ALL_NOT_NEW -> {
+                logIn(msg)
+                sendCardSetAllNotNew(ctx)
+            }
+
+            Cmd.CARD_ADD_POINT,
+            Cmd.CARD_WASH_POINT,
+            Cmd.CARD_PROTECT,
+            Cmd.CARD_SAVE_POINT_PLAN,
+            Cmd.CARD_CHANGE_POINT_PLAN,
+            Cmd.CARD_EXTRACT_SWITCH,
+            Cmd.CARD_SELECT_HERO -> {
+                logIn(msg)
+                sendCardOperationSuccess(ctx, msg)
+            }
+
+            Cmd.GET_WORLD_SCENCE_INFO -> {
+                logIn(msg)
+                sendWorldSceneFullInfo(ctx, session)
+            }
+
+            Cmd.SYS_PING -> {
+                logIn(msg)
+                sendDevicePing(ctx)
+            }
+
+            Cmd.QUERY_ARMY_RELATED_FORT -> {
+                logIn(msg)
+                sendArmyRelatedFort(ctx)
+            }
+
+            Cmd.SET_CLIENT_RED_DOT_DATA,
+            Cmd.SET_FRONT_UNLOCK_ANIM -> {
+                logIn(msg)
+                sendNoOpSuccess(ctx, msg)
+            }
+
+            Cmd.USER_CHANGE_NAME -> {
+                logIn(msg)
+                sendChangeNameSuccess(ctx, msg)
+            }
+
+            Cmd.HERO_TEAM_LIBRARY -> {
+                logIn(msg)
+                sendHeroTeamLibrary(ctx)
+            }
+
+            Cmd.NORMAL_TEAM_COMPOSITION -> {
+                logIn(msg)
+                sendNormalTeamComposition(ctx, msg)
+            }
+
+            Cmd.WORLD_BOSS_SAVE_TEAM,
+            Cmd.EXERCISE_DAILY_SAVE_TEAM -> {
+                logIn(msg)
+                saveTeamConfig(ctx, session, msg)
+            }
+
+            else -> {
+                logUnhandledOrFallback(ctx, msg)
+            }
+        }
+    }
+
+    /** 下发 99992 平台校验响应, 签发 ServerSession (没有它客户端不会连游戏服/不发 99991)。 */
+    private fun sendPlatformLoginCheck(ctx: ChannelHandlerContext, session: Session?) {
+        val userId = session?.userId ?: 10001
+        // ServerSession 客户端只做非空判断, 内容不参与本地校验; 用 sid 前 4 字节派生一个稳定串。
+        val sidHex = session?.sid?.take(4)?.joinToString("") { "%02x".format(it) } ?: "00000000"
+        val serverSession = "ss_${userId}_$sidHex"
+        val json = GameResponses.platformLoginCheck(userId, serverSession)
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYS_PLATFORM_LOGIN_CHECK, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=99992 平台校验已下发 (uid=$userId, ServerSession=$serverSession)")
+    }
+
+    private fun sendPreServerTokenCheck(ctx: ChannelHandlerContext) {
+        val json = GameResponses.preServerTokenCheck()
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYS_PRE_SERVER_TOKEN_CHECK, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=99994 预登录校验已下发")
+    }
+
+    /** 下发 20003/98702 服务器列表; 广播的 host:port 即本进程监听地址。 */
+    private fun sendServerList(ctx: ChannelHandlerContext, cmd: Int) {
+        val localPort = (ctx.channel().localAddress() as? InetSocketAddress)?.port ?: 59979
+        val json = GameResponses.serverList(
+            serverId = GameServerConfig.SERVER_ID,
+            serverName = GameServerConfig.SERVER_NAME,
+            host = GameServerConfig.HOST,
+            port = localPort,
+            runServerId = GameServerConfig.RUN_SERVER_ID,
+            cfgDbId = GameServerConfig.CFG_DB_ID,
+            openTime = GameServerConfig.OPEN_TIME_SEC,
+        )
+        ctx.writeAndFlush(DownPacket.json(cmd, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=$cmd 服务器列表已下发 (host=${GameServerConfig.HOST}:$localPort, ${json.length}B)")
+    }
+
+    /** 下发 99991 登录成功 + 最小存档, 让客户端进主城。 */
+    private fun sendLoginSuccess(ctx: ChannelHandlerContext, session: Session?) {
+        val userId = session?.userId ?: 10001
+        val nowSec = System.currentTimeMillis() / 1000
+        val json = GameResponses.loginSuccess(
+            userId = userId,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = GameServerConfig.ROLE_NAME,
+            serverTimeSec = nowSec,
+            serverOpenTime = GameServerConfig.OPEN_TIME_SEC,
+            cfgDataIndex = GameServerConfig.CFG_DB_ID,
+        )
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYS_LOGIN, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=99991 登录成功已下发 (uid=$userId, cityWid=${GameServerConfig.CITY_WID}, ${json.length}B)")
+    }
+
+    private fun sendRandomRoleName(ctx: ChannelHandlerContext) {
+        val json = GameResponses.randomRoleName()
+        ctx.writeAndFlush(DownPacket.json(Cmd.RANDOM_ROLE_NAME, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=511 随机角色名已下发")
+    }
+
+    private fun sendCreateRoleSuccess(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val roleName = requestedRoleName(msg) ?: GameServerConfig.ROLE_NAME
+        val json = GameResponses.createRoleSuccess(
+            userId = userId,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = roleName,
+            serverOpenTime = GameServerConfig.OPEN_TIME_SEC,
+        )
+        ctx.writeAndFlush(DownPacket.json(Cmd.CREATE_ROLE, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=2 创角成功已下发 (uid=$userId, roleName=$roleName, ${json.length}B)")
+    }
+
+    private fun sendCardRecruit(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val summonCfgId = body?.get(0)?.asInt() ?: 0
+        val summonUid = body?.get(1)?.asInt()?.takeIf { it > 0 } ?: 0
+        val summonOpType = body?.get(2)?.asInt() ?: 0
+        val childCfgId = body?.get(5)?.asInt() ?: 0
+        val json = GameResponses.cardRecruit(
+            userId = userId,
+            summonUid = summonUid,
+            summonCfgId = summonCfgId,
+            childCfgId = childCfgId,
+            summonOpType = summonOpType,
+        )
+        ctx.writeAndFlush(DownPacket.json(Cmd.CARD_RECRUIT, json, dataType = DownType.PLAIN))
+        sendRecruitHeroInsertNotify(ctx, userId, Cmd.CARD_RECRUIT, json)
+        log.info(">> cmd=301 招募结果已下发 (summonCfgId=$summonCfgId, summonUid=$summonUid, summonOpType=$summonOpType, childCfgId=$childCfgId, ${json.length}B)")
+    }
+
+    private fun sendBuildingUpgrade(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val cityWid = body?.get(0)?.asInt()?.takeIf { it > 0 } ?: GameServerConfig.CITY_WID
+        val buildId = body?.get(1)?.asInt()?.takeIf { it > 0 } ?: 10
+        val targetLevel = body?.get(3)?.asInt() ?: 0
+        val state = PlayerStateRepository.getOrCreate(userId, cityWid, GameServerConfig.ROLE_NAME)
+        val level = state.upgradeBuild(buildId, targetLevel)
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN))
+        val json = GameResponses.userBuildUpsertNotify(
+            userId = userId,
+            cityWid = cityWid,
+            buildId = buildId,
+            level = level,
+            resources = state.resources,
+        )
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=${msg.cmdId} 建筑升级已处理 (cityWid=$cityWid, buildId=$buildId, level=$level)")
+    }
+
+    private fun sendLandInfo(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val coorX = body?.get(0)?.asInt() ?: 0
+        val coorY = body?.get(1)?.asInt() ?: 0
+        val wid = if (coorX > 0 && coorY > 0) coorX * 10000 + coorY else 0
+        ctx.writeAndFlush(DownPacket.json(Cmd.LAND_INFO, GameResponses.landInfo(wid), dataType = DownType.PLAIN))
+        log.info(">> cmd=21 土地详情已应答 (wid=$wid)")
+    }
+
+    private fun sendAddHeroToArmy(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val cityWid = body?.get(0)?.asInt()?.takeIf { it > 0 } ?: GameServerConfig.CITY_WID
+        val heroUid = body?.get(1)?.asInt() ?: 0
+        val requestedArmyId = body?.get(2)?.asInt()?.takeIf { it > 0 }
+        val pos = body?.get(3)?.asInt() ?: 1
+        val state = PlayerStateRepository.getOrCreate(userId, cityWid, GameServerConfig.ROLE_NAME)
+        val armyId = requestedArmyId ?: state.primaryArmyId()
+
+        state.assignTeamHero(heroUid = heroUid, pos = pos)
+        ctx.writeAndFlush(DownPacket.json(Cmd.ADD_HERO_TO_ARMY, mapper.writeValueAsString(listOf(armyId)), dataType = DownType.PLAIN))
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, GameResponses.armyUpsertNotify(state), dataType = DownType.PLAIN))
+        state.hero(heroUid)?.let { hero ->
+            ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, GameResponses.heroUpsertNotify(userId, listOf(hero)), dataType = DownType.PLAIN))
+        }
+        log.info(">> cmd=30 武将上阵已处理 (uid=$userId, cityWid=$cityWid, armyId=$armyId, pos=$pos, heroUid=$heroUid)")
+    }
+
+    private fun sendRemoveHeroFromArmy(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val cityWid = body?.get(0)?.asInt()?.takeIf { it > 0 } ?: GameServerConfig.CITY_WID
+        val armyId = body?.get(1)?.asInt()?.takeIf { it > 0 } ?: cityWid * 10 + 1
+        val pos = body?.get(2)?.asInt() ?: 1
+        val state = PlayerStateRepository.getOrCreate(userId, cityWid, GameServerConfig.ROLE_NAME)
+        val removedHero = state.removeTeamHero(pos).takeIf { it > 0 }?.let(state::hero)
+
+        ctx.writeAndFlush(DownPacket.json(Cmd.REMOVE_HERO_FROM_ARMY, mapper.writeValueAsString(listOf(armyId)), dataType = DownType.PLAIN))
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, GameResponses.armyUpsertNotify(state), dataType = DownType.PLAIN))
+        removedHero?.let { hero ->
+            ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, GameResponses.heroUpsertNotify(userId, listOf(hero)), dataType = DownType.PLAIN))
+        }
+        log.info(">> cmd=31 武将下阵已处理 (uid=$userId, cityWid=$cityWid, armyId=$armyId, pos=$pos, heroUid=${removedHero?.heroUid ?: 0})")
+    }
+
+    private fun sendSwitchHeroInArmy(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val cityWid = body?.get(0)?.asInt()?.takeIf { it > 0 } ?: GameServerConfig.CITY_WID
+        val armyId1 = body?.get(1)?.asInt()?.takeIf { it > 0 } ?: (cityWid * 10 + 1)
+        val pos1 = body?.get(2)?.asInt() ?: 1
+        val armyId2 = body?.get(3)?.asInt()?.takeIf { it > 0 } ?: armyId1
+        val pos2 = body?.get(4)?.asInt() ?: 1
+        val state = PlayerStateRepository.getOrCreate(userId, cityWid, GameServerConfig.ROLE_NAME)
+        val affectedHeroes = state.switchTeamHeroes(pos1, pos2).mapNotNull { state.hero(it) }
+        val responseArmyIds = listOf(armyId1, armyId2).distinct()
+
+        ctx.writeAndFlush(DownPacket.json(Cmd.SWITCH_HERO_IN_ARMY, mapper.writeValueAsString(responseArmyIds), dataType = DownType.PLAIN))
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, GameResponses.armyUpsertNotify(state), dataType = DownType.PLAIN))
+        if (affectedHeroes.isNotEmpty()) {
+            ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, GameResponses.heroUpsertNotify(userId, affectedHeroes), dataType = DownType.PLAIN))
+        }
+        log.info(">> cmd=32 武将换位已处理 (uid=$userId, cityWid=$cityWid, armyId1=$armyId1, pos1=$pos1, armyId2=$armyId2, pos2=$pos2)")
+    }
+
+    private fun sendQuickCardRecruit(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val summonUid = body?.get(0)?.asInt()?.takeIf { it > 0 } ?: 0
+        val quickCount = body?.get(4)?.asInt()?.takeIf { it > 0 } ?: 1
+        val packId = summonPackId(userId, summonUid)
+        val json = GameResponses.quickCardRecruit(summonUid = summonUid, packId = packId, quickCount = quickCount)
+        ctx.writeAndFlush(DownPacket.json(Cmd.CARD_QUICK_RECRUIT, json, dataType = DownType.PLAIN))
+        sendRecruitHeroInsertNotify(ctx, userId, Cmd.CARD_QUICK_RECRUIT, json)
+        log.info(">> cmd=304 快速招募结果已下发 (summonUid=$summonUid, packId=$packId, quickCount=$quickCount, ${json.length}B)")
+    }
+
+    private fun summonPackId(userId: Int, summonUid: Int): Int =
+        when (summonUid) {
+            userId * 100 + 1 -> 801
+            userId * 100 + 2 -> 281
+            else -> 801
+        }
+
+    private fun sendCardOperationSuccess(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val first = body?.get(0)?.asInt() ?: 0
+        val json = when (msg.cmdId) {
+            Cmd.CARD_CHANGE_POINT_PLAN -> mapper.writeValueAsString(listOf(first))
+            Cmd.CARD_SELECT_HERO -> mapper.writeValueAsString(first)
+            else -> GameResponses.emptyArray()
+        }
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=${msg.cmdId} 卡牌操作已应答")
+    }
+
+    private fun sendRecruitHeroInsertNotify(ctx: ChannelHandlerContext, userId: Int, cmdId: Int, recruitJson: String) {
+        val heroIds = RecruitResultParser.heroIdsFrom(cmdId, recruitJson)
+        if (heroIds.isEmpty()) return
+        val state = PlayerStateRepository.getOrCreate(userId, GameServerConfig.CITY_WID, GameServerConfig.ROLE_NAME)
+        val cards = heroIds.map { heroId ->
+            val hero = state.addHero(heroId)
+            hero.heroUid to hero.heroId
+        }
+        val nowSec = (System.currentTimeMillis() / 1000).toInt()
+        val json = GameResponses.heroInsertNotify(userId = userId, heroes = cards, nowSec = nowSec)
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=90005 招募武将入库已下发 (count=${cards.size}, ${json.length}B)")
+    }
+
+    private fun sendCardSetAllNotNew(ctx: ChannelHandlerContext) {
+        ctx.writeAndFlush(DownPacket.json(Cmd.CARD_SET_ALL_NOT_NEW, "[]", dataType = DownType.PLAIN))
+        log.info(">> cmd=302 武将新卡标记清理已应答")
+    }
+
+    private fun sendHeroTeamLibrary(ctx: ChannelHandlerContext) {
+        val json = GameResponses.heroTeamLibrary(defaultHeroIds)
+        ctx.writeAndFlush(DownPacket.json(Cmd.HERO_TEAM_LIBRARY, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=9029 武将配队库已下发 (${json.length}B)")
+    }
+
+    private fun sendNormalTeamComposition(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val heroId = body?.get(0)?.asInt() ?: 0
+        val json = GameResponses.normalTeamComposition(heroId)
+        ctx.writeAndFlush(DownPacket.json(Cmd.NORMAL_TEAM_COMPOSITION, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=9026 普通配队推荐已应答 (heroId=$heroId)")
+    }
+
+    private fun sendBattleReportProfile(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val battleIds = body?.get(0)?.takeIf { it.isArray }?.mapNotNull { it.asInt().takeIf { id -> id > 0 } }.orEmpty()
+        val serverId = body?.get(2)?.asInt() ?: 0
+        val json = ClientBattleReportStore.global().profileResponse(battleIds, serverId)
+        ctx.writeAndFlush(DownPacket.json(Cmd.BATTLE_REPORT_PROFILE, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=10 战报摘要已下发 (battleIds=$battleIds, serverId=$serverId, ${json.length}B)")
+    }
+
+    private fun sendBattleReportDetail(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val battleId = body?.get(0)?.asInt()?.takeIf { it > 0 } ?: 0
+        val serverId = body?.get(2)?.asInt() ?: 0
+        val json = ClientBattleReportStore.global().detailResponse(battleId, serverId)
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=${msg.cmdId} 战报详情已下发 (battleId=$battleId, serverId=$serverId, ${json.length}B)")
+    }
+
+    private fun sendArmyBattle(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val request = ArmyBattleRequestParser.parse(msg.bodyText)
+        val targetWid = request?.targetWid ?: (GameServerConfig.CITY_WID + 1)
+        val state = PlayerStateRepository.getOrCreate(userId, GameServerConfig.CITY_WID, GameServerConfig.ROLE_NAME)
+        val battleService = PlayerBattleService(ClientBattleReportStore.global())
+        val result = battleService.launchPveBattle(
+            state = state,
+            targetWid = targetWid,
+        )
+        ctx.writeAndFlush(DownPacket.json(Cmd.ARMY_BATTLE, GameResponses.emptyArray(), dataType = DownType.PLAIN))
+        if (result != null) {
+            sendArmyStateNotify(ctx, userId, state)
+            sendWorldSceneFullInfo(ctx, session)
+            schedulePveBattleSettlement(ctx, session, userId, state, battleService)
+            log.info(">> cmd=6 出征已开始 (uid=$userId, targetWid=$targetWid, armyId=${state.primaryArmyId()})")
+        } else {
+            log.info(">> cmd=6 出征战斗未执行: 队伍无可战斗武将 (uid=$userId, targetWid=$targetWid)")
+        }
+    }
+
+    private fun schedulePveBattleSettlement(
+        ctx: ChannelHandlerContext,
+        session: Session?,
+        userId: Int,
+        state: com.stzb.server.game.PlayerState,
+        battleService: PlayerBattleService,
+    ) {
+        val march = state.activeMarch() ?: return
+        val delayMillis = (march.endSec * 1_000L - System.currentTimeMillis()).coerceAtLeast(0L)
+        ctx.channel().eventLoop().schedule({
+            if (!ctx.channel().isActive) return@schedule
+            val result = battleService.settlePveBattle(state) ?: return@schedule
+            ctx.writeAndFlush(
+                DownPacket.json(
+                    Cmd.SYS_NOTIFY_DB_UPDATE,
+                    GameResponses.battleReportAttackInsertNotify(
+                        userId = userId,
+                        battleId = result.battleId,
+                        armyId = state.primaryArmyId(),
+                        targetWid = result.targetWid,
+                        outcome = result.outcome ?: return@schedule,
+                        heroIds = state.teamHeroes()
+                            .mapNotNull { state.hero(it)?.heroId }
+                            .filter { it > 0 },
+                    ),
+                    dataType = DownType.PLAIN,
+                ),
+            )
+            sendArmyStateNotify(ctx, userId, state)
+            sendWorldSceneFullInfo(ctx, session, removedArmyId = state.primaryArmyId())
+            log.info(">> 出征抵达并结算 (uid=$userId, targetWid=${result.targetWid}, battleId=${result.battleId})")
+        }, delayMillis, TimeUnit.MILLISECONDS)
+    }
+
+    private fun sendArmyStateNotify(ctx: ChannelHandlerContext, userId: Int, state: com.stzb.server.game.PlayerState) {
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.SYS_NOTIFY_DB_UPDATE,
+                GameResponses.armyUpsertNotify(state),
+                dataType = DownType.PLAIN,
+            ),
+        )
+        val heroes = state.teamHeroes().mapNotNull { state.hero(it) }
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.SYS_NOTIFY_DB_UPDATE,
+                GameResponses.heroUpsertNotify(userId = userId, heroes = heroes),
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendConscript(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val state = PlayerStateRepository.getOrCreate(userId, GameServerConfig.CITY_WID, GameServerConfig.ROLE_NAME)
+        val request = ConscriptRequestParser.parse(msg.cmdId, msg.bodyText)
+        if (request == null) {
+            ctx.writeAndFlush(DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN))
+            log.info(">> cmd=${msg.cmdId} 征兵请求为空，已安全应答 (uid=$userId)")
+            return
+        }
+
+        val result = PlayerConscriptService().conscript(state, request)
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, result.armyId.toString(), dataType = DownType.PLAIN))
+        if (result.updatedHeroes.isNotEmpty()) {
+            ctx.writeAndFlush(
+                DownPacket.json(
+                    Cmd.SYS_NOTIFY_DB_UPDATE,
+                    GameResponses.heroUpsertNotify(userId = userId, heroes = result.updatedHeroes),
+                    dataType = DownType.PLAIN,
+                ),
+            )
+            ctx.writeAndFlush(
+                DownPacket.json(
+                    Cmd.SYS_NOTIFY_DB_UPDATE,
+                    GameResponses.userResourceUpsertNotify(userId = userId, resources = state.resources),
+                    dataType = DownType.PLAIN,
+                ),
+            )
+        }
+        log.info(">> cmd=${msg.cmdId} 征兵已处理 (uid=$userId, armyId=${result.armyId}, heroes=${result.updatedHeroes.map { it.heroUid }})")
+    }
+
+    private fun saveTeamConfig(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val state = PlayerStateRepository.getOrCreate(userId, GameServerConfig.CITY_WID, GameServerConfig.ROLE_NAME)
+        val heroes = TeamRequestParser.parseSavedTeam(msg.cmdId, msg.bodyText)
+        state.saveTeam(heroes)
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN))
+        log.info(">> cmd=${msg.cmdId} 队伍配置已保存 (uid=$userId, heroes=${state.teamHeroes()})")
+    }
+
+    private fun logUnhandledOrFallback(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val fallback = NetworkResponsePolicy.fallbackBody(msg.cmdId)
+        if (fallback == null) {
+            log.warn("⚠ 未处理系统 cmd=${msg.cmdId} idx=${msg.cmdIndex} uid=${msg.userId} flag=${msg.flag} checkOk=${msg.checkOk}")
+            if (msg.body.isNotEmpty()) log.warn("   body: ${msg.bodyText}")
+            return
+        }
+
+        log.warn("⚠ 未精确实现 cmd=${msg.cmdId}，已按业务兜底返回空数组 idx=${msg.cmdIndex} uid=${msg.userId}")
+        if (msg.body.isNotEmpty()) log.warn("   body: ${msg.bodyText}")
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, fallback, dataType = DownType.PLAIN))
+        log.info(">> cmd=${msg.cmdId} 业务兜底已应答")
+    }
+
+    private fun sendServerTime(ctx: ChannelHandlerContext) {
+        val json = GameResponses.serverTime(System.currentTimeMillis() / 1000)
+        ctx.writeAndFlush(DownPacket.json(Cmd.GET_SERVER_TIME, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=25 服务器时间已下发")
+    }
+
+    private fun sendServerTimeMillis(ctx: ChannelHandlerContext) {
+        val json = GameResponses.serverTimeMillis(System.currentTimeMillis())
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYNC_SERVER_TIME, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=694 服务器毫秒时间已下发")
+    }
+
+    private fun sendWorldSceneFullInfo(
+        ctx: ChannelHandlerContext,
+        session: Session?,
+        removedArmyId: Int? = null,
+    ) {
+        val userId = session?.userId ?: 10001
+        val state = PlayerStateRepository.getOrCreate(
+            userId,
+            GameServerConfig.CITY_WID,
+            GameServerConfig.ROLE_NAME,
+        )
+        val json = GameResponses.worldSceneFullInfo(
+            userId = userId,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = GameServerConfig.ROLE_NAME,
+            march = state.activeMarch(),
+            removedArmyId = removedArmyId,
+        )
+        ctx.writeAndFlush(DownPacket.json(Cmd.SEND_WORLD_SCENCE_FULL_INFO, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=5026 世界全量视野已下发 (uid=$userId, cityWid=${GameServerConfig.CITY_WID}, ${json.length}B)")
+    }
+
+    private fun sendDevicePing(ctx: ChannelHandlerContext) {
+        val json = GameResponses.devicePing(serverProcessingNanos = 0)
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYS_PING, json, dataType = DownType.PLAIN))
+        log.debug(">> cmd=90006 ping 响应已下发")
+    }
+
+    private fun sendArmyRelatedFort(ctx: ChannelHandlerContext) {
+        ctx.writeAndFlush(DownPacket.json(Cmd.QUERY_ARMY_RELATED_FORT, GameResponses.armyRelatedFort(), dataType = DownType.PLAIN))
+        log.info(">> cmd=4159 部队关联要塞已应答")
+    }
+
+    private fun sendNoOpSuccess(ctx: ChannelHandlerContext, msg: UpPacket) {
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN))
+        log.info(">> cmd=${msg.cmdId} 记录类请求已应答")
+    }
+
+    private fun requestedRoleName(msg: UpPacket): String? =
+        runCatching {
+            mapper.readTree(msg.body).takeIf { it.isArray && it.size() > 2 }
+                ?.get(2)
+                ?.asText()
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        }.getOrNull()
+
+    private fun sendChangeNameSuccess(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val name = requestedNameAt(msg, 0) ?: GameServerConfig.ROLE_NAME
+        ctx.writeAndFlush(DownPacket.json(Cmd.USER_CHANGE_NAME, "1", dataType = DownType.PLAIN))
+        log.info(">> cmd=507 势力改名成功已下发 (name=$name)")
+    }
+
+    private fun requestedNameAt(msg: UpPacket, index: Int): String? =
+        runCatching {
+            mapper.readTree(msg.body).takeIf { it.isArray && it.size() > index }
+                ?.get(index)
+                ?.asText()
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        }.getOrNull()
+
+    private fun logIn(msg: UpPacket) {
+        log.info("<< cmd=${msg.cmdId} idx=${msg.cmdIndex} uid=${msg.userId} flag=${msg.flag} checkOk=${msg.checkOk}")
+        if (msg.body.isNotEmpty()) log.info("   body: ${msg.bodyText}")
+    }
+
+    override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
+        log.warn("连接异常 ${ctx.channel().remoteAddress()}: ${cause.message}", cause)
+        ctx.close()
+    }
+
+    companion object {
+        private val log = LoggerFactory.getLogger(GameServerHandler::class.java)
+        private val mapper = jacksonObjectMapper()
+        private val defaultHeroIds = listOf(100003, 100004, 100005, 100011, 100013, 100015, 100016, 100017)
+        val SESSION: AttributeKey<Session> = AttributeKey.valueOf("stzb.session")
+        val KEEP_ALIVE: AttributeKey<ScheduledFuture<*>> = AttributeKey.valueOf("stzb.keepAlive")
+
+        /** 喂狗周期; 必须显著小于客户端 3s recv-timeout, 留足抖动余量。 */
+        private const val KEEP_ALIVE_MS = 1500L
+    }
+}

@@ -1,0 +1,192 @@
+package com.stzb.server.game.battle
+
+import com.fasterxml.jackson.databind.node.ArrayNode
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.stzb.server.protocol.GameServerConfig
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+
+data class ClientBattleReport(
+    val battleId: Int,
+    val wid: Int,
+    val timeSec: Int,
+    val result: BattleResult,
+)
+
+class ClientBattleReportStore private constructor(
+    private val nowSec: Int,
+    private val reports: ConcurrentHashMap<Int, ClientBattleReport>,
+) {
+    private val battleSeq = AtomicInteger(reports.keys.maxOrNull() ?: DEFAULT_BATTLE_ID)
+
+    fun getOrCreateDefault(): ClientBattleReport =
+        reports[DEFAULT_BATTLE_ID] ?: createDefaultReport(nowSec).also { reports[it.battleId] = it }
+
+    fun findOrDefault(battleId: Int): ClientBattleReport =
+        reports[battleId] ?: getOrCreateDefault()
+
+    fun record(wid: Int, timeSec: Int, result: BattleResult): ClientBattleReport {
+        val report = ClientBattleReport(
+            battleId = battleSeq.incrementAndGet(),
+            wid = wid,
+            timeSec = timeSec,
+            result = result,
+        )
+        reports[report.battleId] = report
+        return report
+    }
+
+    fun profileResponse(battleIds: List<Int>, serverId: Int): String {
+        val ids = battleIds.ifEmpty { listOf(getOrCreateDefault().battleId) }
+        val root = nf.arrayNode()
+        root.add(serverId)
+        root.add(nf.arrayNode().apply {
+            ids.map(::findOrDefault).distinctBy { it.battleId }.forEach { add(it.toProfileNode()) }
+        })
+        return mapper.writeValueAsString(root)
+    }
+
+    fun detailResponse(battleId: Int, serverId: Int): String {
+        val report = findOrDefault(battleId)
+        val root = nf.arrayNode()
+        root.add(serverId)
+        root.add(
+            nf.objectNode()
+                .put("battle_id", report.battleId)
+                .put("report", BattleReportCodec.toCompressedClientReport(report.result)),
+        )
+        root.add(1)
+        return mapper.writeValueAsString(root)
+    }
+
+    private fun ClientBattleReport.toProfileNode(): ObjectNode {
+        val attacker = result.attacker.heroes.sortedBy { it.position }
+        val defender = result.defender.heroes.sortedBy { it.position }
+        val attackerStart = attacker.sumOf { it.maxTroops }
+        val defenderStart = defender.sumOf { it.maxTroops }
+        val attackerEnd = attacker.sumOf { it.troops }
+        val defenderEnd = defender.sumOf { it.troops }
+        return nf.objectNode().apply {
+            put("battle_id", battleId)
+            put("wid", wid)
+            put("time", timeSec)
+            put("result", result.outcome.toClientResult())
+            put("fight_type", 3)
+            put("city_type", 0)
+            put("attack_name", GameServerConfig.ROLE_NAME)
+            put("defend_name", "守军")
+            put("attack_base_heroid", attacker.firstOrNull()?.id?.value ?: 0)
+            put("defend_base_heroid", defender.firstOrNull()?.id?.value ?: 0)
+            put("attack_base_level", attacker.firstOrNull()?.level ?: 1)
+            put("defend_base_level", defender.firstOrNull()?.level ?: 1)
+            put("attacker_base_hero_detail", "")
+            put("defender_base_hero_detail", "")
+            put("attack_hp", attackerEnd)
+            put("defend_hp", defenderEnd)
+            put("attacker_force", 0)
+            put("defender_force", 0)
+            put("attack_all_hero_info", attacker.toHeroInfoString())
+            put("defend_all_hero_info", defender.toHeroInfoString())
+            put("attack_all_sub_hero_info", emptyRows(rows = 3, width = 5))
+            put("defend_all_sub_hero_info", emptyRows(rows = 3, width = 5))
+            put("attack_all_surface", attacker.toHeroSurfaceInfo())
+            put("defend_all_surface", defender.toHeroSurfaceInfo())
+            put("attack_hero_type", "0,0,0,0,")
+            put("defend_hero_type", "0,0,0,0,")
+            put("attack_hero_type_advance", "0,0,0,0,")
+            put("defend_hero_type_advance", "0,0,0,0,")
+            put("attack_advance", emptyFourRows(6))
+            put("defend_advance", emptyFourRows(6))
+            put("attacker_life_end_time", "")
+            put("defender_life_end_time", "")
+            put("attacker_army_effect", "")
+            put("defender_army_effect", "")
+            put("attacker_gear_info", emptyFourRows(3))
+            put("defender_gear_info", emptyFourRows(3))
+            put("attacker_surface", emptyFourRows(3))
+            put("defender_surface", emptyFourRows(3))
+            put("attack_idu", "0,0,0,0,0")
+            put("defend_idu", "0,0,0,0,0")
+            put("lose_tips", "")
+            put("all_skill_info", "")
+            put("attack_union_name", "")
+            put("defend_union_name", "")
+            put("attacker_army_info", "0,$attackerStart,$attackerEnd")
+            put("defender_army_info", "0,$defenderStart,$defenderEnd")
+        }
+    }
+
+    private fun BattleOutcome.toClientResult(): Int =
+        when (this) {
+            BattleOutcome.ATTACKER_WIN -> 1
+            BattleOutcome.DEFENDER_WIN -> 0
+            BattleOutcome.DRAW -> 2
+        }
+
+    private fun List<BattleHero>.toHeroInfoString(): String =
+        (0..2).joinToString(";") { position ->
+            val hero = firstOrNull { it.position == position }
+            if (hero == null) {
+                "0,0,0,0,0"
+            } else {
+                "${hero.id.value},${hero.level},${hero.maxTroops},${hero.troops},${(hero.maxTroops - hero.troops).coerceAtLeast(0)}"
+            }
+        }
+
+    private fun List<BattleHero>.toHeroSurfaceInfo(): String =
+        (0..2).joinToString(";") { position ->
+            "${firstOrNull { it.position == position }?.id?.value ?: 0},0"
+        }
+
+    private fun emptyFourRows(width: Int): String =
+        emptyRows(rows = 4, width = width)
+
+    private fun emptyRows(rows: Int, width: Int): String =
+        List(rows) { List(width) { 0 }.joinToString(",") }.joinToString(";")
+
+    companion object {
+        private val nf: JsonNodeFactory = JsonNodeFactory.instance
+        private val mapper = jacksonObjectMapper()
+        private const val DEFAULT_BATTLE_ID = 100001
+
+        fun global(): ClientBattleReportStore = Holder.INSTANCE
+
+        fun createDefault(nowSec: Int = (System.currentTimeMillis() / 1000).toInt()): ClientBattleReportStore =
+            ClientBattleReportStore(nowSec, ConcurrentHashMap()).also { it.getOrCreateDefault() }
+
+        fun createEmpty(nowSec: Int = (System.currentTimeMillis() / 1000).toInt()): ClientBattleReportStore =
+            ClientBattleReportStore(nowSec, ConcurrentHashMap())
+
+        private fun createDefaultReport(nowSec: Int): ClientBattleReport {
+            val config = BattleConfigRepository.loadDefault()
+            val equipment = BattleEquipmentRepository.loadDefault()
+            val builder = BattleTeamBuilder(config, equipment)
+            val attacker = builder.build(
+                listOf(
+                    BattleHeroSpec(heroId = 100017, position = 0, troops = 1200, extraSkillIds = listOf(200031), level = 20, equipmentIds = listOf(1024)),
+                    BattleHeroSpec(heroId = 100023, position = 1, troops = 1100, level = 18),
+                    BattleHeroSpec(heroId = 100021, position = 2, troops = 1000, level = 18),
+                ),
+            )
+            val defender = builder.build(
+                listOf(
+                    BattleHeroSpec(heroId = 100352, position = 0, troops = 1000, extraSkillIds = listOf(200002), level = 18, equipmentIds = listOf(1025)),
+                    BattleHeroSpec(heroId = 100345, position = 1, troops = 1000, level = 16),
+                    BattleHeroSpec(heroId = 100344, position = 2, troops = 1000, level = 16),
+                ),
+            )
+            return ClientBattleReport(
+                battleId = DEFAULT_BATTLE_ID,
+                wid = GameServerConfig.CITY_WID + 1,
+                timeSec = nowSec,
+                result = BattleEngine.resolve(BattleRequest(attacker, defender, maxRounds = 8), config, FixedBattleRandom(0)),
+            )
+        }
+
+        private object Holder {
+            val INSTANCE: ClientBattleReportStore = createDefault()
+        }
+    }
+}
