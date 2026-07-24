@@ -1,0 +1,27 @@
+src/test/kotlin/com/stzb/server/game/battle/ClientBattleReportStoreTest.kt
+  s_5fac4ed5c07518::t_faa0043ce848af 12,32-39,51,53,61
+  s_5fac4ed5c07518::t_d45a7504dcd440 9-11
+  s_5fac4ed5c07518::t_7de1d65e9bce86 13-15,29-31
+  s_5fac4ed5c07518::t_dfcf7e206bd22f 40-42,48-50
+  s_5fac4ed5c07518::t_d21df0d4fa1a6c 52
+  s_5fac4ed5c07518::t_217f7cfbbb2169 54-56,58-60
+  s_5fac4ed5c07518::t_ce8de444465198 62-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9a31ed6213bd0cea168f37c2623b3154d003c3ff",
+  "prompts": {},
+  "sessions": {
+    "s_5fac4ed5c07518": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a62f05ef6e34bbeed7614b6",
+        "model": "gpt-5.6-terra__max"
+      },
+      "human_author": "guoruiqiang <guoruiqiang@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
