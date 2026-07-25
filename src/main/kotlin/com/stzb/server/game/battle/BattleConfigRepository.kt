@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Collections
 import kotlin.io.path.exists
 
 enum class SkillKind {
@@ -69,6 +70,7 @@ data class SkillDetailConfig(
     val inherent: Int = 0,
     val moraleAffected: Boolean = false,
     val calculationType: Int = 0,
+    val calculationTypes: List<Int> = emptyList(),
     val effectName: String,
 )
 
@@ -196,6 +198,7 @@ class BattleConfigRepository private constructor(
                         inherent = row.int("inherent"),
                         moraleAffected = row.int("shi_qi_affect") != 0,
                         calculationType = row.int("calc_type"),
+                        calculationTypes = row.intList("calc_type"),
                         effectName = row["effect_name"].orEmpty(),
                     )
                     detail.detailId to detail
@@ -340,6 +343,15 @@ class BattleConfigRepository private constructor(
 
         private fun Map<String, String>.intOrNull(name: String): Int? =
             this[name]?.takeIf { it.isNotBlank() && it != "--" }?.toDoubleOrNull()?.toInt()
+
+        private fun Map<String, String>.intList(name: String): List<Int> =
+            Collections.unmodifiableList(
+                this[name]
+                    .orEmpty()
+                    .split(',')
+                    .mapNotNull { it.trim().toIntOrNull() }
+                    .toList(),
+            )
 
         private fun Map<String, String>.scaledStat(name: String): Int =
             (int(name) / 100.0).toInt()

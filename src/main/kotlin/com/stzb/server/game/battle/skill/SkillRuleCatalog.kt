@@ -39,20 +39,20 @@ object SkillRuleCatalog {
                 }
             }
             .toSet()
-        return SkillRuleGraph(rules, effectIds)
+        return SkillRuleGraph(rules, effectIds, scope.mainSkillIds)
     }
 
     private fun childSkillIds(
         detail: SkillDetailConfig,
         config: BattleConfigRepository,
-    ): Set<Int> =
-        setOf(detail.constantParam, detail.effectParam, detail.selectSkillParam)
-            .filterNot {
-                it == detail.detailId / 100 &&
-                    detail.effectId in SELF_TARGETING_META_EFFECT_IDS
-            }
+    ): Set<Int> {
+        val candidates = when (detail.effectId) {
+            122, 123 -> listOf(detail.constantParam)
+            210 -> listOf(detail.effectParam)
+            else -> emptyList()
+        }
+        return candidates
             .filter { config.skill(it) != null }
             .toSet()
-
-    private val SELF_TARGETING_META_EFFECT_IDS = setOf(131, 132, 231)
+    }
 }

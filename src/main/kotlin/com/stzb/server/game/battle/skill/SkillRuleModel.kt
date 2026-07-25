@@ -2,6 +2,7 @@ package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.SkillDetailConfig
 import com.stzb.server.game.battle.SkillKind
+import java.util.Collections
 
 data class SkillRule(
     val skillId: Int,
@@ -30,23 +31,66 @@ data class SkillDiagnostic(
 class SkillRuleGraph(
     rules: Map<Int, SkillRule>,
     effectIds: Set<Int>,
+    rootSkillIds: Set<Int> = rules.keys,
 ) {
-    private val rules: Map<Int, SkillRule> = rules.mapValues { (_, rule) ->
-        rule.copy(
-            details = rule.details.map { detail ->
-                detail.copy(childSkillIds = detail.childSkillIds.toSet())
-            },
-        )
-    }
+    private val rules: Map<Int, SkillRule> = immutableMap(
+        rules.mapValues { (_, rule) ->
+            rule.copy(
+                details = immutableList(
+                    rule.details.map { detail ->
+                        detail.copy(
+                            childSkillIds = immutableSet(detail.childSkillIds),
+                            raw = detail.raw.copy(
+                                calculationTypes = immutableList(detail.raw.calculationTypes),
+                            ),
+                        )
+                    },
+                ),
+            )
+        },
+    )
+    private val rootSkillIds: Set<Int> = immutableSet(rootSkillIds)
 
-    val executionNodeIds: Set<Int> = this.rules.keys.toSet()
-    val effectIds: Set<Int> = effectIds.toSet()
-    val details: List<SkillEffectRule> = this.rules.values.flatMap { it.details }.toList()
+    val executionNodeIds: Set<Int> = immutableSet(this.rules.keys)
+    val effectIds: Set<Int> = immutableSet(effectIds)
+    val details: List<SkillEffectRule> = immutableList(this.rules.values.flatMap { it.details })
 
     fun rule(skillId: Int): SkillRule? = rules[skillId]
 
     fun validate(): List<SkillDiagnostic> =
-        missingDependencyDiagnostics() + missingEffectDiagnostics() + cycleDiagnostics()
+        immutableList(
+            missingRootDiagnostics() +
+                missingDetailsDiagnostics() +
+                missingDependencyDiagnostics() +
+                missingEffectDiagnostics() +
+                cycleDiagnostics(),
+        )
+
+    private fun missingRootDiagnostics(): List<SkillDiagnostic> =
+        rootSkillIds
+            .filterNot(rules::containsKey)
+            .map { skillId ->
+                SkillDiagnostic(
+                    skillId = skillId,
+                    detailId = null,
+                    effectId = null,
+                    code = "MISSING_SKILL",
+                    dependencyPath = skillId.toString(),
+                )
+            }
+
+    private fun missingDetailsDiagnostics(): List<SkillDiagnostic> =
+        rules.values
+            .filter { it.details.isEmpty() }
+            .map { rule ->
+                SkillDiagnostic(
+                    skillId = rule.skillId,
+                    detailId = null,
+                    effectId = null,
+                    code = "MISSING_DETAILS",
+                    dependencyPath = dependencyPathTo(rule.skillId),
+                )
+            }
 
     private fun missingDependencyDiagnostics(): List<SkillDiagnostic> =
         rules.values.flatMap { rule ->
@@ -59,7 +103,7 @@ class SkillRuleGraph(
                             detailId = detail.detailId,
                             effectId = detail.effectId,
                             code = "MISSING_SKILL",
-                            dependencyPath = "${rule.skillId} -> $childSkillId",
+                            dependencyPath = "${dependencyPathTo(rule.skillId)} -> $childSkillId",
                         )
                     }
             }
@@ -75,10 +119,27 @@ class SkillRuleGraph(
                         detailId = detail.detailId,
                         effectId = detail.effectId,
                         code = "MISSING_EFFECT",
-                        dependencyPath = rule.skillId.toString(),
+                        dependencyPath = dependencyPathTo(rule.skillId),
                     )
                 }
         }
+
+    private fun dependencyPathTo(targetSkillId: Int): String {
+        val queuedPaths = ArrayDeque<List<Int>>()
+        val visited = mutableSetOf<Int>()
+        rootSkillIds.filter(rules::containsKey).forEach { queuedPaths += listOf(it) }
+        while (queuedPaths.isNotEmpty()) {
+            val path = queuedPaths.removeFirst()
+            val skillId = path.last()
+            if (skillId == targetSkillId) return path.joinToString(" -> ")
+            if (!visited.add(skillId)) continue
+            rules.getValue(skillId).details
+                .flatMap { it.childSkillIds }
+                .filter(rules::containsKey)
+                .forEach { childSkillId -> queuedPaths += path + childSkillId }
+        }
+        return targetSkillId.toString()
+    }
 
     private fun cycleDiagnostics(): List<SkillDiagnostic> {
         val visited = mutableSetOf<Int>()
@@ -121,5 +182,16 @@ class SkillRuleGraph(
             if (skillId !in visited) visit(skillId)
         }
         return diagnostics
+    }
+
+    private companion object {
+        fun <K, V> immutableMap(values: Map<K, V>): Map<K, V> =
+            Collections.unmodifiableMap(LinkedHashMap(values))
+
+        fun <T> immutableList(values: Collection<T>): List<T> =
+            Collections.unmodifiableList(ArrayList(values))
+
+        fun <T> immutableSet(values: Collection<T>): Set<T> =
+            Collections.unmodifiableSet(LinkedHashSet(values))
     }
 }
