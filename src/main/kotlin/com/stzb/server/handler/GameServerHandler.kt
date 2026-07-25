@@ -281,14 +281,19 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     /** 下发 99991 登录成功 + 最小存档, 让客户端进主城。 */
     private fun sendLoginSuccess(ctx: ChannelHandlerContext, session: Session?) {
         val userId = session?.userId ?: 10001
+        val accountKey = session?.accountKey
+        val state = accountKey?.let {
+            PlayerStateRepository.getOrCreate(it, GameServerConfig.CITY_WID, GameServerConfig.ROLE_NAME)
+        }
         val nowSec = System.currentTimeMillis() / 1000
         val json = GameResponses.loginSuccess(
             userId = userId,
             cityWid = GameServerConfig.CITY_WID,
-            roleName = GameServerConfig.ROLE_NAME,
+            roleName = state?.roleName ?: GameServerConfig.ROLE_NAME,
             serverTimeSec = nowSec,
             serverOpenTime = GameServerConfig.OPEN_TIME_SEC,
             cfgDataIndex = GameServerConfig.CFG_DB_ID,
+            accountKey = accountKey,
         )
         ctx.writeAndFlush(DownPacket.json(Cmd.SYS_LOGIN, json, dataType = DownType.PLAIN))
         log.info(">> cmd=99991 登录成功已下发 (uid=$userId, cityWid=${GameServerConfig.CITY_WID}, ${json.length}B)")
@@ -311,6 +316,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             cityWid = GameServerConfig.CITY_WID,
             roleName = roleName,
             serverOpenTime = GameServerConfig.OPEN_TIME_SEC,
+            accountKey = session?.accountKey,
         )
         ctx.writeAndFlush(DownPacket.json(Cmd.CREATE_ROLE, json, dataType = DownType.PLAIN))
         log.info(">> cmd=2 创角成功已下发 (uid=$userId, roleName=$roleName, ${json.length}B)")

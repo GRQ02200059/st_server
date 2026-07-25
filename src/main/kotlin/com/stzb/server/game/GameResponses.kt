@@ -126,6 +126,7 @@ object GameResponses {
         serverTimeSec: Long,
         serverOpenTime: Long,
         cfgDataIndex: Int,
+        accountKey: String? = null,
     ): String {
         val json = nf.arrayNode()
         json.add(1)                                             // [0] LoginState = SUCCESS
@@ -140,7 +141,7 @@ object GameResponses {
         json.add(1)                                             // [2] LoginUserType = 老用户
         json.add(cfgDataIndex)                                  // [3] cfgDataIndex
 
-        json.add(enterGame(userId, cityWid, roleName, serverOpenTime)) // [4] EnterGameResult
+        json.add(enterGame(userId, cityWid, roleName, serverOpenTime, accountKey)) // [4] EnterGameResult
 
         return mapper.writeValueAsString(json)
     }
@@ -652,10 +653,11 @@ object GameResponses {
         cityWid: Int,
         roleName: String,
         serverOpenTime: Long,
+        accountKey: String? = null,
     ): String {
         val json = nf.arrayNode()
         json.add(1) // [0] success; CreateRolePacket 用 [1] 解析 EnterGameResult
-        json.add(enterGame(userId, cityWid, roleName, serverOpenTime))
+        json.add(enterGame(userId, cityWid, roleName, serverOpenTime, accountKey))
         return mapper.writeValueAsString(json)
     }
 
@@ -664,9 +666,10 @@ object GameResponses {
         cityWid: Int,
         roleName: String,
         serverOpenTime: Long,
+        accountKey: String? = null,
     ): ArrayNode {
         val enterGame: ArrayNode = nf.arrayNode()
-        enterGame.add(UserInitTableBuilder.build(userId, cityWid, roleName, serverOpenTime)) // [0] UserInitTable
+        enterGame.add(UserInitTableBuilder.build(userId, cityWid, roleName, serverOpenTime, accountKey)) // [0] UserInitTable
         enterGame.add(nf.arrayNode())                           // [1] login_notice
         enterGame.add(nf.arrayNode())                           // [2] union_marks
         enterGame.add(nf.arrayNode())                           // [3] union_relations

@@ -73,8 +73,11 @@ object UserInitTableBuilder {
         cityWid: Int,
         roleName: String,
         serverOpenTime: Long,
+        accountKey: String? = null,
     ): ArrayNode {
-        val state = PlayerStateRepository.getOrCreate(userId, cityWid, roleName)
+        val state = accountKey?.let {
+            PlayerStateRepository.getOrCreate(it, cityWid, roleName)
+        } ?: PlayerStateRepository.getOrCreate(userId, cityWid, roleName)
         val root = nf.arrayNode()
         root.add(schema)                                   // [0] schema
         root.add(table("Tb_user", tbUser(state)))
