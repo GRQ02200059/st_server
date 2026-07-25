@@ -219,7 +219,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
             Cmd.USER_CHANGE_NAME -> {
                 logIn(msg)
-                sendChangeNameSuccess(ctx, msg)
+                sendChangeNameSuccess(ctx, session, msg)
             }
 
             Cmd.HERO_TEAM_LIBRARY -> {
@@ -303,6 +303,9 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     private fun sendCreateRoleSuccess(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
         val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
         val roleName = requestedRoleName(msg) ?: GameServerConfig.ROLE_NAME
+        val state = PlayerStateRepository.getOrCreate(userId, GameServerConfig.CITY_WID, roleName)
+        state.roleName = roleName
+        PlayerStateRepository.save(state)
         val json = GameResponses.createRoleSuccess(
             userId = userId,
             cityWid = GameServerConfig.CITY_WID,
@@ -340,6 +343,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val targetLevel = body?.get(3)?.asInt() ?: 0
         val state = PlayerStateRepository.getOrCreate(userId, cityWid, GameServerConfig.ROLE_NAME)
         val level = state.upgradeBuild(buildId, targetLevel)
+        PlayerStateRepository.save(state)
         ctx.writeAndFlush(DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN))
         val json = GameResponses.userBuildUpsertNotify(
             userId = userId,
@@ -372,6 +376,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val armyId = requestedArmyId ?: state.primaryArmyId()
 
         state.assignTeamHero(heroUid = heroUid, pos = pos)
+        PlayerStateRepository.save(state)
         ctx.writeAndFlush(DownPacket.json(Cmd.ADD_HERO_TO_ARMY, mapper.writeValueAsString(listOf(armyId)), dataType = DownType.PLAIN))
         ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, GameResponses.armyUpsertNotify(state), dataType = DownType.PLAIN))
         state.hero(heroUid)?.let { hero ->
@@ -388,6 +393,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val pos = body?.get(2)?.asInt() ?: 1
         val state = PlayerStateRepository.getOrCreate(userId, cityWid, GameServerConfig.ROLE_NAME)
         val removedHero = state.removeTeamHero(pos).takeIf { it > 0 }?.let(state::hero)
+        PlayerStateRepository.save(state)
 
         ctx.writeAndFlush(DownPacket.json(Cmd.REMOVE_HERO_FROM_ARMY, mapper.writeValueAsString(listOf(armyId)), dataType = DownType.PLAIN))
         ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, GameResponses.armyUpsertNotify(state), dataType = DownType.PLAIN))
@@ -408,6 +414,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val state = PlayerStateRepository.getOrCreate(userId, cityWid, GameServerConfig.ROLE_NAME)
         val affectedHeroes = state.switchTeamHeroes(pos1, pos2).mapNotNull { state.hero(it) }
         val responseArmyIds = listOf(armyId1, armyId2).distinct()
+        PlayerStateRepository.save(state)
 
         ctx.writeAndFlush(DownPacket.json(Cmd.SWITCH_HERO_IN_ARMY, mapper.writeValueAsString(responseArmyIds), dataType = DownType.PLAIN))
         ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, GameResponses.armyUpsertNotify(state), dataType = DownType.PLAIN))
@@ -456,6 +463,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             val hero = state.addHero(heroId)
             hero.heroUid to hero.heroId
         }
+        PlayerStateRepository.save(state)
         val nowSec = (System.currentTimeMillis() / 1000).toInt()
         val json = GameResponses.heroInsertNotify(userId = userId, heroes = cards, nowSec = nowSec)
         ctx.writeAndFlush(DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, json, dataType = DownType.PLAIN))
@@ -511,6 +519,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         )
         ctx.writeAndFlush(DownPacket.json(Cmd.ARMY_BATTLE, GameResponses.emptyArray(), dataType = DownType.PLAIN))
         if (result != null) {
+            PlayerStateRepository.save(state)
             sendArmyStateNotify(ctx, userId, state)
             sendWorldSceneFullInfo(ctx, session)
             schedulePveBattleSettlement(ctx, session, userId, state, battleService)
@@ -532,6 +541,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         ctx.channel().eventLoop().schedule({
             if (!ctx.channel().isActive) return@schedule
             val result = battleService.settlePveBattle(state) ?: return@schedule
+            PlayerStateRepository.save(state)
             ctx.writeAndFlush(
                 DownPacket.json(
                     Cmd.SYS_NOTIFY_DB_UPDATE,
@@ -583,6 +593,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         }
 
         val result = PlayerConscriptService().conscript(state, request)
+        PlayerStateRepository.save(state)
         ctx.writeAndFlush(DownPacket.json(msg.cmdId, result.armyId.toString(), dataType = DownType.PLAIN))
         if (result.updatedHeroes.isNotEmpty()) {
             ctx.writeAndFlush(
@@ -608,6 +619,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val state = PlayerStateRepository.getOrCreate(userId, GameServerConfig.CITY_WID, GameServerConfig.ROLE_NAME)
         val heroes = TeamRequestParser.parseSavedTeam(msg.cmdId, msg.bodyText)
         state.saveTeam(heroes)
+        PlayerStateRepository.save(state)
         ctx.writeAndFlush(DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN))
         log.info(">> cmd=${msg.cmdId} 队伍配置已保存 (uid=$userId, heroes=${state.teamHeroes()})")
     }
@@ -685,8 +697,12 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ?.takeIf { it.isNotEmpty() }
         }.getOrNull()
 
-    private fun sendChangeNameSuccess(ctx: ChannelHandlerContext, msg: UpPacket) {
+    private fun sendChangeNameSuccess(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
         val name = requestedNameAt(msg, 0) ?: GameServerConfig.ROLE_NAME
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val state = PlayerStateRepository.getOrCreate(userId, GameServerConfig.CITY_WID, name)
+        state.roleName = name
+        PlayerStateRepository.save(state)
         ctx.writeAndFlush(DownPacket.json(Cmd.USER_CHANGE_NAME, "1", dataType = DownType.PLAIN))
         log.info(">> cmd=507 势力改名成功已下发 (name=$name)")
     }
