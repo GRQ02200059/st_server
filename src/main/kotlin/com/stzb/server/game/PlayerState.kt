@@ -42,6 +42,37 @@ data class PlayerMarch(
     val endSec: Int,
 )
 
+data class PlayerHeroSnapshot(
+    val heroUid: Int,
+    val heroId: Int,
+    val createdAtSec: Int,
+    val armyId: Int = 0,
+    val troops: Int = 1_000,
+    val stamina: Int = PlayerHero.MAX_STAMINA,
+    val level: Int = 1,
+    val heroType: Int = PlayerHeroTypes.forHero(heroId),
+)
+
+data class PlayerMarchSnapshot(
+    val armyId: Int,
+    val fromWid: Int,
+    val targetWid: Int,
+    val beginSec: Int,
+    val endSec: Int,
+)
+
+data class PlayerStateSnapshot(
+    val accountKey: String,
+    val userId: Int,
+    val cityWid: Int,
+    val roleName: String,
+    val resources: PlayerResources = PlayerResources(),
+    val buildLevels: Map<Int, Int> = emptyMap(),
+    val heroes: List<PlayerHeroSnapshot> = emptyList(),
+    val team: List<Int> = List(3) { 0 },
+    val march: PlayerMarchSnapshot? = null,
+)
+
 /**
  * Tb_hero.hero_type is consumed directly by the client when calculating army
  * bonuses. Its low digit must be one of infantry (1), cavalry (2), or archer
@@ -55,6 +86,7 @@ class PlayerState(
     val userId: Int,
     val cityWid: Int,
     var roleName: String,
+    val accountKey: String = "legacy-user-$userId",
 ) {
     val resources = PlayerResources()
     private val buildLevels = ConcurrentHashMap<Int, Int>().apply { this[10] = 1 }
@@ -144,6 +176,38 @@ class PlayerState(
     fun completeMarchIfDue(nowSec: Int): PlayerMarch? =
         march?.takeIf { nowSec >= it.endSec }?.also { march = null }
 
+    fun toSnapshot(): PlayerStateSnapshot =
+        PlayerStateSnapshot(
+            accountKey = accountKey,
+            userId = userId,
+            cityWid = cityWid,
+            roleName = roleName,
+            resources = resources.copy(),
+            buildLevels = buildLevels.toMap(),
+            heroes = heroes.values.map { hero ->
+                PlayerHeroSnapshot(
+                    heroUid = hero.heroUid,
+                    heroId = hero.heroId,
+                    createdAtSec = hero.createdAtSec,
+                    armyId = hero.armyId,
+                    troops = hero.troops,
+                    stamina = hero.stamina,
+                    level = hero.level,
+                    heroType = hero.heroType,
+                )
+            },
+            team = team.toList(),
+            march = march?.let {
+                PlayerMarchSnapshot(
+                    armyId = it.armyId,
+                    fromWid = it.fromWid,
+                    targetWid = it.targetWid,
+                    beginSec = it.beginSec,
+                    endSec = it.endSec,
+                )
+            },
+        )
+
     private fun refreshHeroArmyIds() {
         val armyId = primaryArmyId()
         heroes.values.forEach { hero ->
@@ -151,8 +215,56 @@ class PlayerState(
         }
     }
 
-    private companion object {
-        const val MARCH_DURATION_SECONDS = 3
+    companion object {
+        private const val MARCH_DURATION_SECONDS = 3
+
+        fun fromSnapshot(snapshot: PlayerStateSnapshot): PlayerState =
+            PlayerState(
+                userId = snapshot.userId,
+                cityWid = snapshot.cityWid,
+                roleName = snapshot.roleName,
+                accountKey = snapshot.accountKey,
+            ).also { state ->
+                state.resources.money = snapshot.resources.money
+                state.resources.wood = snapshot.resources.wood
+                state.resources.stone = snapshot.resources.stone
+                state.resources.iron = snapshot.resources.iron
+                state.resources.food = snapshot.resources.food
+                state.resources.yuanBao = snapshot.resources.yuanBao
+                state.resources.hufu = snapshot.resources.hufu
+                state.resources.freeYuanBao = snapshot.resources.freeYuanBao
+                state.buildLevels.clear()
+                state.buildLevels.putAll(snapshot.buildLevels)
+                if (state.buildLevels.isEmpty()) state.buildLevels[10] = 1
+                state.heroes.clear()
+                snapshot.heroes.forEach { saved ->
+                    state.heroes[saved.heroUid] = PlayerHero(
+                        heroUid = saved.heroUid,
+                        heroId = saved.heroId,
+                        createdAtSec = saved.createdAtSec,
+                        armyId = saved.armyId,
+                        troops = saved.troops,
+                        stamina = saved.stamina,
+                        level = saved.level,
+                        heroType = saved.heroType.takeIf { it in 1..3 }
+                            ?: PlayerHeroTypes.forHero(saved.heroId),
+                    )
+                }
+                state.heroSeq.set(
+                    snapshot.heroes.maxOfOrNull { it.heroUid % 100_000 } ?: 0,
+                )
+                state.team.clear()
+                state.team.addAll(snapshot.team.take(3).let { it + List(3 - it.size) { 0 } })
+                state.march = snapshot.march?.let {
+                    PlayerMarch(
+                        armyId = it.armyId,
+                        fromWid = it.fromWid,
+                        targetWid = it.targetWid,
+                        beginSec = it.beginSec,
+                        endSec = it.endSec,
+                    )
+                }
+            }
     }
 }
 
