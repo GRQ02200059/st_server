@@ -289,7 +289,7 @@ object PlayerStateRepository {
         require(accountKey.isNotBlank()) { "accountKey 不能为空" }
         return players.computeIfAbsent(accountKey) {
             repository.getOrCreate(accountKey, cityWid, roleName)
-        }.also { it.roleName = roleName }
+        }
     }
 
     fun getOrCreate(userId: Int, cityWid: Int, roleName: String): PlayerState {
@@ -302,7 +302,7 @@ object PlayerStateRepository {
                     roleName = roleName,
                     accountKey = accountKey,
                 ).also(repository::save)
-        }.also { it.roleName = roleName }
+        }
     }
 
     fun save(state: PlayerState) {
