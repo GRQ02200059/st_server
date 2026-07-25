@@ -88,7 +88,7 @@ class BattleEngineSkillTest {
     }
 
     @Test
-    fun `command skills execute during the preparation stage`() {
+    fun `command skills apply real effects during the preparation stage`() {
         val attacker = BattleTeam(
             listOf(hero(100023, 0, 100, 100, 100, 100, skillIds = listOf(200023))),
         )
@@ -103,7 +103,9 @@ class BattleEngineSkillTest {
         )
 
         val commandIndex = result.events.indexOfFirst {
-            it is BattleEvent.UnsupportedSkillEffect && it.skillId == 200023
+            it is BattleEvent.StatusApplied &&
+                it.skillId == 200023 &&
+                it.status == BattleStatus.ATTACK_DEBUFF
         }
         val roundIndex = result.events.indexOfFirst { it is BattleEvent.RoundStart }
         assertTrue(commandIndex >= 0)

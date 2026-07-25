@@ -19,12 +19,13 @@ class BattleSkillRuntime(
         random: BattleRandom,
         state: SkillRuntimeState,
         allowedKinds: Set<SkillKind> = setOf(SkillKind.ACTIVE, SkillKind.PURSUIT),
+        allowRepeatedAttempt: Boolean = false,
     ): SkillCastResult? {
         for (skillId in source.skillIds) {
             val skill = config.skill(skillId) ?: continue
             if (skill.kind !in allowedKinds) continue
             val key = source.id.value to skillId
-            if (state.attemptedRound[key] == round) continue
+            if (!allowRepeatedAttempt && state.attemptedRound[key] == round) continue
             val readyRound = state.preparingUntilRound[key]
             if (readyRound != null) {
                 if (round < readyRound) continue
@@ -37,7 +38,7 @@ class BattleSkillRuntime(
                 state.cooldownUntilRound[key] = round + state.defaultCooldownRounds
                 return result
             }
-            if ((state.cooldownUntilRound[key] ?: -1) >= round) continue
+            if (!allowRepeatedAttempt && (state.cooldownUntilRound[key] ?: -1) >= round) continue
             state.attemptedRound[key] = round
             if (random.nextInt(100) >= skill.probabilityMax) continue
 
@@ -80,6 +81,19 @@ class BattleSkillRuntime(
         random: BattleRandom,
         state: SkillRuntimeState,
     ): SkillCastResult {
+        LegacySkillCatalog.findClient(skillId)?.let { definition ->
+            return definition.execute(
+                LegacySkillContext(
+                    round = round,
+                    skillId = skillId,
+                    sourceRef = sourceRef,
+                    source = source,
+                    enemies = enemies,
+                    allies = allies,
+                    random = random,
+                ),
+            )
+        }
         val updatedEnemies = enemies.heroes.associateBy { it.position }.toMutableMap()
         val updatedAllies = allies.heroes.associateBy { it.position }.toMutableMap()
         val events = mutableListOf<BattleEvent>()
@@ -301,7 +315,13 @@ class BattleSkillRuntime(
             .filterIsInstance<BattleModifier.DamageDealtPercent>()
             .filter { it.kind == null || it.kind == kind || it.kind == DamageKind.ACTIVE_SKILL }
             .sumOf { it.percent }
-        return (base * (100 + bonusPercent) / 100).coerceAtLeast(1).coerceAtMost(target.troops)
+        val takenPercent = target.modifiers
+            .filterIsInstance<BattleModifier.DamageTakenPercent>()
+            .filter { it.kind == null || it.kind == kind || it.kind == DamageKind.ACTIVE_SKILL }
+            .sumOf { it.percent }
+        return (base * (100 + bonusPercent) / 100 * (100 + takenPercent) / 100)
+            .coerceAtLeast(1)
+            .coerceAtMost(target.troops)
     }
 
     private fun BattleTeam.insideRange(sourcePosition: Int, hitRange: Int?): BattleTeam =

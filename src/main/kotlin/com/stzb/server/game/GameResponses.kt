@@ -619,6 +619,13 @@ object GameResponses {
             add("")          // 22 skill
             repeat(9) { add(0) } // 23..31 gear/state fields
             add(hero.heroType) // 32 hero_type
+            add("") // 33 hero_type_ext
+            add("") // 34 hero_type_availible
+            add("") // 35 hero_type_feature
+            add(0) // 36 hero_type_advance
+            add("") // 37 hero_features
+            repeat(5) { add(0) } // 38..42 feature/card-border fields
+            add(hero.dynamicIcon) // 43 dynamic_icon
         }
 
     private fun tbArmy(state: PlayerState): ArrayNode {

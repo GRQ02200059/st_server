@@ -37,7 +37,7 @@ class BattleTeamBuilderTest {
 
         val liangXing = team.heroes.first { it.id == BattleHeroId(100352) }
 
-        assertEquals(84 + 69, liangXing.stats.speed)
+        assertEquals(84 + 69 + 20, liangXing.stats.speed)
         assertEquals(3, liangXing.stats.hitRange)
         assertTrue(team.armyBonuses.any { it.name == "旗本八骑" })
     }

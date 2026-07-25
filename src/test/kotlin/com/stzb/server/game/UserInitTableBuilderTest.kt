@@ -95,4 +95,27 @@ class UserInitTableBuilderTest {
         assertEquals(10043 * 10 + 1, heroes[0][3].asInt())
         assertEquals(10043 * 10 + 1, heroes[1][3].asInt())
     }
+
+    @Test
+    fun `snapshot owns every facade without fabricating hero achievements`() {
+        val snapshot = UserInitTableBuilder.build(
+            userId = 44,
+            cityWid = 10044,
+            roleName = "主公",
+            serverOpenTime = 1_700_000_000L,
+        )
+
+        val tables = snapshot.drop(1).associateBy { it[0].asText() }
+        val facades = tables.getValue("Tb_user_facade_card")[1]
+        val normal = facades.first { it[3].asInt() == 100534 }
+        val achievement = facades.first { it[3].asInt() == 101300 }
+
+        assertEquals(HeroFacadeCatalog.all().size, facades.size())
+        assertEquals(100067, normal[2].asInt())
+        assertEquals(0, normal[6].asInt())
+        assertEquals(0, normal[7].asInt())
+        assertEquals(1, normal[13].asInt())
+        assertEquals(0, achievement[6].asInt())
+        assertTrue("Tb_hero_achieve" !in tables)
+    }
 }

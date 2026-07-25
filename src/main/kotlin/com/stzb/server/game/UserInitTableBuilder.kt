@@ -100,6 +100,14 @@ object UserInitTableBuilder {
             ),
         )
         root.add(table("Tb_hero", *state.allHeroes().map { tbHero(it, userId) }.toTypedArray()))
+        root.add(
+            table(
+                "Tb_user_facade_card",
+                *HeroFacadeCatalog.all().mapIndexed { index, facade ->
+                    tbUserFacadeCard(userId, index, facade)
+                }.toTypedArray(),
+            ),
+        )
         root.add(table("Tb_user_stuff", tbUserStuff(userId)))
         root.add(table("Tb_user_stuff_ex", tbUserStuffEx(userId)))
         root.add(table("Tb_user_stuff_one", tbUserStuffOne(userId)))
@@ -389,6 +397,32 @@ object UserInitTableBuilder {
             .i(21, 0)
             .s(22, "")
             .i(32, hero.heroType)          // hero_type
+            .s(33, "")
+            .s(34, "")
+            .s(35, "")
+            .i(36, 0)
+            .s(37, "")
+            .i(43, hero.dynamicIcon)        // dynamic_icon
+            .arr
+
+    private fun tbUserFacadeCard(
+        userId: Int,
+        index: Int,
+        facade: HeroFacadeDefinition,
+    ): ArrayNode =
+        row("Tb_user_facade_card")
+            .i(0, userId * 10_000 + index + 1)
+            .i(1, userId)
+            .i(2, facade.baseHeroIds.first())
+            .i(3, facade.facadeHeroId)
+            .i(4, 0) // surface_tips
+            .i(5, 0) // first_use_time
+            .i(6, 0) // permanent
+            .i(7, 0) // not a gifted facade
+            .s(8, "").s(9, "")
+            .i(10, 0)
+            .s(11, "").s(12, "")
+            .i(13, 1) // already read
             .arr
 
     /** Tb_user_stuff: 0=userid,3=protected_popup,62=occupy_land_level(string)。

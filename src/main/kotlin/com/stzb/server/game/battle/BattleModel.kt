@@ -24,6 +24,9 @@ enum class BattleStatus {
     DISARM,
     INSIGHT,
     EVADE,
+    DOUBLE_ATTACK,
+    FIRST_ACTION,
+    EMERGENCY_RECOVERY,
     ATTACK_BUFF,
     DEFENSE_BUFF,
     STRATEGY_BUFF,
@@ -99,6 +102,8 @@ data class BattleHero(
     val level: Int = 1,
     val equipmentIds: List<Int> = emptyList(),
     val modifiers: List<BattleModifier> = emptyList(),
+    val advanceLevel: Int = 0,
+    val morale: Int = 100,
 )
 
 data class BattleTeam(

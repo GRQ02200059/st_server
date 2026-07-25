@@ -126,6 +126,22 @@ class GameResponsesTest {
     }
 
     @Test
+    fun `hero upsert notify includes selected facade as dynamic icon`() {
+        val hero = PlayerHero(
+            heroUid = 4_200_003,
+            heroId = 100067,
+            createdAtSec = 1_700_000_000,
+            dynamicIcon = 100534,
+        )
+
+        val row = mapper.readTree(
+            GameResponses.heroUpsertNotify(userId = 42, heroes = listOf(hero)),
+        )[0][2]
+
+        assertEquals(100534, row[43].asInt())
+    }
+
+    @Test
     fun `user resource upsert notify includes current food and money`() {
         val response = mapper.readTree(
             GameResponses.userResourceUpsertNotify(

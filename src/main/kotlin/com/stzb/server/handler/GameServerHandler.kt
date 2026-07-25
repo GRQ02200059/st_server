@@ -185,6 +185,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendCardSetAllNotNew(ctx)
             }
 
+            Cmd.HERO_SELECT_FACADE -> {
+                logIn(msg)
+                sendSelectHeroFacade(ctx, session, msg)
+            }
+
             Cmd.CARD_ADD_POINT,
             Cmd.CARD_WASH_POINT,
             Cmd.CARD_PROTECT,
@@ -494,6 +499,35 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     private fun sendCardSetAllNotNew(ctx: ChannelHandlerContext) {
         ctx.writeAndFlush(DownPacket.json(Cmd.CARD_SET_ALL_NOT_NEW, "[]", dataType = DownType.PLAIN))
         log.info(">> cmd=302 武将新卡标记清理已应答")
+    }
+
+    private fun sendSelectHeroFacade(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val heroUid = body?.get(0)?.asInt() ?: 0
+        val facadeHeroId = body?.get(1)?.asInt() ?: 0
+        val state = playerState(session, userId, GameServerConfig.CITY_WID)
+        val changed = state.selectHeroFacade(heroUid, facadeHeroId)
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.HERO_SELECT_FACADE,
+                GameResponses.emptyArray(),
+                dataType = DownType.PLAIN,
+            ),
+        )
+        if (changed) {
+            PlayerStateRepository.save(state)
+            state.hero(heroUid)?.let { hero ->
+                ctx.writeAndFlush(
+                    DownPacket.json(
+                        Cmd.SYS_NOTIFY_DB_UPDATE,
+                        GameResponses.heroUpsertNotify(userId, listOf(hero)),
+                        dataType = DownType.PLAIN,
+                    ),
+                )
+            }
+        }
+        log.info(">> cmd=674 武将画像切换 (uid=$userId, heroUid=$heroUid, facade=$facadeHeroId, changed=$changed)")
     }
 
     private fun sendHeroTeamLibrary(ctx: ChannelHandlerContext) {

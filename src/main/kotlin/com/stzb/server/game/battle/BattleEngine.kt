@@ -1,6 +1,8 @@
 package com.stzb.server.game.battle
 
 object BattleEngine {
+    private val actionResolver = BattleActionResolver()
+
     fun resolve(request: BattleRequest): BattleResult =
         resolveInternal(request, skillRuntime = null, runtimeState = null, random = null)
 
@@ -145,38 +147,41 @@ object BattleEngine {
         random: BattleRandom?,
         events: MutableList<BattleEvent>,
     ) {
-        val actor = currentHero(actorRef.side, actorRef.position, attacker, defender) ?: return
-        val effectiveActor = actor.withEffectiveStats(statuses[actorRef].orEmpty())
-        val targetRef = selectNormalAttackTarget(actorRef, effectiveActor, attacker, defender, statuses) ?: return
-        val target = currentHero(targetRef.side, targetRef.position, attacker, defender) ?: return
-        val targetStatuses = statuses[targetRef].orEmpty()
-        if (tryEvade(round, actorRef, targetRef, targetStatuses, statuses, events)) return
-
-        val effectiveTarget = target.withEffectiveStats(targetStatuses)
-        val damage = normalAttackDamage(effectiveActor, effectiveTarget)
-        val newTarget = target.copy(troops = (target.troops - damage).coerceAtLeast(0))
-        if (targetRef.side == Side.ATTACKER) {
-            attacker[targetRef.position] = newTarget
-        } else {
-            defender[targetRef.position] = newTarget
-        }
-        events.add(
-            BattleEvent.NormalAttack(
+        val attackCount = if (statuses[actorRef].orEmpty().has(BattleStatus.DOUBLE_ATTACK)) 2 else 1
+        repeat(attackCount) {
+            val actor = currentHero(actorRef.side, actorRef.position, attacker, defender) ?: return
+            val effectiveActor = actor.withEffectiveStats(statuses[actorRef].orEmpty())
+            val enemies = if (actorRef.side == Side.ATTACKER) defender else attacker
+            val resolved = actionResolver.resolveNormalAttack(
                 round = round,
-                source = actorRef,
-                target = targetRef,
-                damage = damage,
-                targetTroopsAfter = newTarget.troops,
-            ),
-        )
+                sourceRef = actorRef,
+                source = effectiveActor,
+                enemies = enemies.values.map { target ->
+                    target.withEffectiveStats(statuses[target.ref(actorRef.side.opposite())].orEmpty())
+                },
+            ) ?: return
+            val targetRef = resolved.event.target
+            val targetStatuses = statuses[targetRef].orEmpty()
+            if (tryEvade(round, actorRef, targetRef, targetStatuses, statuses, events)) return@repeat
 
-        val pursuitActor = currentHero(actorRef.side, actorRef.position, attacker, defender) ?: actor
-        val pursuit = tryCastSkill(
-            round, actorRef, pursuitActor.withEffectiveStats(statuses[actorRef].orEmpty()),
-            attacker, defender, statuses, skillRuntime, runtimeState, random, setOf(SkillKind.PURSUIT),
-        )
-        if (pursuit != null) {
-            applySkillCastResult(actorRef, pursuit, attacker, defender, statuses, events, round)
+            val originalTarget = currentHero(targetRef.side, targetRef.position, attacker, defender) ?: return
+            val updatedTarget = originalTarget.copy(troops = resolved.target.troops)
+            if (targetRef.side == Side.ATTACKER) {
+                attacker[targetRef.position] = updatedTarget
+            } else {
+                defender[targetRef.position] = updatedTarget
+            }
+            events += resolved.event
+
+            val pursuitActor = currentHero(actorRef.side, actorRef.position, attacker, defender) ?: actor
+            val pursuit = tryCastSkill(
+                round, actorRef, pursuitActor.withEffectiveStats(statuses[actorRef].orEmpty()),
+                attacker, defender, statuses, skillRuntime, runtimeState, random, setOf(SkillKind.PURSUIT),
+                allowRepeatedAttempt = attackCount > 1,
+            )
+            if (pursuit != null) {
+                applySkillCastResult(actorRef, pursuit, attacker, defender, statuses, events, round)
+            }
         }
     }
 
@@ -316,6 +321,7 @@ object BattleEngine {
         runtimeState: SkillRuntimeState?,
         random: BattleRandom?,
         allowedKinds: Set<SkillKind>,
+        allowRepeatedAttempt: Boolean = false,
     ): SkillCastResult? {
         if (skillRuntime == null || runtimeState == null || random == null) return null
         val enemies = if (actorRef.side == Side.ATTACKER) defender else attacker
@@ -331,6 +337,7 @@ object BattleEngine {
             random = random,
             state = runtimeState,
             allowedKinds = allowedKinds,
+            allowRepeatedAttempt = allowRepeatedAttempt,
         )
     }
 
@@ -344,36 +351,14 @@ object BattleEngine {
             .filter { ref -> currentHero(ref.side, ref.position, attacker, defender)?.troops ?: 0 > 0 }
             .sortedWith(
                 compareByDescending<BattleHeroRef> { ref ->
+                    if (statuses[ref].orEmpty().has(BattleStatus.FIRST_ACTION)) {
+                        Int.MAX_VALUE
+                    } else {
                     val hero = currentHero(ref.side, ref.position, attacker, defender)
                     hero?.withEffectiveStats(statuses[ref].orEmpty())?.stats?.speed ?: 0
+                    }
                 }.thenBy { it.side.ordinal }.thenBy { it.position },
             )
-
-    private fun selectNormalAttackTarget(
-        actorRef: BattleHeroRef,
-        actor: BattleHero,
-        attacker: Map<Int, BattleHero>,
-        defender: Map<Int, BattleHero>,
-        statuses: Map<BattleHeroRef, List<ActiveBattleStatus>>,
-    ): BattleHeroRef? {
-        val enemies = if (actorRef.side == Side.ATTACKER) defender else attacker
-        return enemies.values
-            .filter { it.troops > 0 }
-            .map { target -> target to formationDistance(actor.position, target.position) }
-            .filter { (_, distance) -> distance <= actor.stats.hitRange }
-            .minWithOrNull(compareBy<Pair<BattleHero, Int>> { it.second }.thenByDescending { it.first.position })
-            ?.first
-            ?.ref(actorRef.side.opposite())
-    }
-
-    private fun formationDistance(sourcePos: Int, targetPos: Int): Int =
-        5 - sourcePos - targetPos
-
-    private fun normalAttackDamage(source: BattleHero, target: BattleHero): Int {
-        val troopScale = source.troops.toDouble() / source.maxTroops.coerceAtLeast(1)
-        val raw = (source.stats.attack - target.stats.defense / 2).coerceAtLeast(1)
-        return (raw * troopScale).toInt().coerceAtLeast(1).coerceAtMost(target.troops)
-    }
 
     private fun currentOutcome(
         attacker: Map<Int, BattleHero>,
@@ -423,7 +408,20 @@ object BattleEngine {
 
     private fun BattleHero.withEffectiveStats(runtimeStatuses: List<ActiveBattleStatus>): BattleHero {
         val delta = runtimeStatuses.fold(BattleStats.ZERO) { acc, s -> acc + s.statDelta }
-        if (delta == BattleStats.ZERO) return this
+        val runtimeModifiers = runtimeStatuses.mapNotNull { status ->
+            when {
+                status.status == BattleStatus.ATTACK_BUFF && status.power != 0 ->
+                    BattleModifier.DamageDealtPercent(null, status.power)
+                status.status == BattleStatus.ATTACK_DEBUFF && status.power != 0 ->
+                    BattleModifier.DamageDealtPercent(null, status.power)
+                status.status == BattleStatus.DEFENSE_DEBUFF && status.power != 0 ->
+                    BattleModifier.DamageTakenPercent(null, status.power)
+                status.status == BattleStatus.DEFENSE_BUFF && status.power != 0 ->
+                    BattleModifier.DamageTakenPercent(null, status.power)
+                else -> null
+            }
+        }
+        if (delta == BattleStats.ZERO && runtimeModifiers.isEmpty()) return this
         return copy(
             stats = BattleStats(
                 attack = (stats.attack + delta.attack).coerceAtLeast(1),
@@ -433,6 +431,7 @@ object BattleEngine {
                 siege = stats.siege + delta.siege,
                 hitRange = stats.hitRange + delta.hitRange,
             ),
+            modifiers = modifiers + runtimeModifiers,
         )
     }
 

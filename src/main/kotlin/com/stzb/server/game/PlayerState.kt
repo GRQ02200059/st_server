@@ -27,6 +27,7 @@ data class PlayerHero(
     var stamina: Int = MAX_STAMINA,
     var level: Int = 1,
     var heroType: Int = PlayerHeroTypes.forHero(heroId),
+    var dynamicIcon: Int = 0,
 ) {
     companion object {
         // Tb_hero.energy uses 1/10,000 display units; 1,000,000 displays as 100 energy.
@@ -51,6 +52,7 @@ data class PlayerHeroSnapshot(
     val stamina: Int = PlayerHero.MAX_STAMINA,
     val level: Int = 1,
     val heroType: Int = PlayerHeroTypes.forHero(heroId),
+    val dynamicIcon: Int = 0,
 )
 
 data class PlayerMarchSnapshot(
@@ -118,6 +120,13 @@ class PlayerState(
 
     fun hero(heroUid: Int): PlayerHero? =
         heroes[heroUid]
+
+    fun selectHeroFacade(heroUid: Int, facadeHeroId: Int): Boolean {
+        val hero = hero(heroUid) ?: return false
+        if (facadeHeroId != 0 && !HeroFacadeCatalog.canUse(facadeHeroId, hero.heroId)) return false
+        hero.dynamicIcon = facadeHeroId
+        return true
+    }
 
     fun saveTeam(heroUids: List<Int>) {
         val normalized = heroUids.take(3) + List((3 - heroUids.size).coerceAtLeast(0)) { 0 }
@@ -204,6 +213,7 @@ class PlayerState(
                     stamina = hero.stamina,
                     level = hero.level,
                     heroType = hero.heroType,
+                    dynamicIcon = hero.dynamicIcon,
                 )
             },
             team = team.toList(),
@@ -259,6 +269,9 @@ class PlayerState(
                         level = saved.level,
                         heroType = saved.heroType.takeIf { it in 1..3 }
                             ?: PlayerHeroTypes.forHero(saved.heroId),
+                        dynamicIcon = saved.dynamicIcon.takeIf {
+                            it == 0 || HeroFacadeCatalog.canUse(it, saved.heroId)
+                        } ?: 0,
                     )
                 }
                 state.heroSeq.set(

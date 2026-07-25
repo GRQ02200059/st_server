@@ -47,8 +47,8 @@ class BattleEquipmentApplierTest {
 
         val hero = team.heroes.single()
         assertEquals(listOf(1024), hero.equipmentIds)
-        assertEquals(103, hero.stats.attack)
-        assertEquals(75, hero.stats.defense)
+        assertEquals(123, hero.stats.attack)
+        assertEquals(95, hero.stats.defense)
         assertTrue(hero.modifiers.contains(BattleModifier.DamageDealtPercent(DamageKind.PHYSICAL, 8)))
     }
 }

@@ -2,8 +2,29 @@ package com.stzb.server.game
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class PlayerStatePersistenceTest {
+    @Test
+    fun `selected hero facade survives snapshot restore`() {
+        val state = PlayerState(
+            userId = 42,
+            cityWid = 10001,
+            roleName = "主公",
+            accountKey = "facade-test",
+        )
+        val hero = state.addHero(100067)
+
+        assertTrue(state.selectHeroFacade(hero.heroUid, 100534))
+        assertFalse(state.selectHeroFacade(hero.heroUid, 101300))
+
+        val restored = PlayerState.fromSnapshot(state.toSnapshot())
+        assertEquals(100534, restored.hero(hero.heroUid)?.dynamicIcon)
+        assertTrue(restored.selectHeroFacade(hero.heroUid, 0))
+        assertEquals(0, restored.hero(hero.heroUid)?.dynamicIcon)
+    }
+
     @Test
     fun `snapshot restores account heroes resources buildings team and march`() {
         val state = PlayerState(

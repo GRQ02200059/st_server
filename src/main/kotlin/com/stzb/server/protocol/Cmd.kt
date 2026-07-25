@@ -42,6 +42,7 @@ object Cmd {
     const val CARD_CHANGE_POINT_PLAN = 186
     const val CARD_EXTRACT_SWITCH = 300
     const val CARD_SELECT_HERO = 308
+    const val HERO_SELECT_FACADE = 674
     const val USER_CHANGE_NAME = 507
     const val RANDOM_ROLE_NAME = 511
     const val SYNC_SERVER_TIME = 694

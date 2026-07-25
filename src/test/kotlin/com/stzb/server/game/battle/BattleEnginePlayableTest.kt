@@ -169,6 +169,40 @@ class BattleEnginePlayableTest {
     }
 
     @Test
+    fun `double attack performs two normal attacks and two pursuit attempts`() {
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(
+                    listOf(
+                        hero(
+                            heroId = 100026,
+                            position = 2,
+                            attack = 20,
+                            skillIds = listOf(200206),
+                            statuses = setOf(BattleStatus.DOUBLE_ATTACK),
+                        ),
+                    ),
+                ),
+                defender = BattleTeam(listOf(hero(heroId = 1, position = 2, defense = 200, troops = 2_000))),
+                maxRounds = 1,
+            ),
+            repo,
+            FixedBattleRandom(0),
+        )
+
+        assertEquals(
+            2,
+            result.events.filterIsInstance<BattleEvent.NormalAttack>()
+                .count { it.source.side == Side.ATTACKER },
+        )
+        assertEquals(
+            2,
+            result.events.filterIsInstance<BattleEvent.SkillDamage>()
+                .count { it.source.side == Side.ATTACKER && it.skillId == 200206 },
+        )
+    }
+
+    @Test
     fun `insight status blocks control status application`() {
         val result = BattleEngine.resolve(
             BattleRequest(
