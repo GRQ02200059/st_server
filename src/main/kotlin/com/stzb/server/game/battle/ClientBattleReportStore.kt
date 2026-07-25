@@ -198,7 +198,7 @@ class ClientBattleReportStore private constructor(
             )
             val defender = builder.build(
                 listOf(
-                    BattleHeroSpec(heroId = 100352, position = 0, troops = 1000, extraSkillIds = listOf(200002), level = 18, equipmentIds = listOf(1025)),
+                    BattleHeroSpec(heroId = 100352, position = 0, troops = 1000, level = 18, equipmentIds = listOf(1025)),
                     BattleHeroSpec(heroId = 100345, position = 1, troops = 1000, level = 16),
                     BattleHeroSpec(heroId = 100344, position = 2, troops = 1000, level = 16),
                 ),

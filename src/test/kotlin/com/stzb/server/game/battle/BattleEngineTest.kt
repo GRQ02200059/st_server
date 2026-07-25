@@ -116,6 +116,30 @@ class BattleEngineTest {
         assertTrue(result.events.last() is BattleEvent.BattleEnd)
     }
 
+    @Test
+    fun `battle ends immediately when a base hero is defeated`() {
+        val result = resolveOneRound(
+            attacker = listOf(
+                hero(pos = 0, heroId = 1, hitRange = 5, speed = 100, attack = 10, defense = 0, troops = 100),
+            ),
+            defender = listOf(
+                hero(pos = 0, heroId = 2, hitRange = 5, speed = 10, attack = 10, defense = 0, troops = 1)
+                    .copy(activeStatuses = setOf(BattleStatus.PANIC)),
+                hero(pos = 2, heroId = 3, hitRange = 5, speed = 5, attack = 10, defense = 0, troops = 1_000),
+            ),
+        )
+
+        assertEquals(BattleOutcome.ATTACKER_WIN, result.outcome)
+        assertEquals(0, result.defender.heroes.first { it.position == 0 }.troops)
+        assertEquals(1_000, result.defender.heroes.first { it.position == 2 }.troops)
+        assertTrue(
+            result.events.none {
+                it is BattleEvent.HeroActionStart &&
+                    it.source.heroId == BattleHeroId(3)
+            },
+        )
+    }
+
     private fun resolveOneRound(
         attacker: List<BattleHero>,
         defender: List<BattleHero>,

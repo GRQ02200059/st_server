@@ -44,8 +44,10 @@ class ClientBattleReportStoreTest {
         )
         assertTrue(actions.any { it.id == ClientBattleTextReplayProtocol.SKILL_PREPARATION_STARTED })
         assertEquals(
-            actions.count { it.id == ClientBattleTextReplayProtocol.NORMAL_ATTACK_BEGIN },
-            actions.count { it.id == ClientBattleTextReplayProtocol.NORMAL_ATTACK_END },
+            (1..6).toSet(),
+            actions.filter { it.id == ClientBattleTextReplayProtocol.HERO_ACTION_START }
+                .map { it.params.first() as Int }
+                .toSet(),
         )
         assertEquals(
             actions.count { it.id == ClientBattleTextReplayProtocol.SKILL_BEGIN },
@@ -54,10 +56,28 @@ class ClientBattleReportStoreTest {
         assertActionSegmentsAreBalanced(actions)
 
         val normalAttackSources = actions
-            .filter { it.id == ClientBattleTextReplayProtocol.NORMAL_DAMAGE }
-            .map { it.params[1] as Int }
+            .filter { it.id == ClientBattleTextReplayProtocol.NORMAL_ATTACK }
+            .map { it.params[0] as Int }
         assertTrue(normalAttackSources.any { it in 1..3 })
         assertTrue(normalAttackSources.any { it in 4..6 })
+    }
+
+    @Test
+    fun `default replay does not inject disorder or unexplained panic damage`() {
+        val result = ClientBattleReportStore.createDefault(
+            nowSec = 1_700_000_000,
+            battleRandomFactory = { FixedBattleRandom(0) },
+        ).getOrCreateDefault().result
+
+        assertTrue(result.attacker.heroes.none { 200002 in it.skillIds })
+        assertTrue(result.defender.heroes.none { 200002 in it.skillIds })
+        assertTrue(
+            result.events.none {
+                it is BattleEvent.StatusApplied &&
+                    it.skillId == 200002
+            },
+        )
+        assertTrue(result.events.filterIsInstance<BattleEvent.NormalAttack>().isNotEmpty())
     }
 
     @Test
@@ -141,15 +161,9 @@ class ClientBattleReportStoreTest {
         var openSegment: Int? = null
         actions.forEach { action ->
             when (action.id) {
-                ClientBattleTextReplayProtocol.NORMAL_ATTACK_BEGIN,
-                ClientBattleTextReplayProtocol.SKILL_BEGIN,
-                -> {
+                ClientBattleTextReplayProtocol.SKILL_BEGIN -> {
                     assertEquals(null, openSegment)
                     openSegment = action.id
-                }
-                ClientBattleTextReplayProtocol.NORMAL_ATTACK_END -> {
-                    assertEquals(ClientBattleTextReplayProtocol.NORMAL_ATTACK_BEGIN, openSegment)
-                    openSegment = null
                 }
                 ClientBattleTextReplayProtocol.SKILL_END -> {
                     assertEquals(ClientBattleTextReplayProtocol.SKILL_BEGIN, openSegment)

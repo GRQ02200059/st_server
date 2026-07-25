@@ -336,14 +336,20 @@ object BattleEngine {
         attacker: Map<Int, BattleHero>,
         defender: Map<Int, BattleHero>,
     ): BattleOutcome {
-        val attackerAlive = attacker.values.any { it.troops > 0 }
-        val defenderAlive = defender.values.any { it.troops > 0 }
+        val attackerAlive = baseHeroAlive(attacker)
+        val defenderAlive = baseHeroAlive(defender)
         return when {
             attackerAlive && !defenderAlive -> BattleOutcome.ATTACKER_WIN
             !attackerAlive && defenderAlive -> BattleOutcome.DEFENDER_WIN
             else -> BattleOutcome.DRAW
         }
     }
+
+    private fun baseHeroAlive(team: Map<Int, BattleHero>): Boolean =
+        (team[0] ?: team.values.minByOrNull { it.position })
+            ?.troops
+            ?.let { it > 0 }
+            ?: false
 
     private fun currentHero(
         side: Side,

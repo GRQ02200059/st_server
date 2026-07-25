@@ -24,10 +24,13 @@ class ClientBattleTextReplayProtocolTest {
 
         assertEquals(1, ids.count { it == ClientBattleTextReplayProtocol.PREPARE })
         assertEquals(8, ids.count { it == ClientBattleTextReplayProtocol.ROUND })
+        assertEquals(119, ClientBattleTextReplayProtocol.NORMAL_ATTACK)
+        assertEquals(121, ClientBattleTextReplayProtocol.NORMAL_DAMAGE)
         assertTrue(
             setOf(
                 ClientBattleTextReplayProtocol.HERO_NAME,
                 ClientBattleTextReplayProtocol.HERO_INFO,
+                ClientBattleTextReplayProtocol.NORMAL_ATTACK,
                 ClientBattleTextReplayProtocol.NORMAL_DAMAGE,
                 ClientBattleTextReplayProtocol.SKILL_CAST,
                 ClientBattleTextReplayProtocol.SKILL_DAMAGE,

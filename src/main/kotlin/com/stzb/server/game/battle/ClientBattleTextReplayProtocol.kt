@@ -16,12 +16,15 @@ internal object ClientBattleTextReplayProtocol {
     const val HERO_INFO = 205
     const val PREPARE = 4
     const val ROUND = 9
+    const val HERO_ACTION_START = 10
+    const val HERO_ACTION_END = 11
     const val SKILL_PREPARATION_STARTED = 23
+    const val NORMAL_ATTACK = 119
+    const val NORMAL_DAMAGE = 121
     const val SKILL_BEGIN = 213
     const val SKILL_END = 214
     const val NORMAL_ATTACK_BEGIN = 222
     const val NORMAL_ATTACK_END = 223
-    const val NORMAL_DAMAGE = 62
     const val SKILL_CAST = 301
     const val SKILL_DAMAGE = 60
     const val ONGOING_DAMAGE = 59

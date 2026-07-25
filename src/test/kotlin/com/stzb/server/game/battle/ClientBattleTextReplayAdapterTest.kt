@@ -50,11 +50,15 @@ class ClientBattleTextReplayAdapterTest {
 
         val normalDamageIndex = actions.indexOfFirst {
             it.id == ClientBattleTextReplayProtocol.NORMAL_DAMAGE &&
-                it.params == listOf<Any>(6, 1, 0, 120, 880)
+                it.params == listOf<Any>(6, 120, 880)
         }
         assertTrue(normalDamageIndex > 0)
-        assertEquals(ClientBattleTextReplayProtocol.NORMAL_ATTACK_BEGIN, actions[normalDamageIndex - 1].id)
-        assertEquals(ClientBattleTextReplayProtocol.NORMAL_ATTACK_END, actions[normalDamageIndex + 1].id)
+        assertEquals(
+            ClientReportAction(ClientBattleTextReplayProtocol.NORMAL_ATTACK, listOf(1, 6)),
+            actions[normalDamageIndex - 2],
+        )
+        assertEquals(ClientBattleTextReplayProtocol.SKILL_BEGIN, actions[normalDamageIndex - 1].id)
+        assertEquals(ClientBattleTextReplayProtocol.SKILL_END, actions[normalDamageIndex + 1].id)
 
         val skillDamageIndex = actions.indexOfFirst {
             it.id == ClientBattleTextReplayProtocol.SKILL_DAMAGE &&
@@ -90,6 +94,31 @@ class ClientBattleTextReplayAdapterTest {
             it.id == ClientBattleTextReplayProtocol.SKILL_PREPARATION_STARTED &&
                 it.params == listOf<Any>(2, 200031)
         })
+    }
+
+    @Test
+    fun `projects every hero action with the real client lifecycle`() {
+        val source = BattleHeroRef(Side.DEFENDER, 2, BattleHeroId(4))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.RoundStart(1),
+                BattleEvent.HeroActionStart(1, source),
+                BattleEvent.HeroActionEnd(1, source),
+                BattleEvent.RoundEnd(1),
+            ),
+        )
+
+        val actions = ClientBattleTextReplayAdapter.adapt(result)
+        val startIndex = actions.indexOfFirst {
+            it.id == ClientBattleTextReplayProtocol.HERO_ACTION_START &&
+                it.params == listOf<Any>(4)
+        }
+
+        assertTrue(startIndex >= 0)
+        assertEquals(
+            ClientReportAction(ClientBattleTextReplayProtocol.HERO_ACTION_END, listOf(4)),
+            actions[startIndex + 1],
+        )
     }
 
     @Test

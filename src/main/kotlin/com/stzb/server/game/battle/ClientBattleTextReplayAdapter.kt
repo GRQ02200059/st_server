@@ -25,6 +25,14 @@ internal object ClientBattleTextReplayAdapter {
                     ClientBattleTextReplayProtocol.ROUND,
                     listOf(event.round),
                 )
+                is BattleEvent.HeroActionStart -> actions += ClientReportAction(
+                    ClientBattleTextReplayProtocol.HERO_ACTION_START,
+                    listOf(ClientBattleTextReplayProtocol.position(event.source)),
+                )
+                is BattleEvent.HeroActionEnd -> actions += ClientReportAction(
+                    ClientBattleTextReplayProtocol.HERO_ACTION_END,
+                    listOf(ClientBattleTextReplayProtocol.position(event.source)),
+                )
                 is BattleEvent.SkillPreparationStarted -> actions += ClientReportAction(
                     ClientBattleTextReplayProtocol.SKILL_PREPARATION_STARTED,
                     listOf(
@@ -33,18 +41,23 @@ internal object ClientBattleTextReplayAdapter {
                     ),
                 )
                 is BattleEvent.NormalAttack -> actions += listOf(
-                    ClientReportAction(ClientBattleTextReplayProtocol.NORMAL_ATTACK_BEGIN),
+                    ClientReportAction(
+                        ClientBattleTextReplayProtocol.NORMAL_ATTACK,
+                        listOf(
+                            ClientBattleTextReplayProtocol.position(event.source),
+                            ClientBattleTextReplayProtocol.position(event.target),
+                        ),
+                    ),
+                    ClientReportAction(ClientBattleTextReplayProtocol.SKILL_BEGIN),
                     ClientReportAction(
                         ClientBattleTextReplayProtocol.NORMAL_DAMAGE,
                         listOf(
                             ClientBattleTextReplayProtocol.position(event.target),
-                            ClientBattleTextReplayProtocol.position(event.source),
-                            0,
                             event.damage,
                             event.targetTroopsAfter,
                         ),
                     ),
-                    ClientReportAction(ClientBattleTextReplayProtocol.NORMAL_ATTACK_END),
+                    ClientReportAction(ClientBattleTextReplayProtocol.SKILL_END),
                 )
                 is BattleEvent.SkillDamage -> {
                     actions += skillSegment(
