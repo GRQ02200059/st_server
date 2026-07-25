@@ -71,6 +71,7 @@ data class PlayerStateSnapshot(
     val heroes: List<PlayerHeroSnapshot> = emptyList(),
     val team: List<Int> = List(3) { 0 },
     val march: PlayerMarchSnapshot? = null,
+    val occupiedLands: Set<Int> = emptySet(),
 )
 
 /**
@@ -94,6 +95,7 @@ class PlayerState(
     private val team = MutableList(3) { 0 }
     private val heroSeq = AtomicInteger(0)
     private var march: PlayerMarch? = null
+    private val lands = linkedSetOf<Int>()
 
     fun buildLevel(buildId: Int): Int =
         buildLevels[buildId] ?: 1
@@ -176,6 +178,14 @@ class PlayerState(
     fun completeMarchIfDue(nowSec: Int): PlayerMarch? =
         march?.takeIf { nowSec >= it.endSec }?.also { march = null }
 
+    fun occupyLand(wid: Int) {
+        if (wid > 0 && wid != cityWid) lands += wid
+    }
+
+    fun ownsLand(wid: Int): Boolean = wid in lands
+
+    fun occupiedLands(): Set<Int> = lands.toSet()
+
     fun toSnapshot(): PlayerStateSnapshot =
         PlayerStateSnapshot(
             accountKey = accountKey,
@@ -206,6 +216,7 @@ class PlayerState(
                     endSec = it.endSec,
                 )
             },
+            occupiedLands = lands.toSet(),
         )
 
     private fun refreshHeroArmyIds() {
@@ -244,7 +255,7 @@ class PlayerState(
                         createdAtSec = saved.createdAtSec,
                         armyId = saved.armyId,
                         troops = saved.troops,
-                        stamina = saved.stamina,
+                        stamina = migrateLegacyStamina(saved.stamina),
                         level = saved.level,
                         heroType = saved.heroType.takeIf { it in 1..3 }
                             ?: PlayerHeroTypes.forHero(saved.heroId),
@@ -264,7 +275,12 @@ class PlayerState(
                         endSec = it.endSec,
                     )
                 }
+                state.lands.clear()
+                state.lands.addAll(snapshot.occupiedLands.filter { it > 0 && it != state.cityWid })
             }
+
+        private fun migrateLegacyStamina(stamina: Int): Int =
+            if (stamina in 1..100) stamina * 10_000 else stamina
     }
 }
 
@@ -302,6 +318,41 @@ object PlayerStateRepository {
                     roleName = roleName,
                     accountKey = accountKey,
                 ).also(repository::save)
+        }
+    }
+
+    /**
+     * Resolve every request in an authenticated connection through the same
+     * account key used by login. Older builds accidentally wrote gameplay
+     * state to legacy-user-{userId}; migrate that state when the account save
+     * is still empty so existing heroes are not lost.
+     */
+    @Synchronized
+    fun getOrCreateForSession(
+        accountKey: String,
+        userId: Int,
+        cityWid: Int,
+        roleName: String,
+    ): PlayerState {
+        val accountState = getOrCreate(accountKey, cityWid, roleName)
+        if (accountState.allHeroes().isNotEmpty() || accountKey == "legacy-user-$userId") {
+            return accountState
+        }
+
+        val legacyKey = "legacy-user-$userId"
+        val legacyState = players[legacyKey] ?: repository.findByAccount(legacyKey)
+        if (legacyState == null || legacyState.allHeroes().isEmpty()) return accountState
+
+        return PlayerState.fromSnapshot(
+            legacyState.toSnapshot().copy(
+                accountKey = accountKey,
+                userId = userId,
+                cityWid = cityWid,
+                roleName = accountState.roleName,
+            ),
+        ).also { migrated ->
+            players[accountKey] = migrated
+            repository.save(migrated)
         }
     }
 

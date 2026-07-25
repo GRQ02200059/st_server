@@ -161,7 +161,7 @@ class ClientBattleTextReplayAdapterTest {
     }
 
     @Test
-    fun `retains unsupported skill effects in json without emitting client text actions`() {
+    fun `retains unsupported skill effects and still projects the skill activation`() {
         val baseResult = twoRoundResult()
         val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
         val resultWithUnsupportedEffect = baseResult.copy(
@@ -178,14 +178,12 @@ class ClientBattleTextReplayAdapterTest {
 
         assertTrue(json.contains("UnsupportedSkillEffect"))
         assertTrue(json.contains("\"skillId\":200999"))
-        assertEquals(
-            ClientBattleTextReplayAdapter.adapt(baseResult),
-            ClientBattleTextReplayAdapter.adapt(resultWithUnsupportedEffect),
-        )
-        assertEquals(
-            ClientReportTextEncoder.encode(baseResult),
-            ClientReportTextEncoder.encode(resultWithUnsupportedEffect),
-        )
+        val actions = ClientBattleTextReplayAdapter.adapt(resultWithUnsupportedEffect)
+        assertTrue(actions.any {
+            it.id == ClientBattleTextReplayProtocol.SKILL_CAST &&
+                it.params == listOf<Any>(1, 1, 200999)
+        })
+        assertTrue(ClientReportTextEncoder.encode(resultWithUnsupportedEffect).contains("8d1,1,200999"))
     }
 
     @Test

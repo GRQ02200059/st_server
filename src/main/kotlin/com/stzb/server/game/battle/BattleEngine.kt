@@ -35,6 +35,15 @@ object BattleEngine {
         var outcome = BattleOutcome.DRAW
 
         seedInitialActiveStatuses(attacker, defender, statuses)
+        executePreparationSkills(
+            attacker,
+            defender,
+            statuses,
+            events,
+            skillRuntime,
+            runtimeState,
+            random,
+        )
 
         for (round in 1..request.maxRounds) {
             events.add(BattleEvent.RoundStart(round))
@@ -89,6 +98,40 @@ object BattleEngine {
         outcome = currentOutcome(attacker, defender)
         events.add(BattleEvent.BattleEnd(outcome))
         return result(outcome, attacker, defender, events)
+    }
+
+    private fun executePreparationSkills(
+        attacker: MutableMap<Int, BattleHero>,
+        defender: MutableMap<Int, BattleHero>,
+        statuses: MutableMap<BattleHeroRef, MutableList<ActiveBattleStatus>>,
+        events: MutableList<BattleEvent>,
+        skillRuntime: BattleSkillRuntime?,
+        runtimeState: SkillRuntimeState?,
+        random: BattleRandom?,
+    ) {
+        val order = buildTurnOrder(attacker, defender, statuses)
+        for (actorRef in order) {
+            val skillCount = currentHero(actorRef.side, actorRef.position, attacker, defender)
+                ?.skillIds
+                ?.size
+                ?: continue
+            repeat(skillCount) {
+                val actor = currentHero(actorRef.side, actorRef.position, attacker, defender) ?: return@repeat
+                val cast = tryCastSkill(
+                    round = 0,
+                    actorRef = actorRef,
+                    actor = actor,
+                    attacker = attacker,
+                    defender = defender,
+                    statuses = statuses,
+                    skillRuntime = skillRuntime,
+                    runtimeState = runtimeState,
+                    random = random,
+                    allowedKinds = setOf(SkillKind.PASSIVE, SkillKind.COMMAND),
+                ) ?: return@repeat
+                applySkillCastResult(actorRef, cast, attacker, defender, statuses, events, round = 0)
+            }
+        }
     }
 
     private fun performNormalAttackAndPursuit(

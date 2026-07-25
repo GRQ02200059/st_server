@@ -37,7 +37,7 @@ class BattleSkillRuntime(
                 state.cooldownUntilRound[key] = round + state.defaultCooldownRounds
                 return result
             }
-            if ((state.cooldownUntilRound[key] ?: 0) >= round) continue
+            if ((state.cooldownUntilRound[key] ?: -1) >= round) continue
             state.attemptedRound[key] = round
             if (random.nextInt(100) >= skill.probabilityMax) continue
 

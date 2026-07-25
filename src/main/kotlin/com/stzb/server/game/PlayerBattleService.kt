@@ -80,6 +80,9 @@ class PlayerBattleService(
             val heroUid = state.teamHeroes().getOrElse(battleHero.position) { 0 }
             state.hero(heroUid)?.troops = battleHero.troops.coerceAtLeast(1)
         }
+        if (result.outcome == BattleOutcome.ATTACKER_WIN) {
+            state.occupyLand(march.targetWid)
+        }
         val report = reportStore.record(wid = march.targetWid, timeSec = nowSec, result = result)
         return PlayerBattleLaunchResult(
             battleId = report.battleId,

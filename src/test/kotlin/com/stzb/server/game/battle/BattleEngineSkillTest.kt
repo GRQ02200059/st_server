@@ -88,6 +88,29 @@ class BattleEngineSkillTest {
     }
 
     @Test
+    fun `command skills execute during the preparation stage`() {
+        val attacker = BattleTeam(
+            listOf(hero(100023, 0, 100, 100, 100, 100, skillIds = listOf(200023))),
+        )
+        val defender = BattleTeam(
+            listOf(hero(1, 0, 10, 20, 10, 10)),
+        )
+
+        val result = BattleEngine.resolve(
+            BattleRequest(attacker, defender, maxRounds = 1),
+            repo,
+            FixedBattleRandom(0),
+        )
+
+        val commandIndex = result.events.indexOfFirst {
+            it is BattleEvent.UnsupportedSkillEffect && it.skillId == 200023
+        }
+        val roundIndex = result.events.indexOfFirst { it is BattleEvent.RoundStart }
+        assertTrue(commandIndex >= 0)
+        assertTrue(commandIndex < roundIndex)
+    }
+
+    @Test
     fun `confused hero skips action`() {
         val attacker = BattleTeam(
             listOf(

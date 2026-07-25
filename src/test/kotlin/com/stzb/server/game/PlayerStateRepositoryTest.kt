@@ -4,7 +4,7 @@ import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
-import kotlin.test.assertNotEquals
+import kotlin.test.assertSame
 
 class PlayerStateRepositoryTest {
     @Test
@@ -115,8 +115,87 @@ class PlayerStateRepositoryTest {
     }
 
     @Test
+    fun `loading legacy display unit stamina migrates it to protocol units`() {
+        val snapshot = PlayerStateSnapshot(
+            accountKey = "legacy-stamina",
+            userId = 87,
+            cityWid = 10087,
+            roleName = "测试",
+            heroes = listOf(
+                PlayerHeroSnapshot(
+                    heroUid = 8_700_001,
+                    heroId = 100017,
+                    createdAtSec = 1_700_000_000,
+                    stamina = 60,
+                ),
+            ),
+        )
+
+        val state = PlayerState.fromSnapshot(snapshot)
+
+        assertEquals(600_000, state.hero(8_700_001)?.stamina)
+    }
+
+    @Test
     fun `hero stamina uses the client protocol full energy value`() {
         assertEquals(1_000_000, PlayerHero.MAX_STAMINA)
+    }
+
+    @Test
+    fun `session account key resolves the same state used by login`() {
+        val loginState = PlayerStateRepository.getOrCreate(
+            accountKey = "session-account",
+            cityWid = 10088,
+            roleName = "测试",
+        )
+        loginState.addHero(100017)
+
+        val businessState = PlayerStateRepository.getOrCreateForSession(
+            accountKey = "session-account",
+            userId = loginState.userId,
+            cityWid = 10088,
+            roleName = "测试",
+        )
+
+        assertSame(loginState, businessState)
+        assertEquals(1, businessState.allHeroes().size)
+    }
+
+    @Test
+    fun `session account migrates heroes written by the legacy user id path`() {
+        val root = createTempDirectory("stzb-session-migration")
+        try {
+            val repository = FilePlayerRepository(root)
+            repository.save(
+                PlayerState(
+                    accountKey = "session-account",
+                    userId = 10_001,
+                    cityWid = 100001,
+                    roleName = "主公",
+                ),
+            )
+            repository.save(
+                PlayerState(
+                    accountKey = "legacy-user-10001",
+                    userId = 10_001,
+                    cityWid = 100001,
+                    roleName = "主公",
+                ).also { it.addHero(100017) },
+            )
+            PlayerStateRepository.configure(repository)
+
+            val migrated = PlayerStateRepository.getOrCreateForSession(
+                accountKey = "session-account",
+                userId = 10_001,
+                cityWid = 100001,
+                roleName = "主公",
+            )
+
+            assertEquals(100017, migrated.allHeroes().single().heroId)
+            assertEquals("session-account", migrated.accountKey)
+        } finally {
+            PlayerStateRepository.reset()
+        }
     }
 
     @Test

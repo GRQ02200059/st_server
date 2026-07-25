@@ -165,6 +165,23 @@ class GameResponsesTest {
     }
 
     @Test
+    fun `army hero upsert is atomic and writes heroes before army`() {
+        val state = PlayerStateRepository.getOrCreate(userId = 46, cityWid = 10046, roleName = "主公")
+        val hero = state.addHero(100017)
+        state.assignTeamHero(hero.heroUid, pos = 1)
+
+        val response = mapper.readTree(
+            GameResponses.armyAndHeroesUpsertNotify(state, listOf(hero)),
+        )
+
+        assertEquals(2, response.size())
+        assertEquals("Tb_hero", response[0][1].asText())
+        assertEquals(hero.heroUid, response[0][2][0].asInt())
+        assertEquals("Tb_army", response[1][1].asText())
+        assertEquals(hero.heroUid, response[1][2][7].asInt())
+    }
+
+    @Test
     fun `army upsert notify marks active expedition fields`() {
         val state = PlayerStateRepository.getOrCreate(userId = 45, cityWid = 10045, roleName = "主公")
         state.startMarch(targetWid = 110045, nowSec = 1_700_000_000)
@@ -392,5 +409,22 @@ class GameResponsesTest {
         )
 
         assertEquals(0, response[6]["100011"][0].asInt())
+    }
+
+    @Test
+    fun `world scene exposes occupied player lands`() {
+        val response = mapper.readTree(
+            GameResponses.worldSceneFullInfo(
+                userId = 42,
+                cityWid = 10001,
+                roleName = "主公",
+                occupiedLands = setOf(10002),
+            ),
+        )
+
+        val land = response[14]["10002"]["0"]
+        assertEquals(2, land[0].asInt())
+        assertEquals(42, land[2].asInt())
+        assertEquals(10001, land[7].asInt())
     }
 }

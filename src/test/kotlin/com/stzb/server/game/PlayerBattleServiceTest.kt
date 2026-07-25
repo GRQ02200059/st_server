@@ -102,4 +102,50 @@ class PlayerBattleServiceTest {
             it is BattleEvent.SkillPreparationStarted && it.skillId == 200031
         })
     }
+
+    @Test
+    fun `winning pve battle occupies the target land`() {
+        val state = PlayerState(userId = 905, cityWid = 1905, roleName = "主公")
+        val hero = state.addHero(heroId = 100021, nowSec = 1_700_000_001).apply {
+            troops = 10_000
+            level = 50
+        }
+        state.saveTeam(listOf(hero.heroUid))
+        val service = PlayerBattleService(
+            reportStore = ClientBattleReportStore.createEmpty(),
+            battleRandomFactory = { FixedBattleRandom(0) },
+        )
+
+        service.launchPveBattle(state, targetWid = 1906, nowSec = 1_700_000_010)
+        val result = service.settlePveBattle(state, nowSec = 1_700_000_013)
+            ?: error("arrival should resolve battle")
+
+        assertEquals(com.stzb.server.game.battle.BattleOutcome.ATTACKER_WIN, result.outcome)
+        assertTrue(state.ownsLand(1906))
+    }
+
+    @Test
+    fun `settled report retains equipped hero skills and skill actions`() {
+        val state = PlayerState(userId = 906, cityWid = 1906, roleName = "主公")
+        val hero = state.addHero(heroId = 100021, nowSec = 1_700_000_001).apply {
+            troops = 10_000
+            level = 50
+        }
+        state.saveTeam(listOf(hero.heroUid))
+        val store = ClientBattleReportStore.createEmpty()
+        val service = PlayerBattleService(
+            reportStore = store,
+            battleRandomFactory = { FixedBattleRandom(0) },
+        )
+
+        service.launchPveBattle(state, targetWid = 1907, nowSec = 1_700_000_010)
+        val settlement = service.settlePveBattle(state, nowSec = 1_700_000_013)
+            ?: error("arrival should resolve battle")
+        val report = store.findOrDefault(settlement.battleId)
+
+        assertTrue(report.result.attacker.heroes.single().skillIds.contains(200021))
+        assertTrue(report.result.events.any {
+            it is BattleEvent.SkillDamage && it.skillId == 200021
+        })
+    }
 }

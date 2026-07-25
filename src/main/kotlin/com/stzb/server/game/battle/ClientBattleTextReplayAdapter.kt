@@ -3,6 +3,7 @@ package com.stzb.server.game.battle
 internal object ClientBattleTextReplayAdapter {
     fun adapt(result: BattleResult): List<ClientReportAction> {
         val actions = mutableListOf<ClientReportAction>()
+        val projectedUnsupportedSkills = mutableSetOf<Triple<Int, BattleHeroRef, Int>>()
         val heroes = (
             result.attacker.heroes.map { Side.ATTACKER to it } +
                 result.defender.heroes.map { Side.DEFENDER to it }
@@ -134,7 +135,12 @@ internal object ClientBattleTextReplayAdapter {
                         actions += statusActions(event.source, event.target, event.skillId, effectId)
                     }
                 }
-                is BattleEvent.UnsupportedSkillEffect,
+                is BattleEvent.UnsupportedSkillEffect -> {
+                    val key = Triple(event.round, event.source, event.skillId)
+                    if (event.skillId > 0 && projectedUnsupportedSkills.add(key)) {
+                        actions += skillSegment(event.source, event.skillId, emptyList())
+                    }
+                }
                 is BattleEvent.UnsupportedEquipmentEffect -> Unit
                 else -> Unit
             }

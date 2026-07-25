@@ -19,6 +19,7 @@ class PlayerStatePersistenceTest {
         state.saveTeam(listOf(hero.heroUid))
         state.upgradeBuild(10, 4)
         state.resources.food = 123456
+        state.occupyLand(100103)
         state.startMarch(targetWid = 100102, nowSec = 1_700_000_010)
 
         val restored = PlayerState.fromSnapshot(state.toSnapshot())
@@ -31,6 +32,7 @@ class PlayerStatePersistenceTest {
         assertEquals(listOf(hero.heroUid, 0, 0), restored.teamHeroes())
         assertEquals(4, restored.buildLevel(10))
         assertEquals(123456, restored.resources.food)
+        assertEquals(setOf(100103), restored.occupiedLands())
         assertEquals(100102, restored.activeMarch()?.targetWid)
     }
 }

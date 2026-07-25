@@ -194,6 +194,7 @@ object GameResponses {
         serverOrderId: Int = 1,
         march: PlayerMarch? = null,
         removedArmyId: Int? = null,
+        occupiedLands: Set<Int> = emptySet(),
     ): String {
         val root = nf.arrayNode()
         root.add(nf.objectNode()) // 0: visual field
@@ -210,7 +211,7 @@ object GameResponses {
         root.add(nf.objectNode()) // 11: reserved
         root.add(nf.objectNode()) // 12: ext garrison
         root.add(nf.objectNode()) // 13: manor family
-        root.add(worldCityChunk(userId, cityWid, roleName)) // 14: world chunks
+        root.add(worldCityChunk(userId, cityWid, roleName, occupiedLands)) // 14: world chunks
         root.add(nf.arrayNode())  // 15: reserved
         root.add(nf.objectNode()) // 16: ext garrison changes
         root.add(nf.arrayNode())  // 17: reserved
@@ -299,7 +300,12 @@ object GameResponses {
         }
 
     /** 5026[14][wid]["0"]: ChunkMsgType.WORLD_CITY 的最小主城条目。 */
-    private fun worldCityChunk(userId: Int, cityWid: Int, roleName: String) =
+    private fun worldCityChunk(
+        userId: Int,
+        cityWid: Int,
+        roleName: String,
+        occupiedLands: Set<Int>,
+    ) =
         nf.objectNode().apply {
             putObject(cityWid.toString()).putArray("0").apply {
                 add(1)        // 0: CityType.PLAYER_MAIN_CITY
@@ -318,6 +324,25 @@ object GameResponses {
                 add("")       // 13: city build data
                 repeat(7) { add(0) } // 14..20: clan/link/view metadata
             }
+            occupiedLands
+                .filter { it > 0 && it != cityWid }
+                .sorted()
+                .forEach { landWid ->
+                    putObject(landWid.toString()).putArray("0").apply {
+                        add(2)        // 0: CityType.PLAYER_LAND
+                        add(0)        // 1: city_param
+                        add(userId)   // 2: owner user id
+                        add(0)        // 3: union id
+                        add(0)        // 4: protect_end_time
+                        add("")       // 5: facade
+                        add("")       // 6: name
+                        add(cityWid)  // 7: belong city
+                        repeat(4) { add(0) } // 8..11: state/times
+                        add(1)        // 12: force type
+                        add("")       // 13: city build data
+                        repeat(7) { add(0) } // 14..20: clan/link/view metadata
+                    }
+                }
         }
 
     /**
@@ -432,6 +457,30 @@ object GameResponses {
                     .add(tbArmy(state)),
             ),
         )
+
+    /**
+     * The client dispatches table events after every 90005 packet. Keep hero
+     * rows and their referencing army row in one packet, with heroes first, so
+     * an army refresh can never observe an unknown hero uid.
+     */
+    fun armyAndHeroesUpsertNotify(state: PlayerState, heroes: List<PlayerHero>): String {
+        val root = nf.arrayNode()
+        heroes.distinctBy { it.heroUid }.forEach { hero ->
+            root.add(
+                nf.arrayNode()
+                    .add(1)
+                    .add("Tb_hero")
+                    .add(tbHero(hero, state.userId)),
+            )
+        }
+        root.add(
+            nf.arrayNode()
+                .add(1)
+                .add("Tb_army")
+                .add(tbArmy(state)),
+        )
+        return mapper.writeValueAsString(root)
+    }
 
     fun battleReportAttackInsertNotify(
         userId: Int,
