@@ -35,6 +35,14 @@ enum class BattleStatus {
     DEFENSE_DEBUFF,
     STRATEGY_DEBUFF,
     SPEED_DEBUFF,
+    PHYSICAL_DAMAGE_DEALT_INCREASED,
+    PHYSICAL_DAMAGE_DEALT_REDUCED,
+    STRATEGY_DAMAGE_DEALT_INCREASED,
+    STRATEGY_DAMAGE_DEALT_REDUCED,
+    PHYSICAL_DAMAGE_TAKEN_INCREASED,
+    PHYSICAL_DAMAGE_TAKEN_REDUCED,
+    STRATEGY_DAMAGE_TAKEN_INCREASED,
+    STRATEGY_DAMAGE_TAKEN_REDUCED,
 }
 
 enum class BattleStat {
@@ -231,6 +239,7 @@ data class ActiveBattleStatus(
     val power: Int = 0,
     val statDelta: BattleStats = BattleStats.ZERO,
     val skillId: Int = 0,
+    val sourceSnapshot: BattleHero? = null,
 )
 
 data class SkillCastResult(

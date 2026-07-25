@@ -239,6 +239,14 @@ internal object ClientBattleTextReplayAdapter {
         result: BattleResult,
     ) {
         actions += ClientReportAction(ClientBattleTextReplayProtocol.END)
+        actions += when (result.outcome) {
+            BattleOutcome.ATTACKER_WIN ->
+                ClientReportAction(ClientBattleTextReplayProtocol.ATTACKER_WIN)
+            BattleOutcome.DEFENDER_WIN ->
+                ClientReportAction(ClientBattleTextReplayProtocol.DEFENDER_WIN)
+            BattleOutcome.DRAW ->
+                ClientReportAction(ClientBattleTextReplayProtocol.DRAW, listOf(3))
+        }
         val heroes = result.attacker.heroes
             .sortedBy(BattleHero::position)
             .map { Side.ATTACKER to it } +

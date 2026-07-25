@@ -85,6 +85,7 @@ class BattleConfigRepository private constructor(
     private val heroExtras: Map<Int, HeroExtraConfig>,
     private val skillExtras: Map<Int, SkillExtraConfig>,
     private val armyBonuses: List<ArmyBonusConfig>,
+    private val effects: Map<Int, SkillEffectConfig>,
 ) {
     fun hero(heroId: Int): HeroBattleConfig? = heroes[heroId]
 
@@ -105,6 +106,8 @@ class BattleConfigRepository private constructor(
             .filter { it.detailId in detailIdStart..detailIdEnd }
             .sortedBy { it.detailId }
     }
+
+    fun skillEffect(effectId: Int): SkillEffectConfig? = effects[effectId]
 
     fun armyBonusesFor(heroIds: Collection<Int>): List<ArmyBonusConfig> {
         val teamHeroIds = heroIds.toSet()
@@ -208,6 +211,7 @@ class BattleConfigRepository private constructor(
                 heroExtras = loadHeroExtras(cfgRoot.resolve("hero_extra.json")),
                 skillExtras = loadSkillExtras(cfgRoot.resolve("skill_extra.json")),
                 armyBonuses = loadArmyBonuses(cfgRoot.resolve("army_extra.json")),
+                effects = effects,
             )
         }
 

@@ -36,7 +36,7 @@ class PlayerStateRepositoryTest {
         assertEquals("测试", state.roleName)
         assertEquals(PlayerResources.UNLIMITED_AMOUNT, state.resources.wood)
         assertEquals(PlayerResources.UNLIMITED_AMOUNT, state.resources.yuanBao)
-        assertEquals(1, state.buildLevel(10))
+        assertEquals(PlayerState.MAX_BUILD_LEVEL, state.buildLevel(10))
         assertEquals(listOf(0, 0, 0), state.teamHeroes())
     }
 
@@ -44,15 +44,18 @@ class PlayerStateRepositoryTest {
     fun `building upgrade is stored in player state`() {
         val state = PlayerStateRepository.getOrCreate(userId = 78, cityWid = 10078, roleName = "测试")
 
-        assertEquals(2, state.upgradeBuild(10, 0))
-        assertEquals(2, PlayerStateRepository.getOrCreate(78, 10078, "测试").buildLevel(10))
+        assertEquals(PlayerState.MAX_BUILD_LEVEL, state.upgradeBuild(10, 0))
+        assertEquals(
+            PlayerState.MAX_BUILD_LEVEL,
+            PlayerStateRepository.getOrCreate(78, 10078, "测试").buildLevel(10),
+        )
     }
 
     @Test
     fun `building upgrade does not spend unlimited resources`() {
         val state = PlayerStateRepository.getOrCreate(userId = 81, cityWid = 10081, roleName = "测试")
 
-        assertEquals(2, state.upgradeBuild(10, 0))
+        assertEquals(PlayerState.MAX_BUILD_LEVEL, state.upgradeBuild(10, 0))
 
         assertEquals(PlayerResources.UNLIMITED_AMOUNT, state.resources.wood)
         assertEquals(PlayerResources.UNLIMITED_AMOUNT, state.resources.stone)
@@ -65,9 +68,9 @@ class PlayerStateRepositoryTest {
         val state = PlayerStateRepository.getOrCreate(userId = 82, cityWid = 10082, roleName = "测试")
         state.resources.wood = 0
 
-        assertEquals(2, state.upgradeBuild(10, 0))
+        assertEquals(PlayerState.MAX_BUILD_LEVEL, state.upgradeBuild(10, 0))
 
-        assertEquals(2, state.buildLevel(10))
+        assertEquals(PlayerState.MAX_BUILD_LEVEL, state.buildLevel(10))
         assertEquals(0, state.resources.wood)
     }
 
@@ -81,6 +84,39 @@ class PlayerStateRepositoryTest {
         assertNotEquals(first.heroUid, second.heroUid)
         assertEquals(100017, first.heroId)
         assertEquals(100021, second.heroId)
+        assertEquals(PlayerHero.DEFAULT_LEVEL, first.level)
+    }
+
+    @Test
+    fun `second army deployment does not replace first army`() {
+        val state = PlayerStateRepository.getOrCreate(userId = 89, cityWid = 10089, roleName = "测试")
+        val first = state.addHero(100017)
+        val second = state.addHero(100021)
+        val firstArmy = state.armyIds()[0]
+        val secondArmy = state.armyIds()[1]
+
+        state.assignTeamHero(first.heroUid, pos = 1, armyId = firstArmy)
+        state.assignTeamHero(second.heroUid, pos = 1, armyId = secondArmy)
+
+        assertEquals(first.heroUid, state.teamHeroes(firstArmy)[0])
+        assertEquals(second.heroUid, state.teamHeroes(secondArmy)[0])
+        assertEquals(firstArmy, state.hero(first.heroUid)?.armyId)
+        assertEquals(secondArmy, state.hero(second.heroUid)?.armyId)
+    }
+
+    @Test
+    fun `moving hero between armies clears its old slot`() {
+        val state = PlayerStateRepository.getOrCreate(userId = 90, cityWid = 10090, roleName = "测试")
+        val hero = state.addHero(100017)
+        val firstArmy = state.armyIds()[0]
+        val secondArmy = state.armyIds()[1]
+        state.assignTeamHero(hero.heroUid, pos = 1, armyId = firstArmy)
+
+        state.assignTeamHero(hero.heroUid, pos = 2, armyId = secondArmy)
+
+        assertEquals(listOf(0, 0, 0), state.teamHeroes(firstArmy))
+        assertEquals(hero.heroUid, state.teamHeroes(secondArmy)[1])
+        assertEquals(5, state.armyIds().size)
     }
 
     @Test
@@ -115,7 +151,7 @@ class PlayerStateRepositoryTest {
     }
 
     @Test
-    fun `loading legacy display unit stamina migrates it to protocol units`() {
+    fun `loading any saved stamina restores infinite full stamina`() {
         val snapshot = PlayerStateSnapshot(
             accountKey = "legacy-stamina",
             userId = 87,
@@ -133,7 +169,7 @@ class PlayerStateRepositoryTest {
 
         val state = PlayerState.fromSnapshot(snapshot)
 
-        assertEquals(600_000, state.hero(8_700_001)?.stamina)
+        assertEquals(PlayerHero.MAX_STAMINA, state.hero(8_700_001)?.stamina)
     }
 
     @Test

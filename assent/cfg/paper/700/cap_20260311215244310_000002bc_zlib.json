@@ -1,0 +1,1097 @@
+[
+  1,
+  1,
+  null,
+  64,
+  [
+    [
+      0,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 46,
+        "name": "新年快乐",
+        "occupy_city_value": 0,
+        "power": 2820920,
+        "refresh_time": -1773237116,
+        "region": 5,
+        "total_member": 377,
+        "total_npc_city": 218,
+        "union_id": 1002
+      }
+    ],
+    [
+      1,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 43,
+        "name": "玖丨东城",
+        "occupy_city_value": 0,
+        "power": 1366750,
+        "refresh_time": 1773236884,
+        "region": 9,
+        "total_member": 376,
+        "total_npc_city": 106,
+        "union_id": 1003
+      }
+    ],
+    [
+      2,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 41,
+        "name": "九州新年快乐",
+        "occupy_city_value": 0,
+        "power": 931940,
+        "refresh_time": 1773237123,
+        "region": 11,
+        "total_member": 378,
+        "total_npc_city": 50,
+        "union_id": 1011
+      }
+    ],
+    [
+      3,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 39,
+        "name": "新丨年发财",
+        "occupy_city_value": 0,
+        "power": 875250,
+        "refresh_time": 1773237116,
+        "region": 7,
+        "total_member": 375,
+        "total_npc_city": 64,
+        "union_id": 1004
+      }
+    ],
+    [
+      4,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 40,
+        "name": "祂丨不可名",
+        "occupy_city_value": 0,
+        "power": 689100,
+        "refresh_time": 0,
+        "region": 13,
+        "total_member": 138,
+        "total_npc_city": 12,
+        "union_id": 1006
+      }
+    ],
+    [
+      5,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 33,
+        "name": "伐丨新年快乐",
+        "occupy_city_value": 0,
+        "power": 410640,
+        "refresh_time": 1773234100,
+        "region": 10,
+        "total_member": 86,
+        "total_npc_city": 3,
+        "union_id": 1010
+      }
+    ],
+    [
+      6,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 33,
+        "name": "桃丨新年快乐",
+        "occupy_city_value": 0,
+        "power": 404440,
+        "refresh_time": 1773236634,
+        "region": 8,
+        "total_member": 163,
+        "total_npc_city": 5,
+        "union_id": 1012
+      }
+    ],
+    [
+      7,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 1002,
+        "level": 32,
+        "name": "驷丨马到成功",
+        "occupy_city_value": 0,
+        "power": 375090,
+        "refresh_time": 1773236936,
+        "region": 6,
+        "total_member": 185,
+        "total_npc_city": 6,
+        "union_id": 1013
+      }
+    ],
+    [
+      8,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 31,
+        "name": "中丨新年快乐",
+        "occupy_city_value": 0,
+        "power": 343450,
+        "refresh_time": 1773236541,
+        "region": 5,
+        "total_member": 180,
+        "total_npc_city": 1,
+        "union_id": 1020
+      }
+    ],
+    [
+      9,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 30,
+        "name": "花丨与子同袍",
+        "occupy_city_value": 0,
+        "power": 320340,
+        "refresh_time": 1773236717,
+        "region": 9,
+        "total_member": 163,
+        "total_npc_city": 3,
+        "union_id": 1016
+      }
+    ],
+    [
+      10,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 1011,
+        "level": 30,
+        "name": "益丨新年快乐",
+        "occupy_city_value": 0,
+        "power": 315790,
+        "refresh_time": 1773236132,
+        "region": 11,
+        "total_member": 173,
+        "total_npc_city": 2,
+        "union_id": 1028
+      }
+    ],
+    [
+      11,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 1002,
+        "level": 30,
+        "name": "青玉案丨元夕",
+        "occupy_city_value": 0,
+        "power": 312650,
+        "refresh_time": 1773236722,
+        "region": 12,
+        "total_member": 94,
+        "total_npc_city": 13,
+        "union_id": 1009
+      }
+    ],
+    [
+      12,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 29,
+        "name": "锦州养老盟",
+        "occupy_city_value": 0,
+        "power": 265730,
+        "refresh_time": 1773236385,
+        "region": 13,
+        "total_member": 154,
+        "total_npc_city": 1,
+        "union_id": 1023
+      }
+    ],
+    [
+      13,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 28,
+        "name": "散人种地",
+        "occupy_city_value": 0,
+        "power": 231110,
+        "refresh_time": 1773236705,
+        "region": 12,
+        "total_member": 116,
+        "total_npc_city": 7,
+        "union_id": 1007
+      }
+    ],
+    [
+      14,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 28,
+        "name": "昱晓",
+        "occupy_city_value": 0,
+        "power": 216000,
+        "refresh_time": 1773236260,
+        "region": 11,
+        "total_member": 118,
+        "total_npc_city": 0,
+        "union_id": 1008
+      }
+    ],
+    [
+      15,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 27,
+        "name": "国士丨弘意",
+        "occupy_city_value": 0,
+        "power": 186620,
+        "refresh_time": 1773234682,
+        "region": 5,
+        "total_member": 50,
+        "total_npc_city": 1,
+        "union_id": 1026
+      }
+    ],
+    [
+      16,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 1004,
+        "level": 26,
+        "name": "玄果丨秋收",
+        "occupy_city_value": 0,
+        "power": 173340,
+        "refresh_time": 1773237128,
+        "region": 7,
+        "total_member": 94,
+        "total_npc_city": 0,
+        "union_id": 1025
+      }
+    ],
+    [
+      17,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 26,
+        "name": "龙马聚英豪",
+        "occupy_city_value": 0,
+        "power": 170820,
+        "refresh_time": 1773236087,
+        "region": 11,
+        "total_member": 34,
+        "total_npc_city": 0,
+        "union_id": 1027
+      }
+    ],
+    [
+      18,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 26,
+        "name": "凉丨大雪龙骑",
+        "occupy_city_value": 0,
+        "power": 166730,
+        "refresh_time": 1773232074,
+        "region": 10,
+        "total_member": 43,
+        "total_npc_city": 1,
+        "union_id": 1015
+      }
+    ],
+    [
+      19,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 25,
+        "name": "彭城世家青",
+        "occupy_city_value": 0,
+        "power": 154620,
+        "refresh_time": 1773236268,
+        "region": 6,
+        "total_member": 53,
+        "total_npc_city": 0,
+        "union_id": 1019
+      }
+    ],
+    [
+      20,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 25,
+        "name": "奇迹",
+        "occupy_city_value": 0,
+        "power": 146610,
+        "refresh_time": 0,
+        "region": 8,
+        "total_member": 42,
+        "total_npc_city": 0,
+        "union_id": 1005
+      }
+    ],
+    [
+      21,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 25,
+        "name": "驷丨一马当先",
+        "occupy_city_value": 0,
+        "power": 142520,
+        "refresh_time": 1773232428,
+        "region": 6,
+        "total_member": 32,
+        "total_npc_city": 1,
+        "union_id": 1040
+      }
+    ],
+    [
+      22,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 23,
+        "name": "清流源",
+        "occupy_city_value": 0,
+        "power": 111240,
+        "refresh_time": 1773231094,
+        "region": 13,
+        "total_member": 27,
+        "total_npc_city": 0,
+        "union_id": 1045
+      }
+    ],
+    [
+      23,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 23,
+        "name": "光武中兴",
+        "occupy_city_value": 0,
+        "power": 107820,
+        "refresh_time": 1773235750,
+        "region": 11,
+        "total_member": 28,
+        "total_npc_city": 0,
+        "union_id": 1024
+      }
+    ],
+    [
+      24,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 21,
+        "name": "摸鱼",
+        "occupy_city_value": 0,
+        "power": 79560,
+        "refresh_time": 1773226954,
+        "region": 5,
+        "total_member": 20,
+        "total_npc_city": 0,
+        "union_id": 1039
+      }
+    ],
+    [
+      25,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 21,
+        "name": "大明",
+        "occupy_city_value": 0,
+        "power": 77130,
+        "refresh_time": 1773210606,
+        "region": 11,
+        "total_member": 16,
+        "total_npc_city": 0,
+        "union_id": 1047
+      }
+    ],
+    [
+      26,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 20,
+        "name": "武盟",
+        "occupy_city_value": 0,
+        "power": 72090,
+        "refresh_time": 1773235404,
+        "region": 5,
+        "total_member": 13,
+        "total_npc_city": 0,
+        "union_id": 1091
+      }
+    ],
+    [
+      27,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 19,
+        "name": "马年大吉",
+        "occupy_city_value": 0,
+        "power": 62460,
+        "refresh_time": 1773190965,
+        "region": 8,
+        "total_member": 11,
+        "total_npc_city": 0,
+        "union_id": 1038
+      }
+    ],
+    [
+      28,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 19,
+        "name": "盛世丨",
+        "occupy_city_value": 0,
+        "power": 61380,
+        "refresh_time": 1773235007,
+        "region": 9,
+        "total_member": 20,
+        "total_npc_city": 0,
+        "union_id": 1014
+      }
+    ],
+    [
+      29,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 19,
+        "name": "马到成功",
+        "occupy_city_value": 0,
+        "power": 55800,
+        "refresh_time": 1773219101,
+        "region": 7,
+        "total_member": 12,
+        "total_npc_city": 0,
+        "union_id": 1051
+      }
+    ],
+    [
+      30,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 19,
+        "name": "划水种田",
+        "occupy_city_value": 0,
+        "power": 52830,
+        "refresh_time": 1773215189,
+        "region": 5,
+        "total_member": 1,
+        "total_npc_city": 0,
+        "union_id": 1054
+      }
+    ],
+    [
+      31,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 18,
+        "name": "彭城世家青2",
+        "occupy_city_value": 0,
+        "power": 47970,
+        "refresh_time": 1773235279,
+        "region": 6,
+        "total_member": 8,
+        "total_npc_city": 0,
+        "union_id": 1042
+      }
+    ],
+    [
+      32,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 18,
+        "name": "出师表",
+        "occupy_city_value": 0,
+        "power": 45900,
+        "refresh_time": 1773187338,
+        "region": 11,
+        "total_member": 7,
+        "total_npc_city": 0,
+        "union_id": 1029
+      }
+    ],
+    [
+      33,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 18,
+        "name": "天青色",
+        "occupy_city_value": 0,
+        "power": 42930,
+        "refresh_time": -1772371595,
+        "region": 8,
+        "total_member": 2,
+        "total_npc_city": 0,
+        "union_id": 1062
+      }
+    ],
+    [
+      34,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 18,
+        "name": "养老保险",
+        "occupy_city_value": 0,
+        "power": 41580,
+        "refresh_time": 1773146934,
+        "region": 9,
+        "total_member": 5,
+        "total_npc_city": 0,
+        "union_id": 1031
+      }
+    ],
+    [
+      35,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 18,
+        "name": "种地联盟",
+        "occupy_city_value": 0,
+        "power": 40770,
+        "refresh_time": 1773235545,
+        "region": 7,
+        "total_member": 8,
+        "total_npc_city": 0,
+        "union_id": 1074
+      }
+    ],
+    [
+      36,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 18,
+        "name": "大唐荣耀",
+        "occupy_city_value": 0,
+        "power": 40680,
+        "refresh_time": 1773232239,
+        "region": 11,
+        "total_member": 3,
+        "total_npc_city": 0,
+        "union_id": 1073
+      }
+    ],
+    [
+      37,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 18,
+        "name": "躺盟",
+        "occupy_city_value": 0,
+        "power": 40320,
+        "refresh_time": 1773236448,
+        "region": 9,
+        "total_member": 7,
+        "total_npc_city": 0,
+        "union_id": 1080
+      }
+    ],
+    [
+      38,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 18,
+        "name": "朝花夕拾",
+        "occupy_city_value": 0,
+        "power": 39960,
+        "refresh_time": 1773211319,
+        "region": 9,
+        "total_member": 7,
+        "total_npc_city": 0,
+        "union_id": 1093
+      }
+    ],
+    [
+      39,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 18,
+        "name": "复兴汉室",
+        "occupy_city_value": 0,
+        "power": 38700,
+        "refresh_time": 1773160141,
+        "region": 11,
+        "total_member": 5,
+        "total_npc_city": 0,
+        "union_id": 1067
+      }
+    ],
+    [
+      40,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 17,
+        "name": "匡扶汉室",
+        "occupy_city_value": 0,
+        "power": 36630,
+        "refresh_time": 1773130569,
+        "region": 11,
+        "total_member": 3,
+        "total_npc_city": 0,
+        "union_id": 1052
+      }
+    ],
+    [
+      41,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 17,
+        "name": "种地吧",
+        "occupy_city_value": 0,
+        "power": 34650,
+        "refresh_time": 1773217468,
+        "region": 12,
+        "total_member": 6,
+        "total_npc_city": 0,
+        "union_id": 1085
+      }
+    ],
+    [
+      42,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 17,
+        "name": "凉州种田养老",
+        "occupy_city_value": 0,
+        "power": 34560,
+        "refresh_time": 1773228465,
+        "region": 10,
+        "total_member": 13,
+        "total_npc_city": 0,
+        "union_id": 1060
+      }
+    ],
+    [
+      43,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 16,
+        "name": "养老院",
+        "occupy_city_value": 0,
+        "power": 32310,
+        "refresh_time": 1773163250,
+        "region": 5,
+        "total_member": 1,
+        "total_npc_city": 0,
+        "union_id": 1055
+      }
+    ],
+    [
+      44,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 15,
+        "name": "桃源居",
+        "occupy_city_value": 0,
+        "power": 29610,
+        "refresh_time": 1772106788,
+        "region": 8,
+        "total_member": 4,
+        "total_npc_city": 0,
+        "union_id": 1068
+      }
+    ],
+    [
+      45,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 14,
+        "name": "抹茶红豆卷",
+        "occupy_city_value": 0,
+        "power": 27720,
+        "refresh_time": 1773220933,
+        "region": 11,
+        "total_member": 1,
+        "total_npc_city": 0,
+        "union_id": 1079
+      }
+    ],
+    [
+      46,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 14,
+        "name": "人间过客",
+        "occupy_city_value": 0,
+        "power": 25200,
+        "refresh_time": 1773227318,
+        "region": 11,
+        "total_member": 4,
+        "total_npc_city": 0,
+        "union_id": 1071
+      }
+    ],
+    [
+      47,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 14,
+        "name": "散人聚集地",
+        "occupy_city_value": 0,
+        "power": 24840,
+        "refresh_time": 1773234880,
+        "region": 13,
+        "total_member": 5,
+        "total_npc_city": 0,
+        "union_id": 1083
+      }
+    ],
+    [
+      48,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 13,
+        "name": "南山下",
+        "occupy_city_value": 0,
+        "power": 22770,
+        "refresh_time": 1773236989,
+        "region": 11,
+        "total_member": 2,
+        "total_npc_city": 0,
+        "union_id": 1111
+      }
+    ],
+    [
+      49,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 11,
+        "name": "天地大爱一家",
+        "occupy_city_value": 0,
+        "power": 19640,
+        "refresh_time": 1773232681,
+        "region": 13,
+        "total_member": 6,
+        "total_npc_city": 1,
+        "union_id": 1109
+      }
+    ],
+    [
+      50,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 12,
+        "name": "潇洒哥",
+        "occupy_city_value": 0,
+        "power": 19620,
+        "refresh_time": 1773233406,
+        "region": 7,
+        "total_member": 2,
+        "total_npc_city": 0,
+        "union_id": 1104
+      }
+    ],
+    [
+      51,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 12,
+        "name": "圣仙",
+        "occupy_city_value": 0,
+        "power": 18810,
+        "refresh_time": 1773210861,
+        "region": 11,
+        "total_member": 3,
+        "total_npc_city": 0,
+        "union_id": 1081
+      }
+    ],
+    [
+      52,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 9,
+        "name": "率土应天府",
+        "occupy_city_value": 0,
+        "power": 13950,
+        "refresh_time": 1773155956,
+        "region": 9,
+        "total_member": 6,
+        "total_npc_city": 0,
+        "union_id": 1049
+      }
+    ],
+    [
+      53,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 7,
+        "name": "躺一尸一抽一",
+        "occupy_city_value": 0,
+        "power": 11610,
+        "refresh_time": 1773228289,
+        "region": 10,
+        "total_member": 3,
+        "total_npc_city": 0,
+        "union_id": 1078
+      }
+    ],
+    [
+      54,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 7,
+        "name": "锦衣",
+        "occupy_city_value": 0,
+        "power": 10980,
+        "refresh_time": 1772955805,
+        "region": 1,
+        "total_member": 1,
+        "total_npc_city": 0,
+        "union_id": 1100
+      }
+    ],
+    [
+      55,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 6,
+        "name": "躺尸盟",
+        "occupy_city_value": 0,
+        "power": 10170,
+        "refresh_time": 1773190525,
+        "region": 12,
+        "total_member": 1,
+        "total_npc_city": 0,
+        "union_id": 1101
+      }
+    ],
+    [
+      56,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 6,
+        "name": "开心种地",
+        "occupy_city_value": 0,
+        "power": 9630,
+        "refresh_time": 1772363315,
+        "region": 6,
+        "total_member": 2,
+        "total_npc_city": 0,
+        "union_id": 1036
+      }
+    ],
+    [
+      57,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 5,
+        "name": "等待结算",
+        "occupy_city_value": 0,
+        "power": 8820,
+        "refresh_time": 1773221867,
+        "region": 10,
+        "total_member": 3,
+        "total_npc_city": 0,
+        "union_id": 1110
+      }
+    ],
+    [
+      58,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 4,
+        "name": "约书亚",
+        "occupy_city_value": 0,
+        "power": 7830,
+        "refresh_time": 1773223069,
+        "region": 5,
+        "total_member": 1,
+        "total_npc_city": 0,
+        "union_id": 1092
+      }
+    ],
+    [
+      59,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 3,
+        "name": "岸边人",
+        "occupy_city_value": 0,
+        "power": 5940,
+        "refresh_time": 1772955949,
+        "region": 12,
+        "total_member": 1,
+        "total_npc_city": 0,
+        "union_id": 1108
+      }
+    ],
+    [
+      60,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 3,
+        "name": "伊朗",
+        "occupy_city_value": 0,
+        "power": 5400,
+        "refresh_time": 1773218281,
+        "region": 8,
+        "total_member": 3,
+        "total_npc_city": 0,
+        "union_id": 1106
+      }
+    ],
+    [
+      61,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 3,
+        "name": "毛子之家",
+        "occupy_city_value": 0,
+        "power": 5130,
+        "refresh_time": 1771030932,
+        "region": 9,
+        "total_member": 5,
+        "total_npc_city": 0,
+        "union_id": 1017
+      }
+    ],
+    [
+      62,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 2,
+        "name": "飞地盟",
+        "occupy_city_value": 0,
+        "power": 3690,
+        "refresh_time": 1773201178,
+        "region": 9,
+        "total_member": 1,
+        "total_npc_city": 0,
+        "union_id": 1063
+      }
+    ],
+    [
+      63,
+      {
+        "area": 0,
+        "force": 0,
+        "joined_union_id": 0,
+        "level": 1,
+        "name": "自刎归天",
+        "occupy_city_value": 0,
+        "power": 2520,
+        "refresh_time": 1771496926,
+        "region": 11,
+        "total_member": 2,
+        "total_npc_city": 0,
+        "union_id": 1022
+      }
+    ]
+  ],
+  {}
+]

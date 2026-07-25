@@ -32,6 +32,7 @@ object UserInitTableBuilder {
 
     private val nf: JsonNodeFactory = JsonNodeFactory.instance
     private val mapper: ObjectMapper = jacksonObjectMapper()
+    private val allSkillIds: List<Int> = SkillInventoryCatalog.allSkillIds()
 
     /** 客户端硬编码 schema 巨串 (98766 字节, 与 db_schema.txt 逐字节一致)。 */
     private val schema: String by lazy {
@@ -84,7 +85,13 @@ object UserInitTableBuilder {
         root.add(table("Tb_user_res", tbUserRes(state)))
         root.add(table("Tb_user_city", tbUserCity(userId, cityWid, serverOpenTime)))
         root.add(table("Tb_world_city", tbWorldCity(userId, cityWid, roleName, serverOpenTime)))
-        root.add(table("Tb_user_build", tbUserBuild(userId, cityWid, 10, state.buildLevel(10))))
+        root.add(
+            table(
+                "Tb_user_build",
+                tbUserBuild(userId, cityWid, 10, 1),
+                tbUserBuild(userId, cityWid, 30, PlayerState.maxBuildLevel(30)),
+            ),
+        )
         root.add(table("Tb_build_effect_city", tbBuildEffectCity(userId, cityWid)))
         root.add(table("Tb_user_inner_city", tbUserInnerCity(userId)))
         // 客户端会用内城配置补齐缺省建筑，暂不伪造不存在的 wid。
@@ -94,12 +101,34 @@ object UserInitTableBuilder {
         root.add(table("Tb_activity", tbActivity(userId)))
         root.add(
             table(
-                "Tb_user_card_extract",
-                tbUserCardExtract(userId, userId * 100 + 1, 801, serverOpenTime),
-                tbUserCardExtract(userId, userId * 100 + 2, 281, serverOpenTime),
+                "Tb_sys_param",
+                tbSysParam(12, "4"),
+                tbSysParam(26, "344"),
             ),
         )
-        root.add(table("Tb_hero", *state.allHeroes().map { tbHero(it, userId) }.toTypedArray()))
+        root.add(
+            table(
+                "Tb_user_card_extract",
+                *ClientCardPackCatalog.allPacks().map { pack ->
+                    tbUserCardExtract(
+                        userId = userId,
+                        extractId = ClientCardPackCatalog.summonUid(userId, pack.packId),
+                        refreshWayId = pack.packId,
+                        serverOpenTime = serverOpenTime,
+                        isNew = !state.cardPacksSeen,
+                    )
+                }.toTypedArray(),
+            ),
+        )
+        root.add(table("Tb_hero", *state.allHeroes().map { tbHero(it, userId, state.primaryArmyId()) }.toTypedArray()))
+        root.add(
+            table(
+                "Tb_user_skill",
+                *allSkillIds.mapIndexed { index, skillId ->
+                    tbUserSkill(userId, index, skillId)
+                }.toTypedArray(),
+            ),
+        )
         root.add(
             table(
                 "Tb_user_facade_card",
@@ -118,7 +147,6 @@ object UserInitTableBuilder {
             root,
             "Tb_hero_temp",
             "Tb_hero_identity",
-            "Tb_user_skill",
             "Tb_gear",
             "Tb_battle_report_attack",
             "Tb_battle_report_defend",
@@ -214,12 +242,13 @@ object UserInitTableBuilder {
             .s(33, "")                    // guide_logged_ids
             .arr
 
-    /** Tb_user_card_extract: 为客户端默认抽卡入口提供免费次数。 */
+    /** Tb_user_card_extract: 激活客户端所有赛季配置中的卡包。 */
     private fun tbUserCardExtract(
         userId: Int,
         extractId: Int,
         refreshWayId: Int,
         serverOpenTime: Long,
+        isNew: Boolean,
     ): ArrayNode {
         val nowSec = serverOpenTime.coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
         return row("Tb_user_card_extract")
@@ -230,7 +259,7 @@ object UserInitTableBuilder {
             .i(4, 0)                       // end_time
             .i(5, nowSec)                  // free_time
             .i(6, 0)                       // used_time
-            .i(7, 1)                       // is_new
+            .i(7, if (isNew) 1 else 0)    // is_new
             .i(8, 0).i(9, 0).i(10, 0)
             .i(23, 0)                     // total_count
             .i(31, 10)                    // free_count
@@ -261,6 +290,13 @@ object UserInitTableBuilder {
             .i(17, 0)
             .i(18, 0)
             .i(19, 0)
+            .arr
+
+    /** 参数 12=4 将客户端当前赛季声明为征服（XP）赛季。 */
+    private fun tbSysParam(paramId: Int, value: String): ArrayNode =
+        row("Tb_sys_param")
+            .i(0, paramId)
+            .s(1, value)
             .arr
 
     /** Tb_user_city: 0=city_wid,1=userid,2=garrison(string),3=forces_cur,4=forces_max,
@@ -317,7 +353,7 @@ object UserInitTableBuilder {
             .i(1, userId)
             .i(2, 10_000)                 // durability_max
             .i(3, 5)                      // reside_max
-            .i(4, 100)                    // hp_max
+            .i(4, PlayerHero.MAX_TROOPS - PlayerHero.DEFAULT_LEVEL * 100) // barracks adds 5,000
             .i(5, 0)                      // recruit_time
             .s(6, "")
             .i(7, 0)
@@ -371,16 +407,16 @@ object UserInitTableBuilder {
             .arr
     }
 
-    private fun tbHero(hero: PlayerHero, userId: Int): ArrayNode =
+    private fun tbHero(hero: PlayerHero, userId: Int, primaryArmyId: Int): ArrayNode =
         row("Tb_hero")
             .i(0, hero.heroUid)
             .i(1, hero.heroId)
             .i(2, userId)
-            .i(3, hero.armyId)             // armyid
+            .i(3, hero.armyId.takeIf { it == primaryArmyId } ?: 0) // legacy login exposes one army
             .i(4, 0)                      // hurt_end_time
             .i(5, 0)                      // state
             .i(6, hero.level)             // level
-            .i(7, hero.stamina)           // stamina
+            .i(7, PlayerHero.MAX_STAMINA) // infinite stamina
             .i(8, 0)
             .i(9, hero.createdAtSec)
             .i(10, 0)
@@ -395,7 +431,8 @@ object UserInitTableBuilder {
             .i(19, 0)
             .i(20, 0)
             .i(21, 0)
-            .s(22, "")
+            .s(22, hero.skillString())       // skill: persistent three-slot state
+            .i(24, 1)                        // awake_state: default awakened
             .i(32, hero.heroType)          // hero_type
             .s(33, "")
             .s(34, "")
@@ -403,6 +440,29 @@ object UserInitTableBuilder {
             .i(36, 0)
             .s(37, "")
             .i(43, hero.dynamicIcon)        // dynamic_icon
+            .arr
+
+    /**
+     * Real 99991 packet uses:
+     * [skill_id_u, skill_id, userid, learned_hero, learned_num,
+     *  researched_num, research_progress, skill_type, skill_state,
+     *  awake_state, season_skill, season_researched, researched_num_from_type].
+     */
+    private fun tbUserSkill(userId: Int, index: Int, skillId: Int): ArrayNode =
+        row("Tb_user_skill")
+            .i(0, userId * 10_000 + index + 1)
+            .i(1, skillId)
+            .i(2, userId)
+            .s(3, "")
+            .i(4, 0)
+            .i(5, UNLIMITED_SKILL_COPIES)
+            .i(6, 100)
+            .i(7, 1)
+            .i(8, 0)
+            .i(9, 0)
+            .i(10, 0)
+            .i(11, 0)
+            .i(12, 0)
             .arr
 
     private fun tbUserFacadeCard(
@@ -431,7 +491,7 @@ object UserInitTableBuilder {
         row("Tb_user_stuff")
             .i(0, userId)
             .i(3, 0)                      // protected_popup
-            .s(62, "")                    // occupy_land_level (空字符串安全)
+            .s(62, "1,1,1,1,1,1,1,1,1,") // occupy_land_level: levels 1-9 already occupied
             .i(63, PlayerResources.UNLIMITED_AMOUNT) // hero_card_max
             .arr
 
@@ -471,17 +531,21 @@ object UserInitTableBuilder {
             .i(82, 0)                     // community_blink_begin_time
             .i(83, 0)                     // community_blink_time_out
             .i(84, 0)                     // community_blink_type
+            .s(116, "1,1,1,1,1,1,1,1,1,") // occupy_land_level_season
             .s(117, "")                   // community_tips
             .i(118, 0)                    // community_red_dot
             .i(119, 0)                    // community_red_dot_time
             .arr
 
-    /** Tb_user_stuff_temp_one: 0=userid,78=callback_first_login_role。 */
+    /** Tb_user_stuff_temp_one: 0=userid,78=callback_first_login_role,196=conquered_level。 */
     private fun tbUserStuffTempOne(userId: Int): ArrayNode =
         row("Tb_user_stuff_temp_one")
             .i(0, userId)
             .i(78, 0)                     // callback_first_login_role
+            .i(196, 9)                    // conquered_level: unlock S1 land levels 1-9
             .arr
+
+    private const val UNLIMITED_SKILL_COPIES = 99
 }
 
 /**

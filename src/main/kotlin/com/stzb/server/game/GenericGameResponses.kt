@@ -7,6 +7,8 @@ object GenericGameResponses {
 
     fun emptyArray(): String = "[]"
 
+    fun emptyObject(): String = "{}"
+
     fun successZero(): String = "0"
 
     fun successOne(): String = "1"

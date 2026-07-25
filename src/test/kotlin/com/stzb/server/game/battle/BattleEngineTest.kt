@@ -140,6 +140,62 @@ class BattleEngineTest {
         )
     }
 
+    @Test
+    fun `defeating a non-base hero does not decide the battle`() {
+        val result = resolveOneRound(
+            attacker = listOf(
+                hero(pos = 0, heroId = 1, hitRange = 5, speed = 100, attack = 10, defense = 0, troops = 1_000),
+                hero(pos = 2, heroId = 2, hitRange = 5, speed = 90, attack = 500, defense = 0, troops = 1_000),
+            ),
+            defender = listOf(
+                hero(pos = 0, heroId = 3, hitRange = 5, speed = 10, attack = 10, defense = 0, troops = 1_000),
+                hero(pos = 2, heroId = 4, hitRange = 5, speed = 5, attack = 10, defense = 0, troops = 1),
+            ),
+        )
+
+        assertEquals(0, result.defender.heroes.first { it.position == 2 }.troops)
+        assertTrue(result.defender.heroes.first { it.position == 0 }.troops > 0)
+        assertEquals(BattleOutcome.DRAW, result.outcome)
+    }
+
+    @Test
+    fun `losing the attacker base is a defender victory even when other attackers survive`() {
+        val result = resolveOneRound(
+            attacker = listOf(
+                hero(pos = 0, heroId = 1, hitRange = 5, speed = 100, attack = 10, defense = 0, troops = 1)
+                    .copy(activeStatuses = setOf(BattleStatus.PANIC)),
+                hero(pos = 2, heroId = 2, hitRange = 5, speed = 90, attack = 10, defense = 0, troops = 1_000),
+            ),
+            defender = listOf(
+                hero(pos = 0, heroId = 3, hitRange = 5, speed = 10, attack = 10, defense = 0, troops = 1_000),
+            ),
+        )
+
+        assertEquals(0, result.attacker.heroes.first { it.position == 0 }.troops)
+        assertEquals(1_000, result.attacker.heroes.first { it.position == 2 }.troops)
+        assertEquals(BattleOutcome.DEFENDER_WIN, result.outcome)
+    }
+
+    @Test
+    fun `eight rounds with both base heroes alive is a draw`() {
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(
+                    listOf(hero(pos = 0, heroId = 1, hitRange = 1, speed = 100, attack = 1, defense = 1_000, troops = 1_000)),
+                ),
+                defender = BattleTeam(
+                    listOf(hero(pos = 0, heroId = 2, hitRange = 1, speed = 10, attack = 1, defense = 1_000, troops = 1_000)),
+                ),
+                maxRounds = 8,
+            ),
+        )
+
+        assertEquals(8, result.events.filterIsInstance<BattleEvent.RoundStart>().size)
+        assertTrue(result.attacker.heroes.single().troops > 0)
+        assertTrue(result.defender.heroes.single().troops > 0)
+        assertEquals(BattleOutcome.DRAW, result.outcome)
+    }
+
     private fun resolveOneRound(
         attacker: List<BattleHero>,
         defender: List<BattleHero>,

@@ -1,0 +1,5423 @@
+[
+  0,
+  -1,
+  {
+    "area": 0,
+    "branch_city_count": 0,
+    "force": 0,
+    "fort_count": 0,
+    "land_count": 96,
+    "name": "余烬丶小空空",
+    "power": 9435,
+    "refresh_time": 1773274278,
+    "region": 9,
+    "role_id": "3z5ddqy811007",
+    "shu_cheng_count": 0,
+    "user_id": 14559
+  },
+  300,
+  [
+    [
+      0,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 238,
+        "name": "翊丨风华",
+        "power": 68322,
+        "refresh_time": 1773252714,
+        "region": 1,
+        "role_id": "1jta50n24290",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 13580
+      }
+    ],
+    [
+      1,
+      {
+        "area": 0,
+        "branch_city_count": 10,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 232,
+        "name": "神丨房东的猫",
+        "power": 57618,
+        "refresh_time": 1773271491,
+        "region": 1,
+        "role_id": "k5ib4pc3398",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14566
+      }
+    ],
+    [
+      2,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 201,
+        "name": "风月丨浮云",
+        "power": 56752,
+        "refresh_time": -1773233787,
+        "region": 2,
+        "role_id": "nq2vrzu4130",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14342
+      }
+    ],
+    [
+      3,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 214,
+        "name": "天赐丨彪",
+        "power": 54425,
+        "refresh_time": -1773266466,
+        "region": 1,
+        "role_id": "1gti620w4211",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10854
+      }
+    ],
+    [
+      4,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 226,
+        "name": "嬿鹫鵰狸狮鶻",
+        "power": 53272,
+        "refresh_time": 0,
+        "region": 11,
+        "role_id": "4bkbo6mb10620",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11031
+      }
+    ],
+    [
+      5,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 11,
+        "land_count": 217,
+        "name": "烟雨丨解蠡",
+        "power": 52948,
+        "refresh_time": 1773272903,
+        "region": 3,
+        "role_id": "xkryptc3711",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14476
+      }
+    ],
+    [
+      6,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 235,
+        "name": "夜丨风吹过后",
+        "power": 49380,
+        "refresh_time": 1773191417,
+        "region": 1,
+        "role_id": "100gem9s3777",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14525
+      }
+    ],
+    [
+      7,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 202,
+        "name": "霜月丨下午茶",
+        "power": 48907,
+        "refresh_time": -1773240366,
+        "region": 12,
+        "role_id": "ga92rs83300",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14055
+      }
+    ],
+    [
+      8,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 233,
+        "name": "弃疾乄畲畲",
+        "power": 48763,
+        "refresh_time": 1773266977,
+        "region": 4,
+        "role_id": "i6de5y03348",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12301
+      }
+    ],
+    [
+      9,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 224,
+        "name": "龍丶凉森玲梦",
+        "power": 46309,
+        "refresh_time": 1773251463,
+        "region": 2,
+        "role_id": "irjkv5k3403",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 16242
+      }
+    ],
+    [
+      10,
+      {
+        "area": 0,
+        "branch_city_count": 10,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 195,
+        "name": "风月丨浮尘",
+        "power": 45300,
+        "refresh_time": 1773138104,
+        "region": 2,
+        "role_id": "tdobhq03616",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14383
+      }
+    ],
+    [
+      11,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 216,
+        "name": "风月丨江山",
+        "power": 44076,
+        "refresh_time": 1773238499,
+        "region": 2,
+        "role_id": "ul8ci2o3644",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14444
+      }
+    ],
+    [
+      12,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 200,
+        "name": "神丨秋阳",
+        "power": 44065,
+        "refresh_time": 1773244722,
+        "region": 1,
+        "role_id": "19457093082",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11074
+      }
+    ],
+    [
+      13,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 219,
+        "name": "星纵丶乔将军",
+        "power": 42145,
+        "refresh_time": 1773240795,
+        "region": 10,
+        "role_id": "tdc7x9l3920",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 12879
+      }
+    ],
+    [
+      14,
+      {
+        "area": 0,
+        "branch_city_count": 10,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 213,
+        "name": "孟起帝玄德",
+        "power": 41813,
+        "refresh_time": 1773273995,
+        "region": 6,
+        "role_id": "1me1p2y94375",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13539
+      }
+    ],
+    [
+      15,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 208,
+        "name": "捌叁肆一雷动",
+        "power": 41766,
+        "refresh_time": 1773233397,
+        "region": 7,
+        "role_id": "2cldkqy4042",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 11233
+      }
+    ],
+    [
+      16,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 202,
+        "name": "夜曲丨熊猫",
+        "power": 41713,
+        "refresh_time": -1773266675,
+        "region": 2,
+        "role_id": "nx9whow3486",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 14080
+      }
+    ],
+    [
+      17,
+      {
+        "area": 0,
+        "branch_city_count": 10,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 194,
+        "name": "鹿城",
+        "power": 41141,
+        "refresh_time": 1773270864,
+        "region": 7,
+        "role_id": "15y3iia705625",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11786
+      }
+    ],
+    [
+      18,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 10,
+        "land_count": 224,
+        "name": "长洲丨荆一轲",
+        "power": 41026,
+        "refresh_time": 1773249948,
+        "region": 1,
+        "role_id": "2n4ztg245274",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13238
+      }
+    ],
+    [
+      19,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 207,
+        "name": "秋枫城",
+        "power": 40706,
+        "refresh_time": 1773271264,
+        "region": 10,
+        "role_id": "3m648mdy06383",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 10260
+      }
+    ],
+    [
+      20,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 207,
+        "name": "陷阵丨刘邦",
+        "power": 40594,
+        "refresh_time": 1773242591,
+        "region": 7,
+        "role_id": "2s7ny76o05945",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 11788
+      }
+    ],
+    [
+      21,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 13,
+        "land_count": 201,
+        "name": "天长明丨满穗",
+        "power": 40591,
+        "refresh_time": 1773238828,
+        "region": 1,
+        "role_id": "r8kf7zs3568",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10883
+      }
+    ],
+    [
+      22,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 208,
+        "name": "夜曲丨泡泡",
+        "power": 40191,
+        "refresh_time": 1773227335,
+        "region": 2,
+        "role_id": "2xao2u1c05664",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14082
+      }
+    ],
+    [
+      23,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 16,
+        "land_count": 215,
+        "name": "弃疾乄清秋",
+        "power": 40104,
+        "refresh_time": -1773223661,
+        "region": 4,
+        "role_id": "2z6ceiev05615",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 12598
+      }
+    ],
+    [
+      24,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 219,
+        "name": "洪荒乄常青树",
+        "power": 40002,
+        "refresh_time": 1773269349,
+        "region": 10,
+        "role_id": "4o8qpkob11228",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12538
+      }
+    ],
+    [
+      25,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 17,
+        "land_count": 202,
+        "name": "狼弦军",
+        "power": 39747,
+        "refresh_time": 0,
+        "region": 10,
+        "role_id": "1q1g8udl4434",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15160
+      }
+    ],
+    [
+      26,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 14,
+        "land_count": 199,
+        "name": "仰天丨星辰",
+        "power": 39518,
+        "refresh_time": 0,
+        "region": 5,
+        "role_id": "pddduow3522",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12975
+      }
+    ],
+    [
+      27,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 183,
+        "name": "翊丨云安",
+        "power": 39408,
+        "refresh_time": 1773239094,
+        "region": 1,
+        "role_id": "qlrytt43631",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13731
+      }
+    ],
+    [
+      28,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 212,
+        "name": "余烬丶天空",
+        "power": 39125,
+        "refresh_time": -1773272590,
+        "region": 4,
+        "role_id": "3z5ddrkg06946",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 14572
+      }
+    ],
+    [
+      29,
+      {
+        "area": 0,
+        "branch_city_count": 10,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 221,
+        "name": "夜曲丨铺路一",
+        "power": 39069,
+        "refresh_time": 1773237801,
+        "region": 9,
+        "role_id": "2rgpk1xy05991",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14060
+      }
+    ],
+    [
+      30,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 207,
+        "name": "远征四方",
+        "power": 39039,
+        "refresh_time": 1773273295,
+        "region": 6,
+        "role_id": "35556263140",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 12555
+      }
+    ],
+    [
+      31,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 18,
+        "land_count": 209,
+        "name": "纵横丨赤月",
+        "power": 38970,
+        "refresh_time": -1773266606,
+        "region": 2,
+        "role_id": "j7mrf824426",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12967
+      }
+    ],
+    [
+      32,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 181,
+        "name": "神丨陆小凤",
+        "power": 38813,
+        "refresh_time": 1772943225,
+        "region": 1,
+        "role_id": "icfc7i83352",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11186
+      }
+    ],
+    [
+      33,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 219,
+        "name": "风月丨粽子",
+        "power": 38609,
+        "refresh_time": 1773272218,
+        "region": 9,
+        "role_id": "1dbiedow4116",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14399
+      }
+    ],
+    [
+      34,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 16,
+        "land_count": 211,
+        "name": "共丨公平公正",
+        "power": 38600,
+        "refresh_time": 0,
+        "region": 6,
+        "role_id": "1bldznei4083",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14760
+      }
+    ],
+    [
+      35,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 13,
+        "land_count": 203,
+        "name": "雲丨三儿",
+        "power": 38299,
+        "refresh_time": 0,
+        "region": 4,
+        "role_id": "vdcvjq83746",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12724
+      }
+    ],
+    [
+      36,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 195,
+        "name": "铁骑丨阿修罗",
+        "power": 38192,
+        "refresh_time": -1773211999,
+        "region": 4,
+        "role_id": "3pm7xq3w06712",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11800
+      }
+    ],
+    [
+      37,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 205,
+        "name": "相柳丨雲之磊",
+        "power": 38145,
+        "refresh_time": 1773224133,
+        "region": 7,
+        "role_id": "vk37py03666",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11151
+      }
+    ],
+    [
+      38,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 188,
+        "name": "神丨楚留香",
+        "power": 38112,
+        "refresh_time": 1773236361,
+        "region": 1,
+        "role_id": "21bo4mbv4681",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11297
+      }
+    ],
+    [
+      39,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 208,
+        "name": "秋丨药生尘",
+        "power": 38047,
+        "refresh_time": 1773238046,
+        "region": 4,
+        "role_id": "3hvgsy9b06182",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12870
+      }
+    ],
+    [
+      40,
+      {
+        "area": 0,
+        "branch_city_count": 10,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 180,
+        "name": "423",
+        "power": 37767,
+        "refresh_time": 1773230799,
+        "region": 7,
+        "role_id": "18flir874595",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11785
+      }
+    ],
+    [
+      41,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 215,
+        "name": "三星V洞主",
+        "power": 37767,
+        "refresh_time": 1773243780,
+        "region": 6,
+        "role_id": "4atva22y10586",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13499
+      }
+    ],
+    [
+      42,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 207,
+        "name": "悠亚的故事",
+        "power": 37663,
+        "refresh_time": -1773240790,
+        "region": 1,
+        "role_id": "ryg5j543584",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11721
+      }
+    ],
+    [
+      43,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 195,
+        "name": "長林丨曜剑尘",
+        "power": 37624,
+        "refresh_time": 1773230509,
+        "region": 9,
+        "role_id": "1ohuba5q4401",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12739
+      }
+    ],
+    [
+      44,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 11,
+        "land_count": 181,
+        "name": "夜曲丨晋临",
+        "power": 37596,
+        "refresh_time": 1773273684,
+        "region": 9,
+        "role_id": "1fefg9b44175",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14079
+      }
+    ],
+    [
+      45,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 10,
+        "land_count": 211,
+        "name": "半步青云",
+        "power": 37431,
+        "refresh_time": 0,
+        "region": 11,
+        "role_id": "xch0bm54074",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14141
+      }
+    ],
+    [
+      46,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 204,
+        "name": "英国",
+        "power": 37348,
+        "refresh_time": 1773274028,
+        "region": 4,
+        "role_id": "2x0tv0wl5554",
+        "show_info": "",
+        "shu_cheng_count": 3,
+        "user_id": 14214
+      }
+    ],
+    [
+      47,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 182,
+        "name": "平原神行军",
+        "power": 37262,
+        "refresh_time": 0,
+        "region": 11,
+        "role_id": "1gymhah64797",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12507
+      }
+    ],
+    [
+      48,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 198,
+        "name": "岚丨满堂红",
+        "power": 37185,
+        "refresh_time": -1773272165,
+        "region": 7,
+        "role_id": "t3xabg83611",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13834
+      }
+    ],
+    [
+      49,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 203,
+        "name": "桂东电力",
+        "power": 37183,
+        "refresh_time": 1773239647,
+        "region": 8,
+        "role_id": "36w92k2z06875",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 16172
+      }
+    ],
+    [
+      50,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 199,
+        "name": "余烬丶天劝",
+        "power": 37114,
+        "refresh_time": 1773254742,
+        "region": 1,
+        "role_id": "jeir8rc3377",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14594
+      }
+    ],
+    [
+      51,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 195,
+        "name": "方方方方",
+        "power": 37027,
+        "refresh_time": 0,
+        "region": 4,
+        "role_id": "1lj4a8nd4337",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11747
+      }
+    ],
+    [
+      52,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 208,
+        "name": "文丨凯文凯",
+        "power": 36938,
+        "refresh_time": 1773273678,
+        "region": 1,
+        "role_id": "1r25t08p5400",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14391
+      }
+    ],
+    [
+      53,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 217,
+        "name": "言丨最烦香菜",
+        "power": 36715,
+        "refresh_time": 0,
+        "region": 7,
+        "role_id": "r67svs83570",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11766
+      }
+    ],
+    [
+      54,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 20,
+        "land_count": 216,
+        "name": "夜曲丨纯粹",
+        "power": 36695,
+        "refresh_time": 1773212048,
+        "region": 2,
+        "role_id": "1t01gkvh4520",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14013
+      }
+    ],
+    [
+      55,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 218,
+        "name": "夜曲丨攻城一",
+        "power": 36611,
+        "refresh_time": 1773137373,
+        "region": 9,
+        "role_id": "i9dow4k05991",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 14084
+      }
+    ],
+    [
+      56,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 220,
+        "name": "长洲丨龙ya",
+        "power": 36538,
+        "refresh_time": 1773215098,
+        "region": 1,
+        "role_id": "2rm0jpaq5396",
+        "show_info": "",
+        "shu_cheng_count": 3,
+        "user_id": 12158
+      }
+    ],
+    [
+      57,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 204,
+        "name": "烟雨丨老六",
+        "power": 36467,
+        "refresh_time": 1773205826,
+        "region": 3,
+        "role_id": "125b8wua3827",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14736
+      }
+    ],
+    [
+      58,
+      {
+        "area": 0,
+        "branch_city_count": 9,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 249,
+        "name": "长洲丨季博大",
+        "power": 36453,
+        "refresh_time": 1773271784,
+        "region": 4,
+        "role_id": "5674563032",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 13062
+      }
+    ],
+    [
+      59,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 204,
+        "name": "雲丨左",
+        "power": 36391,
+        "refresh_time": 1773269164,
+        "region": 2,
+        "role_id": "1i7gupn14239",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 12913
+      }
+    ],
+    [
+      60,
+      {
+        "area": 0,
+        "branch_city_count": 9,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 196,
+        "name": "炸天丶干秋",
+        "power": 36335,
+        "refresh_time": 0,
+        "region": 2,
+        "role_id": "193xuj0i4014",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14395
+      }
+    ],
+    [
+      61,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 209,
+        "name": "转角",
+        "power": 36284,
+        "refresh_time": 1773250169,
+        "region": 7,
+        "role_id": "xiil6uo3709",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10631
+      }
+    ],
+    [
+      62,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 210,
+        "name": "无双丨璟弘",
+        "power": 36272,
+        "refresh_time": 1773269763,
+        "region": 7,
+        "role_id": "12jlnd1f3835",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13668
+      }
+    ],
+    [
+      63,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 203,
+        "name": "夜曲丨寒蝉",
+        "power": 36259,
+        "refresh_time": -1773213557,
+        "region": 2,
+        "role_id": "1kl02vtk4347",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 14068
+      }
+    ],
+    [
+      64,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 14,
+        "land_count": 221,
+        "name": "雷丨上将潘凤",
+        "power": 36235,
+        "refresh_time": 1773271191,
+        "region": 6,
+        "role_id": "2hea54je5136",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 12904
+      }
+    ],
+    [
+      65,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 209,
+        "name": "华年丨游侠",
+        "power": 36178,
+        "refresh_time": 1773273454,
+        "region": 2,
+        "role_id": "1p2xm2mo4422",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 12631
+      }
+    ],
+    [
+      66,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 11,
+        "land_count": 199,
+        "name": "海盐丨熊猫",
+        "power": 35906,
+        "refresh_time": 0,
+        "region": 8,
+        "role_id": "lo43mlk3504",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 15285
+      }
+    ],
+    [
+      67,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 187,
+        "name": "神丨传说小号",
+        "power": 35626,
+        "refresh_time": 1773229800,
+        "region": 1,
+        "role_id": "3cknkddd05987",
+        "show_info": "",
+        "shu_cheng_count": 4,
+        "user_id": 14664
+      }
+    ],
+    [
+      68,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 208,
+        "name": "牧云不二生",
+        "power": 35606,
+        "refresh_time": 1773236080,
+        "region": 6,
+        "role_id": "33y8s4mm05748",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14889
+      }
+    ],
+    [
+      69,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 205,
+        "name": "My0BBt",
+        "power": 35529,
+        "refresh_time": 1773201405,
+        "region": 11,
+        "role_id": "3j2hsp7n06238",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11413
+      }
+    ],
+    [
+      70,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 209,
+        "name": "雷丨清影",
+        "power": 35489,
+        "refresh_time": 1773271835,
+        "region": 4,
+        "role_id": "jv2xfnc3390",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12952
+      }
+    ],
+    [
+      71,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 14,
+        "land_count": 210,
+        "name": "重楼丨云中鹤",
+        "power": 35486,
+        "refresh_time": 1773156331,
+        "region": 9,
+        "role_id": "320q368g05710",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12741
+      }
+    ],
+    [
+      72,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 211,
+        "name": "鸢南",
+        "power": 35475,
+        "refresh_time": 1773272529,
+        "region": 11,
+        "role_id": "kyo4vjs3431",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14187
+      }
+    ],
+    [
+      73,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 209,
+        "name": "欧气小熊猫",
+        "power": 35467,
+        "refresh_time": 1773243596,
+        "region": 9,
+        "role_id": "x4vwkxc3700",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12325
+      }
+    ],
+    [
+      74,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 191,
+        "name": "烟雨丨大梦",
+        "power": 35450,
+        "refresh_time": 1773241793,
+        "region": 6,
+        "role_id": "3zihxovh10613",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 15412
+      }
+    ],
+    [
+      75,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 221,
+        "name": "余烬丶归尘",
+        "power": 35350,
+        "refresh_time": 0,
+        "region": 1,
+        "role_id": "4lo7ghwh11160",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14334
+      }
+    ],
+    [
+      76,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 184,
+        "name": "翊丨三水",
+        "power": 35345,
+        "refresh_time": 1773255399,
+        "region": 3,
+        "role_id": "36bi7p1x05863",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14836
+      }
+    ],
+    [
+      77,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 15,
+        "land_count": 206,
+        "name": "长洲丨角宿",
+        "power": 35327,
+        "refresh_time": 1773269511,
+        "region": 1,
+        "role_id": "2x62tvzb5559",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 12839
+      }
+    ],
+    [
+      78,
+      {
+        "area": 0,
+        "branch_city_count": 10,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 219,
+        "name": "烟雨丨七彩",
+        "power": 35297,
+        "refresh_time": 1773247114,
+        "region": 6,
+        "role_id": "444lmy9j10249",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14714
+      }
+    ],
+    [
+      79,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 212,
+        "name": "汉阳游",
+        "power": 35282,
+        "refresh_time": 1773267012,
+        "region": 4,
+        "role_id": "13i4npxo3863",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14623
+      }
+    ],
+    [
+      80,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 207,
+        "name": "云深丨摸玉兔",
+        "power": 35179,
+        "refresh_time": 1773245406,
+        "region": 8,
+        "role_id": "u9idmxk3637",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 16131
+      }
+    ],
+    [
+      81,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 209,
+        "name": "神丨烟雨潇湘",
+        "power": 35129,
+        "refresh_time": 1773263158,
+        "region": 3,
+        "role_id": "3d22tcso05999",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14676
+      }
+    ],
+    [
+      82,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 203,
+        "name": "花式丶白皇",
+        "power": 35115,
+        "refresh_time": 0,
+        "region": 7,
+        "role_id": "32204303127",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12214
+      }
+    ],
+    [
+      83,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 22,
+        "land_count": 200,
+        "name": "风月丨欧拉",
+        "power": 35086,
+        "refresh_time": 1773262367,
+        "region": 2,
+        "role_id": "yrkhaaw3741",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14404
+      }
+    ],
+    [
+      84,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 190,
+        "name": "宝宝窟",
+        "power": 35020,
+        "refresh_time": 1773037843,
+        "region": 7,
+        "role_id": "19ovsub54660",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13547
+      }
+    ],
+    [
+      85,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 207,
+        "name": "追梦人",
+        "power": 34941,
+        "refresh_time": 1773272226,
+        "region": 6,
+        "role_id": "13jhf0214081",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12382
+      }
+    ],
+    [
+      86,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 211,
+        "name": "酒笙丨龍飛",
+        "power": 34941,
+        "refresh_time": 1773273514,
+        "region": 10,
+        "role_id": "1bq4difi4084",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 10334
+      }
+    ],
+    [
+      87,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 11,
+        "land_count": 197,
+        "name": "神丨李寻欢",
+        "power": 34932,
+        "refresh_time": 1773235264,
+        "region": 1,
+        "role_id": "9786233033",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13548
+      }
+    ],
+    [
+      88,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 192,
+        "name": "弃疾乄森郎",
+        "power": 34894,
+        "refresh_time": -1773266931,
+        "region": 4,
+        "role_id": "1m4ksezz4351",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 13181
+      }
+    ],
+    [
+      89,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 198,
+        "name": "洪荒乄天涯",
+        "power": 34849,
+        "refresh_time": 1773248604,
+        "region": 10,
+        "role_id": "4c3y59bl10774",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 12520
+      }
+    ],
+    [
+      90,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 204,
+        "name": "无傲气有傲骨",
+        "power": 34724,
+        "refresh_time": 1773270734,
+        "region": 10,
+        "role_id": "2ugmpc1a05593",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13550
+      }
+    ],
+    [
+      91,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 202,
+        "name": "烬丨若以止白",
+        "power": 34713,
+        "refresh_time": 1773241848,
+        "region": 11,
+        "role_id": "3isnadfb06225",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12138
+      }
+    ],
+    [
+      92,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 204,
+        "name": "別丨回头等我",
+        "power": 34662,
+        "refresh_time": 1773250221,
+        "region": 5,
+        "role_id": "2nxs3r4g5308",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11182
+      }
+    ],
+    [
+      93,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 218,
+        "name": "沧澜丨罗睺",
+        "power": 34648,
+        "refresh_time": -1773244885,
+        "region": 5,
+        "role_id": "t258ec03652",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 10863
+      }
+    ],
+    [
+      94,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 195,
+        "name": "长洲丨二营长",
+        "power": 34588,
+        "refresh_time": 0,
+        "region": 1,
+        "role_id": "128mba3p3829",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 12814
+      }
+    ],
+    [
+      95,
+      {
+        "area": 0,
+        "branch_city_count": 9,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 208,
+        "name": "少年冰可乐",
+        "power": 34523,
+        "refresh_time": 0,
+        "region": 1,
+        "role_id": "1inx0icq4263",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 15858
+      }
+    ],
+    [
+      96,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 205,
+        "name": "扶苏乄梅子酒",
+        "power": 34293,
+        "refresh_time": -1773270549,
+        "region": 13,
+        "role_id": "2wqxcfgs5546",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14555
+      }
+    ],
+    [
+      97,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 211,
+        "name": "龍吟丨忙人",
+        "power": 34277,
+        "refresh_time": 1773231453,
+        "region": 9,
+        "role_id": "37265333050",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14174
+      }
+    ],
+    [
+      98,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 203,
+        "name": "榴莲酥i",
+        "power": 34235,
+        "refresh_time": -1773272559,
+        "region": 5,
+        "role_id": "1uv9eg8m06509",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 10092
+      }
+    ],
+    [
+      99,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 10,
+        "land_count": 191,
+        "name": "夜曲丨布朗熊",
+        "power": 34183,
+        "refresh_time": 0,
+        "region": 2,
+        "role_id": "o72gypc3560",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14010
+      }
+    ],
+    [
+      100,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 22,
+        "land_count": 221,
+        "name": "神丨史嘉鸿",
+        "power": 34155,
+        "refresh_time": 1773241942,
+        "region": 1,
+        "role_id": "3lushelg06367",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14671
+      }
+    ],
+    [
+      101,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 25,
+        "land_count": 194,
+        "name": "驿道北军",
+        "power": 34113,
+        "refresh_time": 1773265796,
+        "region": 4,
+        "role_id": "197duha04307",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14749
+      }
+    ],
+    [
+      102,
+      {
+        "area": 0,
+        "branch_city_count": 10,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 174,
+        "name": "余香丶肉师",
+        "power": 34097,
+        "refresh_time": 1773235175,
+        "region": 2,
+        "role_id": "39522963158",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14377
+      }
+    ],
+    [
+      103,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 177,
+        "name": "混沌丨天剑星",
+        "power": 34096,
+        "refresh_time": 1772955805,
+        "region": 1,
+        "role_id": "druryhc3236",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14111
+      }
+    ],
+    [
+      104,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 194,
+        "name": "长洲丨666",
+        "power": 34081,
+        "refresh_time": 1772937457,
+        "region": 3,
+        "role_id": "1cavecuz4093",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 11849
+      }
+    ],
+    [
+      105,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 210,
+        "name": "金吾丨希女王",
+        "power": 34068,
+        "refresh_time": 1773245944,
+        "region": 1,
+        "role_id": "1g2ta0v94194",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10406
+      }
+    ],
+    [
+      106,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 186,
+        "name": "我很菜别打我",
+        "power": 34049,
+        "refresh_time": 1773272827,
+        "region": 12,
+        "role_id": "1ptjawss4438",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14275
+      }
+    ],
+    [
+      107,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 12,
+        "land_count": 198,
+        "name": "白I暗竹无争",
+        "power": 34048,
+        "refresh_time": 1773272345,
+        "region": 3,
+        "role_id": "1z7hdvic4649",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 14382
+      }
+    ],
+    [
+      108,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 14,
+        "land_count": 198,
+        "name": "洪荒乄十年间",
+        "power": 34002,
+        "refresh_time": 1773176193,
+        "region": 2,
+        "role_id": "4b8hxxap10601",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12513
+      }
+    ],
+    [
+      109,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 209,
+        "name": "风起风落浊酒",
+        "power": 33994,
+        "refresh_time": -1773257002,
+        "region": 7,
+        "role_id": "1l2okoeo4325",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 15979
+      }
+    ],
+    [
+      110,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 203,
+        "name": "真滴白",
+        "power": 33993,
+        "refresh_time": 1773226501,
+        "region": 11,
+        "role_id": "1jr52rp24287",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 10415
+      }
+    ],
+    [
+      111,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 207,
+        "name": "情聖丨小琪",
+        "power": 33900,
+        "refresh_time": 1773270105,
+        "region": 9,
+        "role_id": "1nbeek254406",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13837
+      }
+    ],
+    [
+      112,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 181,
+        "name": "神丨Cx33",
+        "power": 33883,
+        "refresh_time": 0,
+        "region": 13,
+        "role_id": "3kdknp2g06300",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10856
+      }
+    ],
+    [
+      113,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 194,
+        "name": "玖I七七二",
+        "power": 33831,
+        "refresh_time": 1773272504,
+        "region": 9,
+        "role_id": "1lp7381d4341",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12992
+      }
+    ],
+    [
+      114,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 207,
+        "name": "怡流连",
+        "power": 33824,
+        "refresh_time": 1773213471,
+        "region": 11,
+        "role_id": "7415503066",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14336
+      }
+    ],
+    [
+      115,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 198,
+        "name": "天明启国",
+        "power": 33786,
+        "refresh_time": 1773151010,
+        "region": 8,
+        "role_id": "2u1qfw8o10601",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14881
+      }
+    ],
+    [
+      116,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 204,
+        "name": "啊啵呲小朋友",
+        "power": 33743,
+        "refresh_time": 1773272473,
+        "region": 8,
+        "role_id": "220pskle4713",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15985
+      }
+    ],
+    [
+      117,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 202,
+        "name": "塞内白袍军",
+        "power": 33710,
+        "refresh_time": 1773238968,
+        "region": 10,
+        "role_id": "3fyjqo0e06833",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14784
+      }
+    ],
+    [
+      118,
+      {
+        "area": 0,
+        "branch_city_count": 0,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 199,
+        "name": "玄甲丨情难却",
+        "power": 33683,
+        "refresh_time": 1773244611,
+        "region": 13,
+        "role_id": "2wj7k81g5551",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13562
+      }
+    ],
+    [
+      119,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 198,
+        "name": "道常丨无为",
+        "power": 33677,
+        "refresh_time": 1773090028,
+        "region": 4,
+        "role_id": "1oae6g3d4403",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13326
+      }
+    ],
+    [
+      120,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 202,
+        "name": "怡梦倾城殇",
+        "power": 33598,
+        "refresh_time": 1773248324,
+        "region": 7,
+        "role_id": "2idgjyjs5184",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 12652
+      }
+    ],
+    [
+      121,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 13,
+        "land_count": 233,
+        "name": "长洲丨季博达",
+        "power": 33569,
+        "refresh_time": 1773272716,
+        "region": 4,
+        "role_id": "1qkuldy74491",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 13128
+      }
+    ],
+    [
+      122,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 192,
+        "name": "河流丨执法",
+        "power": 33567,
+        "refresh_time": -1773239514,
+        "region": 5,
+        "role_id": "ktkadpm4124",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 10168
+      }
+    ],
+    [
+      123,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 11,
+        "land_count": 197,
+        "name": "北地无难军",
+        "power": 33491,
+        "refresh_time": 1773265704,
+        "region": 4,
+        "role_id": "4ed3tnxh10741",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14411
+      }
+    ],
+    [
+      124,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 10,
+        "land_count": 197,
+        "name": "鬼谋丨零充",
+        "power": 33479,
+        "refresh_time": -1773203657,
+        "region": 10,
+        "role_id": "32lw4etn05723",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 15838
+      }
+    ],
+    [
+      125,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 204,
+        "name": "翊丨飙车王",
+        "power": 33458,
+        "refresh_time": 1773272462,
+        "region": 1,
+        "role_id": "30mslxpl05652",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15039
+      }
+    ],
+    [
+      126,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 192,
+        "name": "王朝烈马",
+        "power": 33443,
+        "refresh_time": 1773242833,
+        "region": 10,
+        "role_id": "22zg3tn25528",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12193
+      }
+    ],
+    [
+      127,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 192,
+        "name": "夜曲丨小宋",
+        "power": 33433,
+        "refresh_time": 1773233912,
+        "region": 9,
+        "role_id": "co20ycg3331",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 14062
+      }
+    ],
+    [
+      128,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 188,
+        "name": "百里丨清风",
+        "power": 33374,
+        "refresh_time": 1773214935,
+        "region": 6,
+        "role_id": "hbub0i83328",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 15903
+      }
+    ],
+    [
+      129,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 201,
+        "name": "玖丨曦晨",
+        "power": 33367,
+        "refresh_time": -1773200628,
+        "region": 2,
+        "role_id": "33k2xelq05740",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12999
+      }
+    ],
+    [
+      130,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 12,
+        "land_count": 214,
+        "name": "余烬丶铁锅",
+        "power": 33343,
+        "refresh_time": 1773272802,
+        "region": 5,
+        "role_id": "rubzlsh4418",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14562
+      }
+    ],
+    [
+      131,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 210,
+        "name": "许夫子",
+        "power": 33341,
+        "refresh_time": 1773163422,
+        "region": 2,
+        "role_id": "2sqn3kkv5464",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 11771
+      }
+    ],
+    [
+      132,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 205,
+        "name": "荭中池鱼",
+        "power": 33337,
+        "refresh_time": -1773229742,
+        "region": 10,
+        "role_id": "1b25i0ip4059",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14167
+      }
+    ],
+    [
+      133,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 206,
+        "name": "刃海",
+        "power": 33328,
+        "refresh_time": 1773252317,
+        "region": 11,
+        "role_id": "ujnxknc3730",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 11034
+      }
+    ],
+    [
+      134,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 185,
+        "name": "怡香头牌",
+        "power": 33298,
+        "refresh_time": 0,
+        "region": 1,
+        "role_id": "22tew0x24733",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 15758
+      }
+    ],
+    [
+      135,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 214,
+        "name": "望月丨寸断",
+        "power": 33277,
+        "refresh_time": -1773268138,
+        "region": 5,
+        "role_id": "luuv4ig3587",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11290
+      }
+    ],
+    [
+      136,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 189,
+        "name": "不服就是摆",
+        "power": 33213,
+        "refresh_time": 1773232841,
+        "region": 10,
+        "role_id": "x31ffdk3704",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11121
+      }
+    ],
+    [
+      137,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 11,
+        "land_count": 211,
+        "name": "余烬丶慢漫",
+        "power": 33174,
+        "refresh_time": -1773195045,
+        "region": 5,
+        "role_id": "2uzs9fkj5500",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 14578
+      }
+    ],
+    [
+      138,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 208,
+        "name": "大多米",
+        "power": 33166,
+        "refresh_time": 1773249766,
+        "region": 12,
+        "role_id": "uac1zkw3683",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14517
+      }
+    ],
+    [
+      139,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 196,
+        "name": "云潮丨猫老大",
+        "power": 33152,
+        "refresh_time": -1773272002,
+        "region": 10,
+        "role_id": "3br2v7y605950",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10409
+      }
+    ],
+    [
+      140,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 207,
+        "name": "煙槍乄白桃A",
+        "power": 33136,
+        "refresh_time": 1773250154,
+        "region": 13,
+        "role_id": "3hpx71ez06174",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14027
+      }
+    ],
+    [
+      141,
+      {
+        "area": 0,
+        "branch_city_count": 9,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 213,
+        "name": "CEO丶晚风",
+        "power": 33132,
+        "refresh_time": 1773251851,
+        "region": 2,
+        "role_id": "1682sq793935",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11164
+      }
+    ],
+    [
+      142,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 202,
+        "name": "寒山丨神皇",
+        "power": 33093,
+        "refresh_time": 0,
+        "region": 7,
+        "role_id": "15kgago23920",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 15848
+      }
+    ],
+    [
+      143,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 189,
+        "name": "夜曲丨高歌",
+        "power": 33025,
+        "refresh_time": 0,
+        "region": 2,
+        "role_id": "1q1jy9ak5133",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 14096
+      }
+    ],
+    [
+      144,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 201,
+        "name": "难得有情人",
+        "power": 32956,
+        "refresh_time": 1773271644,
+        "region": 5,
+        "role_id": "umjc2s810749",
+        "show_info": "",
+        "shu_cheng_count": 5,
+        "user_id": 11822
+      }
+    ],
+    [
+      145,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 186,
+        "name": "风月丨小布",
+        "power": 32904,
+        "refresh_time": 0,
+        "region": 2,
+        "role_id": "1ez6q19q4163",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14367
+      }
+    ],
+    [
+      146,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 181,
+        "name": "不待诸天万界",
+        "power": 32900,
+        "refresh_time": 1773234787,
+        "region": 6,
+        "role_id": "e1mivc24561",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13649
+      }
+    ],
+    [
+      147,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 198,
+        "name": "神丨传说",
+        "power": 32865,
+        "refresh_time": 1773260494,
+        "region": 3,
+        "role_id": "3248oa8l05987",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14675
+      }
+    ],
+    [
+      148,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 15,
+        "land_count": 200,
+        "name": "离殃丶庄稼汉",
+        "power": 32846,
+        "refresh_time": -1773215056,
+        "region": 1,
+        "role_id": "1k4i1nr906076",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 10797
+      }
+    ],
+    [
+      149,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 12,
+        "land_count": 202,
+        "name": "琨丨南斗",
+        "power": 32845,
+        "refresh_time": 1773197272,
+        "region": 9,
+        "role_id": "1en4k4ez4176",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13000
+      }
+    ],
+    [
+      150,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 196,
+        "name": "长洲丨季博昌",
+        "power": 32815,
+        "refresh_time": 1773245050,
+        "region": 1,
+        "role_id": "1qpvkqyl4491",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12159
+      }
+    ],
+    [
+      151,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 25,
+        "land_count": 200,
+        "name": "神丨夕皇",
+        "power": 32739,
+        "refresh_time": 1773231721,
+        "region": 3,
+        "role_id": "2zefg9tc05616",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14530
+      }
+    ],
+    [
+      152,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 207,
+        "name": "白茶丨彦祖",
+        "power": 32727,
+        "refresh_time": 0,
+        "region": 5,
+        "role_id": "2kt3ra9i5416",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 12737
+      }
+    ],
+    [
+      153,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 202,
+        "name": "暗影弑魂",
+        "power": 32690,
+        "refresh_time": 1773262128,
+        "region": 13,
+        "role_id": "13xqz7nn4217",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13760
+      }
+    ],
+    [
+      154,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 13,
+        "land_count": 239,
+        "name": "極I潜龙勿用",
+        "power": 32686,
+        "refresh_time": 1773272179,
+        "region": 7,
+        "role_id": "3dcqcyu606043",
+        "show_info": "",
+        "shu_cheng_count": 4,
+        "user_id": 13097
+      }
+    ],
+    [
+      155,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 17,
+        "land_count": 201,
+        "name": "星辰海",
+        "power": 32670,
+        "refresh_time": -1773271191,
+        "region": 11,
+        "role_id": "39scy57u05901",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 12183
+      }
+    ],
+    [
+      156,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 191,
+        "name": "夜丨归尘",
+        "power": 32656,
+        "refresh_time": -1773274126,
+        "region": 11,
+        "role_id": "4l7ywzvg11078",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14548
+      }
+    ],
+    [
+      157,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 213,
+        "name": "道丨琼斯指数",
+        "power": 32629,
+        "refresh_time": 1773273816,
+        "region": 13,
+        "role_id": "14qbcd0o3897",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11997
+      }
+    ],
+    [
+      158,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 197,
+        "name": "喵丨长安",
+        "power": 32617,
+        "refresh_time": 1773244172,
+        "region": 4,
+        "role_id": "1i64qt6d4245",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13159
+      }
+    ],
+    [
+      159,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 193,
+        "name": "桂系丶沉癫癫",
+        "power": 32567,
+        "refresh_time": 1773250074,
+        "region": 5,
+        "role_id": "2118px0j4888",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11057
+      }
+    ],
+    [
+      160,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 20,
+        "land_count": 199,
+        "name": "神丨辉辉",
+        "power": 32546,
+        "refresh_time": 0,
+        "region": 5,
+        "role_id": "34ldyorw06099",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14661
+      }
+    ],
+    [
+      161,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 206,
+        "name": "划水丨西瓜",
+        "power": 32535,
+        "refresh_time": -1773231923,
+        "region": 2,
+        "role_id": "rvxutog3583",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14225
+      }
+    ],
+    [
+      162,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 202,
+        "name": "清丨铁公鸡",
+        "power": 32523,
+        "refresh_time": -1773199129,
+        "region": 12,
+        "role_id": "2fcratk15079",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12394
+      }
+    ],
+    [
+      163,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 10,
+        "land_count": 201,
+        "name": "闻良策",
+        "power": 32497,
+        "refresh_time": 1773138792,
+        "region": 7,
+        "role_id": "1806405d3982",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12241
+      }
+    ],
+    [
+      164,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 190,
+        "name": "河流丨雲霄",
+        "power": 32478,
+        "refresh_time": 1773251915,
+        "region": 5,
+        "role_id": "bp3ndv43198",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 11603
+      }
+    ],
+    [
+      165,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 205,
+        "name": "余烬丶33",
+        "power": 32472,
+        "refresh_time": -1773271788,
+        "region": 1,
+        "role_id": "1m287wuc4349",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15419
+      }
+    ],
+    [
+      166,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 192,
+        "name": "华辞",
+        "power": 32405,
+        "refresh_time": 0,
+        "region": 13,
+        "role_id": "1c4d0y3k4088",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15209
+      }
+    ],
+    [
+      167,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 200,
+        "name": "凤阳羽林军",
+        "power": 32395,
+        "refresh_time": 1773232625,
+        "region": 5,
+        "role_id": "1gw7ljds4240",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10659
+      }
+    ],
+    [
+      168,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 203,
+        "name": "玉蟒丨萃淵",
+        "power": 32328,
+        "refresh_time": 0,
+        "region": 11,
+        "role_id": "3794843014",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13613
+      }
+    ],
+    [
+      169,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 188,
+        "name": "鎏丨一木桑",
+        "power": 32288,
+        "refresh_time": -1773113432,
+        "region": 7,
+        "role_id": "10ef37w83782",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14475
+      }
+    ],
+    [
+      170,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 199,
+        "name": "落雪乄芍药",
+        "power": 32277,
+        "refresh_time": 1773220392,
+        "region": 3,
+        "role_id": "1nb3euz64615",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13125
+      }
+    ],
+    [
+      171,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 21,
+        "land_count": 190,
+        "name": "雲阙丨梦归",
+        "power": 32270,
+        "refresh_time": 1773247737,
+        "region": 5,
+        "role_id": "xramtrc3715",
+        "show_info": "",
+        "shu_cheng_count": 3,
+        "user_id": 11790
+      }
+    ],
+    [
+      172,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 198,
+        "name": "仁兄稳住",
+        "power": 32236,
+        "refresh_time": 1773272084,
+        "region": 10,
+        "role_id": "2p4n8xlb5324",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13544
+      }
+    ],
+    [
+      173,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 199,
+        "name": "御丨沐目二",
+        "power": 32221,
+        "refresh_time": -1773126329,
+        "region": 13,
+        "role_id": "1p2hjgm74421",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13373
+      }
+    ],
+    [
+      174,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 200,
+        "name": "冬日蝉鸣",
+        "power": 32166,
+        "refresh_time": 1773270017,
+        "region": 6,
+        "role_id": "411yxbxw10085",
+        "show_info": "",
+        "shu_cheng_count": 5,
+        "user_id": 14900
+      }
+    ],
+    [
+      175,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 190,
+        "name": "云潮丨如梦令",
+        "power": 32151,
+        "refresh_time": 0,
+        "region": 11,
+        "role_id": "26w45wnx4846",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15217
+      }
+    ],
+    [
+      176,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 185,
+        "name": "宝宝苦",
+        "power": 32092,
+        "refresh_time": 0,
+        "region": 7,
+        "role_id": "wevpubc3684",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14152
+      }
+    ],
+    [
+      177,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 10,
+        "land_count": 208,
+        "name": "晋丨吴郡南军",
+        "power": 32079,
+        "refresh_time": 1773235916,
+        "region": 8,
+        "role_id": "vlio3wg3654",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 15386
+      }
+    ],
+    [
+      178,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 191,
+        "name": "风月丨唔壿墫",
+        "power": 32048,
+        "refresh_time": 1773145769,
+        "region": 2,
+        "role_id": "1j5ikvcj4264",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14428
+      }
+    ],
+    [
+      179,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 192,
+        "name": "神丨艮山谦",
+        "power": 31949,
+        "refresh_time": -1773232729,
+        "region": 3,
+        "role_id": "1m7cq6a84492",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13518
+      }
+    ],
+    [
+      180,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 196,
+        "name": "绝妙文丘里",
+        "power": 31920,
+        "refresh_time": 0,
+        "region": 11,
+        "role_id": "1f0bat1k4173",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13140
+      }
+    ],
+    [
+      181,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 202,
+        "name": "艺术家乄怂人",
+        "power": 31911,
+        "refresh_time": 1773256036,
+        "region": 12,
+        "role_id": "2onza0545312",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15259
+      }
+    ],
+    [
+      182,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 200,
+        "name": "玖丨花沐云",
+        "power": 31909,
+        "refresh_time": 1773271311,
+        "region": 9,
+        "role_id": "35ja0j1t05739",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13039
+      }
+    ],
+    [
+      183,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 10,
+        "land_count": 194,
+        "name": "新丨百幕",
+        "power": 31906,
+        "refresh_time": -1773258297,
+        "region": 3,
+        "role_id": "166gapip4065",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14479
+      }
+    ],
+    [
+      184,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 192,
+        "name": "橘橙小艾",
+        "power": 31887,
+        "refresh_time": -1773021225,
+        "region": 8,
+        "role_id": "369lmima05814",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13035
+      }
+    ],
+    [
+      185,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 211,
+        "name": "昌安十五步",
+        "power": 31829,
+        "refresh_time": 0,
+        "region": 2,
+        "role_id": "46y9jen810447",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10682
+      }
+    ],
+    [
+      186,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 180,
+        "name": "神丨问君",
+        "power": 31817,
+        "refresh_time": -1773072016,
+        "region": 3,
+        "role_id": "3cl4g34r05987",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 11341
+      }
+    ],
+    [
+      187,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 16,
+        "land_count": 185,
+        "name": "北落丨玉衡星",
+        "power": 31795,
+        "refresh_time": 1773217156,
+        "region": 10,
+        "role_id": "1cur6rvt4105",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14236
+      }
+    ],
+    [
+      188,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 197,
+        "name": "瀚霖丨620",
+        "power": 31792,
+        "refresh_time": 0,
+        "region": 6,
+        "role_id": "343bxru505753",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 11728
+      }
+    ],
+    [
+      189,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 215,
+        "name": "古月生1",
+        "power": 31772,
+        "refresh_time": -1773272903,
+        "region": 6,
+        "role_id": "awkid0w3348",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 13526
+      }
+    ],
+    [
+      190,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 202,
+        "name": "余烬寒",
+        "power": 31767,
+        "refresh_time": 1773271375,
+        "region": 6,
+        "role_id": "1becluvz4067",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14309
+      }
+    ],
+    [
+      191,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 194,
+        "name": "紫徽丨和天下",
+        "power": 31755,
+        "refresh_time": -1773239934,
+        "region": 10,
+        "role_id": "2c2zn1aw5002",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15760
+      }
+    ],
+    [
+      192,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 196,
+        "name": "圣丨奉孝",
+        "power": 31711,
+        "refresh_time": 1773035224,
+        "region": 9,
+        "role_id": "1fchsqdy4174",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 14053
+      }
+    ],
+    [
+      193,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 197,
+        "name": "白面游神",
+        "power": 31711,
+        "refresh_time": 1773192805,
+        "region": 8,
+        "role_id": "2zc7dyhw06130",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10722
+      }
+    ],
+    [
+      194,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 209,
+        "name": "秋丨巡海游侠",
+        "power": 31681,
+        "refresh_time": 1773257908,
+        "region": 7,
+        "role_id": "4699863185",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 12867
+      }
+    ],
+    [
+      195,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 201,
+        "name": "遗湿的美好",
+        "power": 31674,
+        "refresh_time": 1773241556,
+        "region": 5,
+        "role_id": "hklpad43332",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13674
+      }
+    ],
+    [
+      196,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 203,
+        "name": "余烬丶熊猫",
+        "power": 31671,
+        "refresh_time": 1773240354,
+        "region": 3,
+        "role_id": "1diygps24189",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14541
+      }
+    ],
+    [
+      197,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 164,
+        "name": "风月丨画风",
+        "power": 31622,
+        "refresh_time": 1773238761,
+        "region": 9,
+        "role_id": "mphj3ao3463",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14499
+      }
+    ],
+    [
+      198,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 202,
+        "name": "天邪丨北凉",
+        "power": 31622,
+        "refresh_time": 1773267281,
+        "region": 13,
+        "role_id": "12ie5b6x3950",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10282
+      }
+    ],
+    [
+      199,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 195,
+        "name": "斯塔克张百万",
+        "power": 31613,
+        "refresh_time": 0,
+        "region": 6,
+        "role_id": "2sme1zql5424",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11356
+      }
+    ],
+    [
+      200,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 180,
+        "name": "凤雏居士",
+        "power": 31572,
+        "refresh_time": 1773268257,
+        "region": 13,
+        "role_id": "17qgsnhx4005",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12300
+      }
+    ],
+    [
+      201,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 205,
+        "name": "花丨孔明",
+        "power": 31565,
+        "refresh_time": 0,
+        "region": 10,
+        "role_id": "1qxy3bop4468",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 16244
+      }
+    ],
+    [
+      202,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 184,
+        "name": "懿丨孟德斯鸠",
+        "power": 31494,
+        "refresh_time": 1772949478,
+        "region": 10,
+        "role_id": "3sph1xqj06677",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15236
+      }
+    ],
+    [
+      203,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 178,
+        "name": "砚秋丨似梦",
+        "power": 31474,
+        "refresh_time": -1773125962,
+        "region": 10,
+        "role_id": "2nfwtn9q5280",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12903
+      }
+    ],
+    [
+      204,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 198,
+        "name": "江东丨太爷",
+        "power": 31470,
+        "refresh_time": 1773079367,
+        "region": 5,
+        "role_id": "2qwbf1n406294",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12943
+      }
+    ],
+    [
+      205,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 16,
+        "land_count": 205,
+        "name": "白I暗竹天下",
+        "power": 31447,
+        "refresh_time": 1773272820,
+        "region": 1,
+        "role_id": "x7o9aso3702",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14368
+      }
+    ],
+    [
+      206,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 183,
+        "name": "多晴的阳光",
+        "power": 31401,
+        "refresh_time": -1773237739,
+        "region": 11,
+        "role_id": "2hsx6beu5149",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13862
+      }
+    ],
+    [
+      207,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 197,
+        "name": "丨朕",
+        "power": 31384,
+        "refresh_time": -1773273139,
+        "region": 8,
+        "role_id": "3tqspk5k10135",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11187
+      }
+    ],
+    [
+      208,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 196,
+        "name": "瑾丶",
+        "power": 31381,
+        "refresh_time": -1773229211,
+        "region": 13,
+        "role_id": "1rjri4rf4571",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11422
+      }
+    ],
+    [
+      209,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 206,
+        "name": "清秋慕白",
+        "power": 31375,
+        "refresh_time": 1773270074,
+        "region": 7,
+        "role_id": "212xjjz64704",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11585
+      }
+    ],
+    [
+      210,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 196,
+        "name": "余烬丶风花",
+        "power": 31359,
+        "refresh_time": 1773246114,
+        "region": 1,
+        "role_id": "18dtg5d55528",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14577
+      }
+    ],
+    [
+      211,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 197,
+        "name": "汐颜丨昔颜",
+        "power": 31309,
+        "refresh_time": 1773201523,
+        "region": 13,
+        "role_id": "17yvfyow4001",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 11679
+      }
+    ],
+    [
+      212,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 202,
+        "name": "此非我意",
+        "power": 31290,
+        "refresh_time": 1773273250,
+        "region": 9,
+        "role_id": "447x56v710256",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12419
+      }
+    ],
+    [
+      213,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 12,
+        "land_count": 201,
+        "name": "朝饥之鲤",
+        "power": 31275,
+        "refresh_time": -1773242720,
+        "region": 7,
+        "role_id": "2akzaxkd5030",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13573
+      }
+    ],
+    [
+      214,
+      {
+        "area": 0,
+        "branch_city_count": 9,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 206,
+        "name": "勇哥4852",
+        "power": 31275,
+        "refresh_time": 1773273707,
+        "region": 13,
+        "role_id": "2u30plpb5482",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 12348
+      }
+    ],
+    [
+      215,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 198,
+        "name": "核动力小龙虾",
+        "power": 31266,
+        "refresh_time": 0,
+        "region": 8,
+        "role_id": "cxzajbk3220",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12447
+      }
+    ],
+    [
+      216,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 210,
+        "name": "雷丨JUGG",
+        "power": 31236,
+        "refresh_time": 1773272590,
+        "region": 6,
+        "role_id": "306h64ix05641",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 12900
+      }
+    ],
+    [
+      217,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 20,
+        "land_count": 189,
+        "name": "纵横丨十一",
+        "power": 31232,
+        "refresh_time": -1773270166,
+        "region": 9,
+        "role_id": "1qbhdfla4450",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12969
+      }
+    ],
+    [
+      218,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 199,
+        "name": "来一瓶元气2",
+        "power": 31224,
+        "refresh_time": 1773239083,
+        "region": 13,
+        "role_id": "x6l3srf4044",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 15224
+      }
+    ],
+    [
+      219,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 197,
+        "name": "韓立",
+        "power": 31174,
+        "refresh_time": 1773269270,
+        "region": 5,
+        "role_id": "15t5vd2c3924",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 11071
+      }
+    ],
+    [
+      220,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 201,
+        "name": "鐡血丨無雙",
+        "power": 31161,
+        "refresh_time": 1773221031,
+        "region": 3,
+        "role_id": "2tpxc5w55461",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11669
+      }
+    ],
+    [
+      221,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 27,
+        "land_count": 209,
+        "name": "神丨兵麒临",
+        "power": 31155,
+        "refresh_time": -1773238183,
+        "region": 1,
+        "role_id": "2fkkj4mh5559",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13508
+      }
+    ],
+    [
+      222,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 187,
+        "name": "煙槍乄黑桃K",
+        "power": 31153,
+        "refresh_time": 1773245491,
+        "region": 13,
+        "role_id": "3hky22oe06177",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14032
+      }
+    ],
+    [
+      223,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 186,
+        "name": "无敌鸠鸠淳",
+        "power": 31138,
+        "refresh_time": 1773156751,
+        "region": 5,
+        "role_id": "1djjhefc4124",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15074
+      }
+    ],
+    [
+      224,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 12,
+        "land_count": 192,
+        "name": "西斯的复仇",
+        "power": 31135,
+        "refresh_time": -1773224595,
+        "region": 1,
+        "role_id": "1q5phbhr4447",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13892
+      }
+    ],
+    [
+      225,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 182,
+        "name": "花式丶鱼皇",
+        "power": 31133,
+        "refresh_time": 1773220555,
+        "region": 7,
+        "role_id": "u2h5ooe3961",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13083
+      }
+    ],
+    [
+      226,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 13,
+        "land_count": 217,
+        "name": "钧丶派大星",
+        "power": 31127,
+        "refresh_time": 1773267479,
+        "region": 7,
+        "role_id": "1mbl9uwu4370",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10926
+      }
+    ],
+    [
+      227,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 218,
+        "name": "義丨白马军",
+        "power": 31109,
+        "refresh_time": 1773246140,
+        "region": 4,
+        "role_id": "3124xgae05700",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15683
+      }
+    ],
+    [
+      228,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 185,
+        "name": "刻词梨木",
+        "power": 31103,
+        "refresh_time": 1773246127,
+        "region": 7,
+        "role_id": "2g2hraho5105",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14706
+      }
+    ],
+    [
+      229,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 154,
+        "name": "神丨子毅",
+        "power": 31100,
+        "refresh_time": -1773068705,
+        "region": 3,
+        "role_id": "3cm7o87a05987",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14655
+      }
+    ],
+    [
+      230,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 203,
+        "name": "风月丨唔墫壿",
+        "power": 31099,
+        "refresh_time": -1773257232,
+        "region": 9,
+        "role_id": "1hk3qzfd4264",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14429
+      }
+    ],
+    [
+      231,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 200,
+        "name": "啊哈哈哈啦",
+        "power": 31093,
+        "refresh_time": 1773239893,
+        "region": 8,
+        "role_id": "kmx4lyg3409",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15366
+      }
+    ],
+    [
+      232,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 24,
+        "land_count": 191,
+        "name": "迈克尔丨鲫壳",
+        "power": 31081,
+        "refresh_time": 0,
+        "region": 5,
+        "role_id": "25p1avjm4816",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11839
+      }
+    ],
+    [
+      233,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 195,
+        "name": "神策丨九思",
+        "power": 31078,
+        "refresh_time": 1773210242,
+        "region": 11,
+        "role_id": "qdpkrcw3548",
+        "show_info": "",
+        "shu_cheng_count": 4,
+        "user_id": 15254
+      }
+    ],
+    [
+      234,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 206,
+        "name": "云想丨回思",
+        "power": 31073,
+        "refresh_time": 1773235263,
+        "region": 8,
+        "role_id": "1ibcz2014247",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15519
+      }
+    ],
+    [
+      235,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 195,
+        "name": "剑丨依mi",
+        "power": 31055,
+        "refresh_time": 0,
+        "region": 8,
+        "role_id": "28fhgvcq5096",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12918
+      }
+    ],
+    [
+      236,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 188,
+        "name": "神丨青山隐",
+        "power": 31053,
+        "refresh_time": 1773248270,
+        "region": 4,
+        "role_id": "2c4x1iaw5052",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14180
+      }
+    ],
+    [
+      237,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 13,
+        "land_count": 210,
+        "name": "独龙",
+        "power": 31049,
+        "refresh_time": 1773272057,
+        "region": 10,
+        "role_id": "zfijvo83760",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 15871
+      }
+    ],
+    [
+      238,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 183,
+        "name": "雷丨怀朔",
+        "power": 31039,
+        "refresh_time": -1772863833,
+        "region": 3,
+        "role_id": "1v4dl8yv4565",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12884
+      }
+    ],
+    [
+      239,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 25,
+        "land_count": 203,
+        "name": "风月丨摇啊摇",
+        "power": 31039,
+        "refresh_time": 1773269832,
+        "region": 9,
+        "role_id": "21b3dygu4697",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14387
+      }
+    ],
+    [
+      240,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 180,
+        "name": "清风I明月",
+        "power": 31024,
+        "refresh_time": 1773073788,
+        "region": 9,
+        "role_id": "ynq8wsh3891",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 12189
+      }
+    ],
+    [
+      241,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 13,
+        "land_count": 201,
+        "name": "未晞丶轻悠",
+        "power": 31016,
+        "refresh_time": -1773273612,
+        "region": 3,
+        "role_id": "1a01h3tk4045",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14743
+      }
+    ],
+    [
+      242,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 15,
+        "land_count": 195,
+        "name": "执剑丨李长寿",
+        "power": 30987,
+        "refresh_time": 1773244162,
+        "region": 6,
+        "role_id": "ekdssuw3300",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14756
+      }
+    ],
+    [
+      243,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 191,
+        "name": "浮沉随浪",
+        "power": 30982,
+        "refresh_time": -1773112032,
+        "region": 6,
+        "role_id": "1028700w3798",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14735
+      }
+    ],
+    [
+      244,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 207,
+        "name": "即墨玄甲军",
+        "power": 30980,
+        "refresh_time": 0,
+        "region": 7,
+        "role_id": "3ynn7ftt06964",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12778
+      }
+    ],
+    [
+      245,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 194,
+        "name": "七杀丨梅子酒",
+        "power": 30949,
+        "refresh_time": 0,
+        "region": 10,
+        "role_id": "1u2nong54543",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 11581
+      }
+    ],
+    [
+      246,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 199,
+        "name": "嵐乄枪魂",
+        "power": 30938,
+        "refresh_time": 0,
+        "region": 11,
+        "role_id": "eu4bv4g3263",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 12701
+      }
+    ],
+    [
+      247,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 166,
+        "name": "丨否极泰来丨",
+        "power": 30936,
+        "refresh_time": -1772824175,
+        "region": 7,
+        "role_id": "1m0dyoor4348",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14773
+      }
+    ],
+    [
+      248,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 184,
+        "name": "浮沉未央",
+        "power": 30888,
+        "refresh_time": 1773273139,
+        "region": 8,
+        "role_id": "2ycvbiwj05625",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14867
+      }
+    ],
+    [
+      249,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 9,
+        "land_count": 191,
+        "name": "骑士执念",
+        "power": 30882,
+        "refresh_time": 0,
+        "region": 13,
+        "role_id": "347f5dwr05798",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10398
+      }
+    ],
+    [
+      250,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 8,
+        "land_count": 199,
+        "name": "烟雨丨小七",
+        "power": 30881,
+        "refresh_time": -1773248861,
+        "region": 6,
+        "role_id": "4e60v31a11100",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14607
+      }
+    ],
+    [
+      251,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 203,
+        "name": "白马丨高尔夫",
+        "power": 30867,
+        "refresh_time": 1773274063,
+        "region": 6,
+        "role_id": "jaoce1k3375",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15399
+      }
+    ],
+    [
+      252,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 191,
+        "name": "翊丨故梦",
+        "power": 30858,
+        "refresh_time": 1773079810,
+        "region": 5,
+        "role_id": "2epdtx585063",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14771
+      }
+    ],
+    [
+      253,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 196,
+        "name": "风月丨三千",
+        "power": 30851,
+        "refresh_time": 1773065819,
+        "region": 9,
+        "role_id": "3idi3lad06210",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14372
+      }
+    ],
+    [
+      254,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 204,
+        "name": "时光丶机",
+        "power": 30802,
+        "refresh_time": 1773236934,
+        "region": 13,
+        "role_id": "32496513128",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10003
+      }
+    ],
+    [
+      255,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 191,
+        "name": "幻乄奥格瑞玛",
+        "power": 30800,
+        "refresh_time": 0,
+        "region": 8,
+        "role_id": "2nnphw295292",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13700
+      }
+    ],
+    [
+      256,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 180,
+        "name": "忆梦迭",
+        "power": 30795,
+        "refresh_time": -1773130757,
+        "region": 13,
+        "role_id": "3q35c5hk06594",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 12530
+      }
+    ],
+    [
+      257,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 197,
+        "name": "青楼丨快樂",
+        "power": 30793,
+        "refresh_time": 1773260539,
+        "region": 1,
+        "role_id": "2371173050",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 10966
+      }
+    ],
+    [
+      258,
+      {
+        "area": 0,
+        "branch_city_count": 10,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 210,
+        "name": "香香脆脆",
+        "power": 30781,
+        "refresh_time": 1773273852,
+        "region": 13,
+        "role_id": "1yxelrtk4745",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 11509
+      }
+    ],
+    [
+      259,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 192,
+        "name": "云梦丨一封",
+        "power": 30772,
+        "refresh_time": -1773271168,
+        "region": 5,
+        "role_id": "12hxpxut3834",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11784
+      }
+    ],
+    [
+      260,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 179,
+        "name": "翊丨老贼",
+        "power": 30754,
+        "refresh_time": -1773189202,
+        "region": 1,
+        "role_id": "11bycmq73806",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14815
+      }
+    ],
+    [
+      261,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 179,
+        "name": "帝剑丨小小怪",
+        "power": 30746,
+        "refresh_time": 1772808164,
+        "region": 12,
+        "role_id": "20bdeqoh4674",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14212
+      }
+    ],
+    [
+      262,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 190,
+        "name": "天使院",
+        "power": 30730,
+        "refresh_time": 1773164398,
+        "region": 1,
+        "role_id": "9fmzgu83732",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 16075
+      }
+    ],
+    [
+      263,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 197,
+        "name": "懿丨大漠",
+        "power": 30728,
+        "refresh_time": 1773262455,
+        "region": 10,
+        "role_id": "1n0jhtce4372",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 14971
+      }
+    ],
+    [
+      264,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 17,
+        "land_count": 201,
+        "name": "休闲娱乐",
+        "power": 30726,
+        "refresh_time": 1773273303,
+        "region": 6,
+        "role_id": "jhfbxb43476",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10577
+      }
+    ],
+    [
+      265,
+      {
+        "area": 0,
+        "branch_city_count": 8,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 214,
+        "name": "晚星映明月",
+        "power": 30721,
+        "refresh_time": 1773263827,
+        "region": 7,
+        "role_id": "18b7sljq4098",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14202
+      }
+    ],
+    [
+      266,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 200,
+        "name": "多巴酚丁胺",
+        "power": 30719,
+        "refresh_time": -1773234745,
+        "region": 8,
+        "role_id": "19vb0n8o4031",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15636
+      }
+    ],
+    [
+      267,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 20,
+        "land_count": 209,
+        "name": "白I暗竹",
+        "power": 30718,
+        "refresh_time": 1773273535,
+        "region": 3,
+        "role_id": "u2yaikg3633",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 14380
+      }
+    ],
+    [
+      268,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 20,
+        "land_count": 190,
+        "name": "苏丨伯言",
+        "power": 30705,
+        "refresh_time": -1773246342,
+        "region": 5,
+        "role_id": "12cndt1r3831",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10660
+      }
+    ],
+    [
+      269,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 202,
+        "name": "小白丨刘德华",
+        "power": 30688,
+        "refresh_time": -1773214890,
+        "region": 13,
+        "role_id": "1d76cgl54640",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 13727
+      }
+    ],
+    [
+      270,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 199,
+        "name": "神丨老牛",
+        "power": 30685,
+        "refresh_time": 1773236490,
+        "region": 6,
+        "role_id": "3t2ppie206699",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11326
+      }
+    ],
+    [
+      271,
+      {
+        "area": 0,
+        "branch_city_count": 1,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 161,
+        "name": "宝宝哭",
+        "power": 30683,
+        "refresh_time": -1773228635,
+        "region": 7,
+        "role_id": "1m2pxp6a4387",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13516
+      }
+    ],
+    [
+      272,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 182,
+        "name": "汐丨安澜",
+        "power": 30683,
+        "refresh_time": -1773198798,
+        "region": 1,
+        "role_id": "32xjyvf405734",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 10830
+      }
+    ],
+    [
+      273,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 16,
+        "land_count": 192,
+        "name": "落雪乄忘川谣",
+        "power": 30682,
+        "refresh_time": 1773273623,
+        "region": 4,
+        "role_id": "16r90xbc4877",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12838
+      }
+    ],
+    [
+      274,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 194,
+        "name": "太上丨叁玖",
+        "power": 30681,
+        "refresh_time": 1773267845,
+        "region": 8,
+        "role_id": "urx0g2w3690",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 13742
+      }
+    ],
+    [
+      275,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 3,
+        "land_count": 194,
+        "name": "岚月丨殇雪",
+        "power": 30676,
+        "refresh_time": 0,
+        "region": 8,
+        "role_id": "1aelwgeu4143",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 15638
+      }
+    ],
+    [
+      276,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 192,
+        "name": "国潮不言",
+        "power": 30666,
+        "refresh_time": 1773261431,
+        "region": 8,
+        "role_id": "p4unyz43516",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 10154
+      }
+    ],
+    [
+      277,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 201,
+        "name": "首席韩文清",
+        "power": 30663,
+        "refresh_time": 1773220985,
+        "region": 13,
+        "role_id": "36njvtsc05826",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14653
+      }
+    ],
+    [
+      278,
+      {
+        "area": 0,
+        "branch_city_count": 9,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 204,
+        "name": "吴越十字军",
+        "power": 30653,
+        "refresh_time": -1773244219,
+        "region": 11,
+        "role_id": "2phpqt305335",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15072
+      }
+    ],
+    [
+      279,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 185,
+        "name": "余烬丶阿赤",
+        "power": 30643,
+        "refresh_time": 1773251893,
+        "region": 5,
+        "role_id": "xlqf6g83712",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 15586
+      }
+    ],
+    [
+      280,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 17,
+        "land_count": 197,
+        "name": "余烬丶勒布朗",
+        "power": 30640,
+        "refresh_time": 1773272330,
+        "region": 5,
+        "role_id": "9cn06pk3391",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 10780
+      }
+    ],
+    [
+      281,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 194,
+        "name": "星尘丨過往",
+        "power": 30616,
+        "refresh_time": 1773246296,
+        "region": 13,
+        "role_id": "3a9vyksg05917",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 12626
+      }
+    ],
+    [
+      282,
+      {
+        "area": 0,
+        "branch_city_count": 7,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 200,
+        "name": "名仁",
+        "power": 30601,
+        "refresh_time": 0,
+        "region": 11,
+        "role_id": "1xwjc5mm4625",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11293
+      }
+    ],
+    [
+      283,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 16,
+        "land_count": 193,
+        "name": "沃丨三叶",
+        "power": 30600,
+        "refresh_time": 1773244056,
+        "region": 6,
+        "role_id": "2vx7bcsz05583",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 11542
+      }
+    ],
+    [
+      284,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 192,
+        "name": "孤独症患者",
+        "power": 30574,
+        "refresh_time": 1773058818,
+        "region": 10,
+        "role_id": "449pemdd10226",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15021
+      }
+    ],
+    [
+      285,
+      {
+        "area": 0,
+        "branch_city_count": 2,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 184,
+        "name": "慬宿",
+        "power": 30574,
+        "refresh_time": 0,
+        "region": 11,
+        "role_id": "18v25ke54005",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14622
+      }
+    ],
+    [
+      286,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 208,
+        "name": "仙丨岁泽",
+        "power": 30573,
+        "refresh_time": 0,
+        "region": 11,
+        "role_id": "14j9r3ig4274",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13774
+      }
+    ],
+    [
+      287,
+      {
+        "area": 0,
+        "branch_city_count": 9,
+        "force": 0,
+        "fort_count": 0,
+        "land_count": 202,
+        "name": "青霄闲逛",
+        "power": 30545,
+        "refresh_time": 1773151157,
+        "region": 11,
+        "role_id": "kkjjz6g3407",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 11298
+      }
+    ],
+    [
+      288,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 196,
+        "name": "六指琴魔",
+        "power": 30523,
+        "refresh_time": 1773131483,
+        "region": 7,
+        "role_id": "wy37j5k3695",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12812
+      }
+    ],
+    [
+      289,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 7,
+        "land_count": 199,
+        "name": "深秋",
+        "power": 30508,
+        "refresh_time": 1773167080,
+        "region": 11,
+        "role_id": "1ib5dodf4755",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 15538
+      }
+    ],
+    [
+      290,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 6,
+        "land_count": 182,
+        "name": "在下SP白龙",
+        "power": 30506,
+        "refresh_time": 0,
+        "region": 9,
+        "role_id": "1j3fzami4722",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12458
+      }
+    ],
+    [
+      291,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 190,
+        "name": "约书亚77",
+        "power": 30482,
+        "refresh_time": 1773253277,
+        "region": 5,
+        "role_id": "1eh6xg904276",
+        "show_info": "",
+        "shu_cheng_count": 3,
+        "user_id": 10548
+      }
+    ],
+    [
+      292,
+      {
+        "area": 0,
+        "branch_city_count": 0,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 185,
+        "name": "西海铁骑",
+        "power": 30448,
+        "refresh_time": -1773273722,
+        "region": 11,
+        "role_id": "35g9pq2g05866",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 15268
+      }
+    ],
+    [
+      293,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 2,
+        "land_count": 178,
+        "name": "春秋丨啊白",
+        "power": 30437,
+        "refresh_time": 0,
+        "region": 7,
+        "role_id": "1gikmm0q4203",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 14616
+      }
+    ],
+    [
+      294,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 193,
+        "name": "二哈和白猫",
+        "power": 30430,
+        "refresh_time": -1773223918,
+        "region": 11,
+        "role_id": "16bf8okm06022",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 14987
+      }
+    ],
+    [
+      295,
+      {
+        "area": 0,
+        "branch_city_count": 5,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 181,
+        "name": "夜游神丨涛",
+        "power": 30427,
+        "refresh_time": -1773201589,
+        "region": 13,
+        "role_id": "1j10hxnn4267",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 15244
+      }
+    ],
+    [
+      296,
+      {
+        "area": 0,
+        "branch_city_count": 6,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 199,
+        "name": "蝶盈秀",
+        "power": 30413,
+        "refresh_time": 0,
+        "region": 8,
+        "role_id": "1mgbhnp74359",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 15885
+      }
+    ],
+    [
+      297,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 5,
+        "land_count": 198,
+        "name": "正在加载中",
+        "power": 30407,
+        "refresh_time": 1773235895,
+        "region": 9,
+        "role_id": "1tjxfux24532",
+        "show_info": "",
+        "shu_cheng_count": 2,
+        "user_id": 12428
+      }
+    ],
+    [
+      298,
+      {
+        "area": 0,
+        "branch_city_count": 4,
+        "force": 0,
+        "fort_count": 1,
+        "land_count": 179,
+        "name": "长洲丨凑凑",
+        "power": 30402,
+        "refresh_time": -1773133146,
+        "region": 4,
+        "role_id": "3ssz33gb06682",
+        "show_info": "",
+        "shu_cheng_count": 1,
+        "user_id": 12816
+      }
+    ],
+    [
+      299,
+      {
+        "area": 0,
+        "branch_city_count": 3,
+        "force": 0,
+        "fort_count": 4,
+        "land_count": 190,
+        "name": "缘丨风起东山",
+        "power": 30401,
+        "refresh_time": -1773249923,
+        "region": 13,
+        "role_id": "3j136w5506236",
+        "show_info": "",
+        "shu_cheng_count": 0,
+        "user_id": 13688
+      }
+    ]
+  ],
+  null,
+  null
+]

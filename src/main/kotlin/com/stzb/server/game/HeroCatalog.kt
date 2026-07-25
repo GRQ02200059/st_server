@@ -11,17 +11,18 @@ object HeroCatalog {
     private data class HeroInfo(
         val troopType: Int,
         val quality: Int,
+        val initialSkillId: Int,
     )
 
     private val heroes: LinkedHashMap<Int, HeroInfo> by lazy { loadHeroes() }
     private val fiveStarHeroIdsByPack: Map<Int, List<Int>> by lazy {
-        clientCardPackHeroIds.mapValues { (_, heroIds) ->
-            heroIds.filter { heroQuality(it) == FIVE_STAR_QUALITY }
+        ClientCardPackCatalog.allPacks().associate { pack ->
+            pack.packId to pack.heroIds.filter { heroQuality(it) == FIVE_STAR_QUALITY }
         }
     }
     private val defaultFiveStarHeroIds: List<Int> by lazy {
-        CHILD_CARD_PACK_IDS
-            .flatMap { fiveStarHeroIdsByPack.getValue(it) }
+        ClientCardPackCatalog.allPacks()
+            .flatMap { fiveStarHeroIdsByPack[it.packId].orEmpty() }
             .distinct()
     }
 
@@ -31,8 +32,26 @@ object HeroCatalog {
 
     fun heroQuality(heroId: Int): Int = heroes[heroId]?.quality ?: 0
 
+    fun initialSkillId(heroId: Int): Int =
+        heroes[heroId]?.initialSkillId ?: heroId + 100_000
+
+    fun defaultSkillIds(heroId: Int): List<Int> =
+        listOf(initialSkillId(heroId), DEFAULT_SECOND_SKILL_ID, DEFAULT_THIRD_SKILL_ID)
+
+    /**
+     * Tb_hero.skill uses the client format "skillId,level;".
+     * Keep three usable slots on test accounts; the latter two are real
+     * client skills already supported by the battle runtime.
+     */
+    fun maxLevelSkillString(heroId: Int): String =
+        maxLevelSkillIds(heroId)
+            .joinToString(separator = "", postfix = "") { "$it,$MAX_SKILL_LEVEL;" }
+
+    fun maxLevelSkillIds(heroId: Int): List<Int> =
+        defaultSkillIds(heroId)
+
     fun fiveStarHeroIdsForCardPack(packId: Int): List<Int> =
-        fiveStarHeroIdsByPack[packId] ?: defaultFiveStarHeroIds
+        fiveStarHeroIdsByPack[packId].orEmpty()
 
     fun defaultFiveStarHeroIds(): List<Int> = defaultFiveStarHeroIds
 
@@ -62,20 +81,25 @@ object HeroCatalog {
         val heroId = columns.getOrNull(1)?.toIntOrNull() ?: return null
         val troopType = columns.getOrNull(3)?.toIntOrNull()?.rem(10) ?: return null
         val quality = columns.getOrNull(35)?.toIntOrNull() ?: return null
+        val initialSkillId = columns.getOrNull(15)?.toIntOrNull() ?: return null
         return heroId.takeIf { it > 0 }
             ?.takeIf { troopType in 1..3 }
-            ?.let { it to HeroInfo(troopType = troopType, quality = quality) }
+            ?.let {
+                it to HeroInfo(
+                    troopType = troopType,
+                    quality = quality,
+                    initialSkillId = initialSkillId,
+                )
+            }
     }
 
     private const val FIVE_STAR_QUALITY = 4
+    private const val MAX_SKILL_LEVEL = 10
+    private const val DEFAULT_SECOND_SKILL_ID = 200223
+    private const val DEFAULT_THIRD_SKILL_ID = 200031
 
-    private val CHILD_CARD_PACK_IDS = listOf(901, 902, 903, 904, 905, 906, 907)
-
-    /**
-     * Extracted from client Tcfg_card_prob. 801 is a container and therefore
-     * deliberately has no direct row here.
-     */
-    private val clientCardPackHeroIds: Map<Int, List<Int>> = mapOf(
+    @Suppress("unused")
+    private val legacyClientCardPackHeroIds: Map<Int, List<Int>> = mapOf(
         281 to listOf(
             100006, 100007, 100009, 100017, 100020, 100024, 100025, 100031, 100033, 100039,
             100040, 100042, 100043, 100044, 100049, 100050, 100052, 100053, 100054, 100062,

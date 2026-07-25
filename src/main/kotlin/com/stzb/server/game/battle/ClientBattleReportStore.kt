@@ -129,7 +129,7 @@ class ClientBattleReportStore private constructor(
         when (this) {
             BattleOutcome.ATTACKER_WIN -> 1
             BattleOutcome.DEFENDER_WIN -> 0
-            BattleOutcome.DRAW -> 2
+            BattleOutcome.DRAW -> 6
         }
 
     private fun List<BattleHero>.toHeroInfoString(): String =

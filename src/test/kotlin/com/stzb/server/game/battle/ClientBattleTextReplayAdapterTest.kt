@@ -203,6 +203,23 @@ class ClientBattleTextReplayAdapterTest {
         assertEquals(listOf<Any>(6, 700, 300), finalTroops[2].params)
     }
 
+    @Test
+    fun `writes the client battle result immediately after the end marker`() {
+        val base = eventResult()
+        val expected = listOf(
+            BattleOutcome.ATTACKER_WIN to ClientReportAction(ClientBattleTextReplayProtocol.ATTACKER_WIN),
+            BattleOutcome.DEFENDER_WIN to ClientReportAction(ClientBattleTextReplayProtocol.DEFENDER_WIN),
+            BattleOutcome.DRAW to ClientReportAction(ClientBattleTextReplayProtocol.DRAW, listOf(3)),
+        )
+
+        expected.forEach { (outcome, expectedAction) ->
+            val actions = ClientBattleTextReplayAdapter.adapt(base.copy(outcome = outcome))
+            val endIndex = actions.indexOfFirst { it.id == ClientBattleTextReplayProtocol.END }
+
+            assertEquals(expectedAction, actions[endIndex + 1])
+        }
+    }
+
     private fun twoRoundResult(): BattleResult =
         BattleResult(
             outcome = BattleOutcome.ATTACKER_WIN,

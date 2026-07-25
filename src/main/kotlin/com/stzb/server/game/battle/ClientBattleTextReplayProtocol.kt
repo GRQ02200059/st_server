@@ -31,6 +31,9 @@ internal object ClientBattleTextReplayProtocol {
     const val RECOVERY = 63
     const val STATUS = 102
     const val END = 13
+    const val ATTACKER_WIN = 127
+    const val DRAW = 206
+    const val DEFENDER_WIN = 207
     const val FINAL_TROOPS = 224
 
     fun position(side: Side, formationPosition: Int): Int {
@@ -64,6 +67,14 @@ internal object ClientBattleTextReplayProtocol {
         BattleStatus.DEFENSE_DEBUFF -> 152
         BattleStatus.STRATEGY_DEBUFF -> 153
         BattleStatus.SPEED_DEBUFF -> 154
+        BattleStatus.PHYSICAL_DAMAGE_DEALT_INCREASED -> 531
+        BattleStatus.PHYSICAL_DAMAGE_DEALT_REDUCED -> 532
+        BattleStatus.STRATEGY_DAMAGE_DEALT_INCREASED -> 533
+        BattleStatus.STRATEGY_DAMAGE_DEALT_REDUCED -> 534
+        BattleStatus.PHYSICAL_DAMAGE_TAKEN_INCREASED -> 521
+        BattleStatus.PHYSICAL_DAMAGE_TAKEN_REDUCED -> 522
+        BattleStatus.STRATEGY_DAMAGE_TAKEN_INCREASED -> 523
+        BattleStatus.STRATEGY_DAMAGE_TAKEN_REDUCED -> 524
     }
 
     fun effectId(stat: BattleStat, delta: Int): Int = when (stat) {

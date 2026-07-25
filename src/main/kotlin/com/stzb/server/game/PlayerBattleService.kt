@@ -7,6 +7,7 @@ import com.stzb.server.game.battle.BattleEquipmentRepository
 import com.stzb.server.game.battle.BattleHeroSpec
 import com.stzb.server.game.battle.BattleOutcome
 import com.stzb.server.game.battle.BattleRequest
+import com.stzb.server.game.battle.BattleResult
 import com.stzb.server.game.battle.BattleTeamBuilder
 import com.stzb.server.game.battle.ClientBattleReportStore
 import com.stzb.server.game.battle.SeededBattleRandom
@@ -22,35 +23,21 @@ class PlayerBattleService(
     private val config: BattleConfigRepository = BattleConfigRepository.loadDefault(),
     equipmentRepository: BattleEquipmentRepository = BattleEquipmentRepository.loadDefault(),
     private val battleRandomFactory: (Int) -> BattleRandom = ::SeededBattleRandom,
+    private val defenderFactory: LandDefenderFactory = LandDefenderFactory(),
 ) {
     private val builder = BattleTeamBuilder(config, equipmentRepository)
 
     fun launchPveBattle(
         state: PlayerState,
         targetWid: Int,
+        armyId: Int = state.primaryArmyId(),
         nowSec: Int = (System.currentTimeMillis() / 1000).toInt(),
     ): PlayerBattleLaunchResult? {
-        if (state.activeMarch() != null) return null
-        val participants = state.teamHeroes()
-            .withIndex()
-            .mapNotNull { (position, heroUid) ->
-                state.hero(heroUid)
-                    ?.takeIf { it.troops > 0 && it.stamina >= STAMINA_COST }
-                    ?.let { position to it }
-            }
-        if (participants.isEmpty()) return null
-
-        participants.forEach { (_, hero) -> hero.stamina -= STAMINA_COST }
-        state.startMarch(targetWid = targetWid, nowSec = nowSec)
-        return PlayerBattleLaunchResult(battleId = 0, targetWid = targetWid)
-    }
-
-    fun settlePveBattle(
-        state: PlayerState,
-        nowSec: Int = (System.currentTimeMillis() / 1000).toInt(),
-    ): PlayerBattleLaunchResult? {
-        val march = state.completeMarchIfDue(nowSec) ?: return null
-        val participants = state.teamHeroes()
+        state.activeMarch(armyId)
+            ?.takeIf { nowSec >= it.endSec }
+            ?.let { settlePveBattle(state, armyId, nowSec) }
+        if (state.activeMarch(armyId) != null) return null
+        val participants = state.teamHeroes(armyId)
             .withIndex()
             .mapNotNull { (position, heroUid) ->
                 state.hero(heroUid)
@@ -59,49 +46,64 @@ class PlayerBattleService(
             }
         if (participants.isEmpty()) return null
 
-        val attacker = builder.build(
+        participants.forEach { (_, hero) -> hero.stamina = PlayerHero.MAX_STAMINA }
+        state.startMarch(targetWid = targetWid, nowSec = nowSec, armyId = armyId)
+        return PlayerBattleLaunchResult(battleId = 0, targetWid = targetWid)
+    }
+
+    fun settlePveBattle(
+        state: PlayerState,
+        armyId: Int = state.primaryArmyId(),
+        nowSec: Int = (System.currentTimeMillis() / 1000).toInt(),
+    ): PlayerBattleLaunchResult? {
+        val march = state.completeMarchIfDue(nowSec, armyId) ?: return null
+        val participants = state.teamHeroes(armyId)
+            .withIndex()
+            .mapNotNull { (position, heroUid) ->
+                state.hero(heroUid)
+                    ?.takeIf { it.troops > 0 }
+                    ?.let { position to it }
+            }
+        if (participants.isEmpty()) return null
+
+        var attacker = builder.build(
             participants.map { (position, hero) ->
                 BattleHeroSpec(
                     heroId = hero.heroId,
                     position = position,
-                    troops = hero.troops,
+                    troops = hero.troops.coerceAtMost(PlayerHero.MAX_TROOPS),
                     level = hero.level,
+                    extraSkillIds = hero.normalizedSkillIds().drop(1).filter { it > 0 },
                 )
             },
         )
-        val defender = buildDefender()
-        val result = BattleEngine.resolve(
-            BattleRequest(attacker = attacker, defender = defender, maxRounds = 8),
-            config,
-            battleRandomFactory(march.targetWid xor nowSec),
-        )
-
-        result.attacker.heroes.forEach { battleHero ->
-            val heroUid = state.teamHeroes().getOrElse(battleHero.position) { 0 }
-            state.hero(heroUid)?.troops = battleHero.troops.coerceAtLeast(1)
+        var result: BattleResult? = null
+        for ((index, defenderSpecs) in defenderFactory.teamsForWid(march.targetWid).withIndex()) {
+            val defender = builder.build(defenderSpecs)
+            result = BattleEngine.resolve(
+                BattleRequest(attacker = attacker, defender = defender, maxRounds = 8),
+                config,
+                battleRandomFactory(march.targetWid xor nowSec xor index),
+            )
+            attacker = result.attacker
+            if (result.outcome != BattleOutcome.ATTACKER_WIN) break
         }
-        if (result.outcome == BattleOutcome.ATTACKER_WIN) {
+        val finalResult = requireNotNull(result)
+
+        finalResult.attacker.heroes.forEach { battleHero ->
+            val heroUid = state.teamHeroes(armyId).getOrElse(battleHero.position) { 0 }
+            state.hero(heroUid)?.troops =
+                battleHero.troops.coerceIn(0, PlayerHero.MAX_TROOPS)
+        }
+        if (finalResult.outcome == BattleOutcome.ATTACKER_WIN) {
             state.occupyLand(march.targetWid)
         }
-        val report = reportStore.record(wid = march.targetWid, timeSec = nowSec, result = result)
+        val report = reportStore.record(wid = march.targetWid, timeSec = nowSec, result = finalResult)
         return PlayerBattleLaunchResult(
             battleId = report.battleId,
             targetWid = march.targetWid,
-            outcome = result.outcome,
+            outcome = finalResult.outcome,
         )
     }
 
-    private fun buildDefender() =
-        builder.build(
-            listOf(
-                BattleHeroSpec(heroId = 100352, position = 0, troops = 800, level = 12),
-                BattleHeroSpec(heroId = 100345, position = 1, troops = 800, level = 10),
-                BattleHeroSpec(heroId = 100344, position = 2, troops = 800, level = 10),
-            ),
-        )
-
-    private companion object {
-        // Tb_hero.energy stores 1/10,000 display units.
-        private const val STAMINA_COST = 200_000
-    }
 }

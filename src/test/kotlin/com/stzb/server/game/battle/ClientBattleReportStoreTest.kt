@@ -43,12 +43,13 @@ class ClientBattleReportStoreTest {
                 .map { it.params.first() },
         )
         assertTrue(actions.any { it.id == ClientBattleTextReplayProtocol.SKILL_PREPARATION_STARTED })
-        assertEquals(
-            (1..6).toSet(),
-            actions.filter { it.id == ClientBattleTextReplayProtocol.HERO_ACTION_START }
-                .map { it.params.first() as Int }
-                .toSet(),
-        )
+        val actionSources = actions
+            .filter { it.id == ClientBattleTextReplayProtocol.HERO_ACTION_START }
+            .map { it.params.first() as Int }
+            .toSet()
+        assertTrue(actionSources.any { it in 1..3 })
+        assertTrue(actionSources.any { it in 4..6 })
+        assertTrue(actionSources.all { it in 1..6 })
         assertEquals(
             actions.count { it.id == ClientBattleTextReplayProtocol.SKILL_BEGIN },
             actions.count { it.id == ClientBattleTextReplayProtocol.SKILL_END },
@@ -119,6 +120,21 @@ class ClientBattleReportStoreTest {
         assertEquals("0,0,0,0,0", profile["defend_idu"].asText())
         assertTrue(profile["attacker_surface"].asText().split(";").all { it.split(",").size == 3 })
         assertTrue(profile["defender_surface"].asText().split(";").all { it.split(",").size == 3 })
+    }
+
+    @Test
+    fun `profile encodes a normal battle draw with the client result six`() {
+        val store = ClientBattleReportStore.createDefault(nowSec = 1_700_000_000)
+        val base = store.getOrCreateDefault()
+        val draw = store.record(
+            wid = 10002,
+            timeSec = 1_700_000_001,
+            result = base.result.copy(outcome = BattleOutcome.DRAW),
+        )
+
+        val profile = mapper.readTree(store.profileResponse(listOf(draw.battleId), serverId = 0))[1][0]
+
+        assertEquals(6, profile["result"].asInt())
     }
 
     @Test

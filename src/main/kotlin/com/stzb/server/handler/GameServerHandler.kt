@@ -3,11 +3,13 @@ package com.stzb.server.handler
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.game.ArmyBattleRequestParser
 import com.stzb.server.game.ConscriptRequestParser
+import com.stzb.server.game.ClientCardPackCatalog
 import com.stzb.server.game.GameResponses
 import com.stzb.server.game.PlayerBattleService
 import com.stzb.server.game.PlayerConscriptService
 import com.stzb.server.game.PlayerStateRepository
 import com.stzb.server.game.RecruitResultParser
+import com.stzb.server.game.SkillOperationRequestParser
 import com.stzb.server.game.TeamRequestParser
 import com.stzb.server.game.battle.ClientBattleReportStore
 import com.stzb.server.protocol.Cmd
@@ -149,6 +151,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendLandInfo(ctx, msg)
             }
 
+            Cmd.GET_LAND_NPC_ARMY -> {
+                logIn(msg)
+                sendLandNpcArmy(ctx, msg)
+            }
+
             Cmd.ADD_HERO_TO_ARMY -> {
                 logIn(msg)
                 sendAddHeroToArmy(ctx, session, msg)
@@ -170,6 +177,22 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendConscript(ctx, session, msg)
             }
 
+            Cmd.LEARN_HERO_SKILL,
+            Cmd.REPLACE_HERO_SKILL -> {
+                logIn(msg)
+                sendLearnHeroSkill(ctx, session, msg)
+            }
+
+            Cmd.FORGET_HERO_SKILL -> {
+                logIn(msg)
+                sendForgetHeroSkill(ctx, session, msg)
+            }
+
+            Cmd.REMOVE_USER_SKILL -> {
+                logIn(msg)
+                sendNoOpSuccess(ctx, msg)
+            }
+
             Cmd.CARD_RECRUIT -> {
                 logIn(msg)
                 sendCardRecruit(ctx, session, msg)
@@ -182,7 +205,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
             Cmd.CARD_SET_ALL_NOT_NEW -> {
                 logIn(msg)
-                sendCardSetAllNotNew(ctx)
+                sendCardSetAllNotNew(ctx, session, msg)
             }
 
             Cmd.HERO_SELECT_FACADE -> {
@@ -344,6 +367,61 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         log.info(">> cmd=301 招募结果已下发 (summonCfgId=$summonCfgId, summonUid=$summonUid, summonOpType=$summonOpType, childCfgId=$childCfgId, ${json.length}B)")
     }
 
+    private fun sendLearnHeroSkill(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val request = SkillOperationRequestParser.parseLearn(msg.bodyText)
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val state = playerState(session, userId, GameServerConfig.CITY_WID)
+        val changed = request?.let {
+            state.learnHeroSkill(it.heroUid, it.skillId, it.slotIndex)
+        } == true
+        ctx.writeAndFlush(
+            DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN),
+        )
+        if (changed) {
+            PlayerStateRepository.save(state)
+            val hero = state.hero(request!!.heroUid)!!
+            ctx.writeAndFlush(
+                DownPacket.json(
+                    Cmd.SYS_NOTIFY_DB_UPDATE,
+                    GameResponses.heroSkillUpdateNotify(hero),
+                    dataType = DownType.PLAIN,
+                ),
+            )
+        }
+        log.info(
+            ">> cmd=${msg.cmdId} 武将学习战法已处理 " +
+                "(heroUid=${request?.heroUid ?: 0}, skillId=${request?.skillId ?: 0}, " +
+                "slot=${request?.slotIndex ?: 0}, changed=$changed)",
+        )
+    }
+
+    private fun sendForgetHeroSkill(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val request = SkillOperationRequestParser.parseForget(msg.bodyText)
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val state = playerState(session, userId, GameServerConfig.CITY_WID)
+        val changed = request?.let {
+            state.forgetHeroSkill(it.heroUid, it.skillId)
+        } == true
+        ctx.writeAndFlush(
+            DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN),
+        )
+        if (changed) {
+            PlayerStateRepository.save(state)
+            val hero = state.hero(request!!.heroUid)!!
+            ctx.writeAndFlush(
+                DownPacket.json(
+                    Cmd.SYS_NOTIFY_DB_UPDATE,
+                    GameResponses.heroSkillUpdateNotify(hero),
+                    dataType = DownType.PLAIN,
+                ),
+            )
+        }
+        log.info(
+            ">> cmd=${msg.cmdId} 武将遗忘战法已处理 " +
+                "(heroUid=${request?.heroUid ?: 0}, skillId=${request?.skillId ?: 0}, changed=$changed)",
+        )
+    }
+
     private fun sendBuildingUpgrade(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
         val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
         val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
@@ -370,8 +448,18 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val coorX = body?.get(0)?.asInt() ?: 0
         val coorY = body?.get(1)?.asInt() ?: 0
         val wid = if (coorX > 0 && coorY > 0) coorX * 10000 + coorY else 0
-        ctx.writeAndFlush(DownPacket.json(Cmd.LAND_INFO, GameResponses.landInfo(wid), dataType = DownType.PLAIN))
+        ctx.writeAndFlush(DownPacket.json(Cmd.LAND_INFO, GameResponses.landInfo(wid), dataType = DownType.XOR))
         log.info(">> cmd=21 土地详情已应答 (wid=$wid)")
+    }
+
+    private fun sendLandNpcArmy(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
+        val wid = body?.get(0)?.asInt()?.coerceAtLeast(0) ?: 0
+        val json = GameResponses.landNpcArmy(wid)
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.GET_LAND_NPC_ARMY, json, dataType = DownType.XOR),
+        )
+        log.info(">> cmd=4330 土地守军恢复信息已下发 (wid=$wid)")
     }
 
     private fun sendAddHeroToArmy(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
@@ -384,14 +472,19 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val state = playerState(session, userId, cityWid)
         val armyId = requestedArmyId ?: state.primaryArmyId()
 
-        state.assignTeamHero(heroUid = heroUid, pos = pos)
+        val previousArmyId = state.hero(heroUid)?.armyId?.takeIf { it > 0 }
+        state.assignTeamHero(heroUid = heroUid, pos = pos, armyId = armyId)
         PlayerStateRepository.save(state)
         ctx.writeAndFlush(DownPacket.json(Cmd.ADD_HERO_TO_ARMY, mapper.writeValueAsString(listOf(armyId)), dataType = DownType.PLAIN))
         state.hero(heroUid)?.let { hero ->
             ctx.writeAndFlush(
                 DownPacket.json(
                     Cmd.SYS_NOTIFY_DB_UPDATE,
-                    GameResponses.armyAndHeroesUpsertNotify(state, listOf(hero)),
+                    GameResponses.armyAndHeroesUpsertNotify(
+                        state,
+                        listOf(hero),
+                        listOfNotNull(previousArmyId, armyId),
+                    ),
                     dataType = DownType.PLAIN,
                 ),
             )
@@ -406,14 +499,14 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val armyId = body?.get(1)?.asInt()?.takeIf { it > 0 } ?: cityWid * 10 + 1
         val pos = body?.get(2)?.asInt() ?: 1
         val state = playerState(session, userId, cityWid)
-        val removedHero = state.removeTeamHero(pos).takeIf { it > 0 }?.let(state::hero)
+        val removedHero = state.removeTeamHero(pos, armyId).takeIf { it > 0 }?.let(state::hero)
         PlayerStateRepository.save(state)
 
         ctx.writeAndFlush(DownPacket.json(Cmd.REMOVE_HERO_FROM_ARMY, mapper.writeValueAsString(listOf(armyId)), dataType = DownType.PLAIN))
         ctx.writeAndFlush(
             DownPacket.json(
                 Cmd.SYS_NOTIFY_DB_UPDATE,
-                GameResponses.armyAndHeroesUpsertNotify(state, listOfNotNull(removedHero)),
+                GameResponses.armyAndHeroesUpsertNotify(state, listOfNotNull(removedHero), listOf(armyId)),
                 dataType = DownType.PLAIN,
             ),
         )
@@ -429,7 +522,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val armyId2 = body?.get(3)?.asInt()?.takeIf { it > 0 } ?: armyId1
         val pos2 = body?.get(4)?.asInt() ?: 1
         val state = playerState(session, userId, cityWid)
-        val affectedHeroes = state.switchTeamHeroes(pos1, pos2).mapNotNull { state.hero(it) }
+        val affectedHeroes = state.switchTeamHeroes(pos1, pos2, armyId1, armyId2).mapNotNull { state.hero(it) }
         val responseArmyIds = listOf(armyId1, armyId2).distinct()
         PlayerStateRepository.save(state)
 
@@ -437,7 +530,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         ctx.writeAndFlush(
             DownPacket.json(
                 Cmd.SYS_NOTIFY_DB_UPDATE,
-                GameResponses.armyAndHeroesUpsertNotify(state, affectedHeroes),
+                GameResponses.armyAndHeroesUpsertNotify(state, affectedHeroes, responseArmyIds),
                 dataType = DownType.PLAIN,
             ),
         )
@@ -457,11 +550,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     }
 
     private fun summonPackId(userId: Int, summonUid: Int): Int =
-        when (summonUid) {
-            userId * 100 + 1 -> 801
-            userId * 100 + 2 -> 281
-            else -> 801
-        }
+        ClientCardPackCatalog.packIdForSummonUid(userId, summonUid) ?: 0
 
     private fun sendCardOperationSuccess(ctx: ChannelHandlerContext, msg: UpPacket) {
         val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
@@ -496,9 +585,20 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         log.info(">> cmd=90005 招募武将入库已下发 (count=${cards.size}, ${json.length}B)")
     }
 
-    private fun sendCardSetAllNotNew(ctx: ChannelHandlerContext) {
+    private fun sendCardSetAllNotNew(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val state = playerState(session, userId, GameServerConfig.CITY_WID)
+        state.markCardPacksSeen()
+        PlayerStateRepository.save(state)
         ctx.writeAndFlush(DownPacket.json(Cmd.CARD_SET_ALL_NOT_NEW, "[]", dataType = DownType.PLAIN))
-        log.info(">> cmd=302 武将新卡标记清理已应答")
+        val summonUids = ClientCardPackCatalog.allPacks().map { pack ->
+            ClientCardPackCatalog.summonUid(userId, pack.packId)
+        }
+        val notify = GameResponses.cardPacksSeenNotify(summonUids)
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.SYS_NOTIFY_DB_UPDATE, notify, dataType = DownType.PLAIN),
+        )
+        log.info(">> cmd=302 武将新卡标记清理已应答并同步客户端 (count=${summonUids.size})")
     }
 
     private fun sendSelectHeroFacade(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
@@ -549,7 +649,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val battleIds = body?.get(0)?.takeIf { it.isArray }?.mapNotNull { it.asInt().takeIf { id -> id > 0 } }.orEmpty()
         val serverId = body?.get(2)?.asInt() ?: 0
         val json = ClientBattleReportStore.global().profileResponse(battleIds, serverId)
-        ctx.writeAndFlush(DownPacket.json(Cmd.BATTLE_REPORT_PROFILE, json, dataType = DownType.PLAIN))
+        ctx.writeAndFlush(DownPacket.json(Cmd.BATTLE_REPORT_PROFILE, json, dataType = DownType.ZLIB))
         log.info(">> cmd=10 战报摘要已下发 (battleIds=$battleIds, serverId=$serverId, ${json.length}B)")
     }
 
@@ -558,7 +658,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val battleId = body?.get(0)?.asInt()?.takeIf { it > 0 } ?: 0
         val serverId = body?.get(2)?.asInt() ?: 0
         val json = ClientBattleReportStore.global().detailResponse(battleId, serverId)
-        ctx.writeAndFlush(DownPacket.json(msg.cmdId, json, dataType = DownType.PLAIN))
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, json, dataType = DownType.ZLIB))
         log.info(">> cmd=${msg.cmdId} 战报详情已下发 (battleId=$battleId, serverId=$serverId, ${json.length}B)")
     }
 
@@ -567,18 +667,20 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val request = ArmyBattleRequestParser.parse(msg.bodyText)
         val targetWid = request?.targetWid ?: (GameServerConfig.CITY_WID + 1)
         val state = playerState(session, userId, GameServerConfig.CITY_WID)
+        val armyId = request?.armyId ?: state.primaryArmyId()
         val battleService = PlayerBattleService(ClientBattleReportStore.global())
         val result = battleService.launchPveBattle(
             state = state,
             targetWid = targetWid,
+            armyId = armyId,
         )
         ctx.writeAndFlush(DownPacket.json(Cmd.ARMY_BATTLE, GameResponses.emptyArray(), dataType = DownType.PLAIN))
         if (result != null) {
             PlayerStateRepository.save(state)
-            sendArmyStateNotify(ctx, userId, state)
+            sendArmyStateNotify(ctx, userId, state, armyId)
             sendWorldSceneFullInfo(ctx, session)
-            schedulePveBattleSettlement(ctx, session, userId, state, battleService)
-            log.info(">> cmd=6 出征已开始 (uid=$userId, targetWid=$targetWid, armyId=${state.primaryArmyId()})")
+            schedulePveBattleSettlement(ctx, session, userId, state, battleService, armyId)
+            log.info(">> cmd=6 出征已开始 (uid=$userId, targetWid=$targetWid, armyId=$armyId)")
         } else {
             log.info(">> cmd=6 出征战斗未执行: 队伍无可战斗武将 (uid=$userId, targetWid=$targetWid)")
         }
@@ -590,12 +692,13 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         userId: Int,
         state: com.stzb.server.game.PlayerState,
         battleService: PlayerBattleService,
+        armyId: Int,
     ) {
-        val march = state.activeMarch() ?: return
+        val march = state.activeMarch(armyId) ?: return
         val delayMillis = (march.endSec * 1_000L - System.currentTimeMillis()).coerceAtLeast(0L)
         ctx.channel().eventLoop().schedule({
             if (!ctx.channel().isActive) return@schedule
-            val result = battleService.settlePveBattle(state) ?: return@schedule
+            val result = battleService.settlePveBattle(state, armyId) ?: return@schedule
             PlayerStateRepository.save(state)
             ctx.writeAndFlush(
                 DownPacket.json(
@@ -603,31 +706,49 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                     GameResponses.battleReportAttackInsertNotify(
                         userId = userId,
                         battleId = result.battleId,
-                        armyId = state.primaryArmyId(),
+                        armyId = armyId,
                         targetWid = result.targetWid,
                         outcome = result.outcome ?: return@schedule,
-                        heroIds = state.teamHeroes()
+                        heroIds = state.teamHeroes(armyId)
                             .mapNotNull { state.hero(it)?.heroId }
                             .filter { it > 0 },
                     ),
                     dataType = DownType.PLAIN,
                 ),
             )
-            sendArmyStateNotify(ctx, userId, state)
-            sendWorldSceneFullInfo(ctx, session, removedArmyId = state.primaryArmyId())
+            if (result.outcome == com.stzb.server.game.battle.BattleOutcome.ATTACKER_WIN) {
+                ctx.writeAndFlush(
+                    DownPacket.json(
+                        Cmd.SYS_NOTIFY_DB_UPDATE,
+                        GameResponses.occupiedLandUpsertNotify(
+                            userId = userId,
+                            cityWid = state.cityWid,
+                            landWid = result.targetWid,
+                        ),
+                        dataType = DownType.PLAIN,
+                    ),
+                )
+            }
+            sendArmyStateNotify(ctx, userId, state, armyId)
+            sendWorldSceneFullInfo(ctx, session, removedArmyId = armyId)
             log.info(">> 出征抵达并结算 (uid=$userId, targetWid=${result.targetWid}, battleId=${result.battleId})")
         }, delayMillis, TimeUnit.MILLISECONDS)
     }
 
-    private fun sendArmyStateNotify(ctx: ChannelHandlerContext, userId: Int, state: com.stzb.server.game.PlayerState) {
+    private fun sendArmyStateNotify(
+        ctx: ChannelHandlerContext,
+        userId: Int,
+        state: com.stzb.server.game.PlayerState,
+        armyId: Int,
+    ) {
         ctx.writeAndFlush(
             DownPacket.json(
                 Cmd.SYS_NOTIFY_DB_UPDATE,
-                GameResponses.armyUpsertNotify(state),
+                GameResponses.armyUpsertNotify(state, armyId),
                 dataType = DownType.PLAIN,
             ),
         )
-        val heroes = state.teamHeroes().mapNotNull { state.hero(it) }
+        val heroes = state.teamHeroes(armyId).mapNotNull { state.hero(it) }
         ctx.writeAndFlush(
             DownPacket.json(
                 Cmd.SYS_NOTIFY_DB_UPDATE,
@@ -701,7 +822,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
     private fun sendServerTimeMillis(ctx: ChannelHandlerContext) {
         val json = GameResponses.serverTimeMillis(System.currentTimeMillis())
-        ctx.writeAndFlush(DownPacket.json(Cmd.SYNC_SERVER_TIME, json, dataType = DownType.PLAIN))
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYNC_SERVER_TIME, json, dataType = DownType.XOR))
         log.info(">> cmd=694 服务器毫秒时间已下发")
     }
 
@@ -716,7 +837,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             userId = userId,
             cityWid = GameServerConfig.CITY_WID,
             roleName = GameServerConfig.ROLE_NAME,
-            march = state.activeMarch(),
+            marches = state.activeMarches(),
             removedArmyId = removedArmyId,
             occupiedLands = state.occupiedLands(),
         )
@@ -726,12 +847,18 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
     private fun sendDevicePing(ctx: ChannelHandlerContext) {
         val json = GameResponses.devicePing(serverProcessingNanos = 0)
-        ctx.writeAndFlush(DownPacket.json(Cmd.SYS_PING, json, dataType = DownType.PLAIN))
+        ctx.writeAndFlush(DownPacket.json(Cmd.SYS_PING, json, dataType = DownType.XOR))
         log.debug(">> cmd=90006 ping 响应已下发")
     }
 
     private fun sendArmyRelatedFort(ctx: ChannelHandlerContext) {
-        ctx.writeAndFlush(DownPacket.json(Cmd.QUERY_ARMY_RELATED_FORT, GameResponses.armyRelatedFort(), dataType = DownType.PLAIN))
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.QUERY_ARMY_RELATED_FORT,
+                GameResponses.armyRelatedFort(),
+                dataType = DownType.XOR,
+            ),
+        )
         log.info(">> cmd=4159 部队关联要塞已应答")
     }
 

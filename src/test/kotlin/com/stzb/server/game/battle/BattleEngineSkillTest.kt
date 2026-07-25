@@ -88,6 +88,89 @@ class BattleEngineSkillTest {
     }
 
     @Test
+    fun `matching heroes on opposing sides keep independent skill runtime state`() {
+        val mirror = hero(
+            heroId = 100036,
+            position = 2,
+            attack = 100,
+            defense = 100,
+            strategy = 100,
+            speed = 100,
+            skillIds = listOf(200070),
+        )
+
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(listOf(mirror)),
+                defender = BattleTeam(listOf(mirror)),
+                maxRounds = 1,
+            ),
+            repo,
+            FixedBattleRandom(0),
+        )
+
+        val casts = result.events.filterIsInstance<BattleEvent.SkillDamage>()
+            .filter { it.skillId == 200070 }
+        assertTrue(casts.any { it.source.side == Side.ATTACKER })
+        assertTrue(casts.any { it.source.side == Side.DEFENDER })
+    }
+
+    @Test
+    fun `confusion cancels a prepared skill instead of letting it fire after control expires`() {
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(
+                    listOf(
+                        hero(
+                            heroId = 100017,
+                            position = 2,
+                            attack = 10,
+                            defense = 500,
+                            strategy = 100,
+                            speed = 10,
+                            skillIds = listOf(200031),
+                            activeStatuses = setOf(BattleStatus.DISARM),
+                        ),
+                    ),
+                ),
+                defender = BattleTeam(
+                    listOf(
+                        hero(
+                            heroId = 100004,
+                            position = 2,
+                            attack = 10,
+                            defense = 500,
+                            strategy = 100,
+                            speed = 200,
+                            skillIds = listOf(200235),
+                            activeStatuses = setOf(BattleStatus.DISARM),
+                        ),
+                    ),
+                ),
+                maxRounds = 5,
+            ),
+            repo,
+            SequenceBattleRandom(0, 0, 99, 99, 99, 0),
+        )
+
+        assertTrue(result.events.any {
+            it is BattleEvent.StatusApplied &&
+                it.status == BattleStatus.CONFUSION &&
+                it.target.side == Side.ATTACKER
+        })
+        assertTrue(result.events.none {
+            it is BattleEvent.SkillDamage &&
+                it.skillId == 200031 &&
+                it.source.side == Side.ATTACKER
+        })
+        assertTrue(result.events.any {
+                it is BattleEvent.SkillPreparationStarted &&
+                it.skillId == 200031 &&
+                it.round == 5
+        })
+    }
+
+    @Test
     fun `command skills apply real effects during the preparation stage`() {
         val attacker = BattleTeam(
             listOf(hero(100023, 0, 100, 100, 100, 100, skillIds = listOf(200023))),
@@ -183,4 +266,14 @@ class BattleEngineSkillTest {
             skillIds = skillIds,
             activeStatuses = activeStatuses,
         )
+
+    private class SequenceBattleRandom(
+        vararg values: Int,
+    ) : BattleRandom {
+        private val values = values.toList()
+        private var index = 0
+
+        override fun nextInt(bound: Int): Int =
+            values.getOrElse(index++) { bound - 1 }.coerceIn(0, bound - 1)
+    }
 }

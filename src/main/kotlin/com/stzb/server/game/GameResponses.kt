@@ -114,7 +114,7 @@ object GameResponses {
      *   [0] LoginState      = 1 (LOGIN_STATE_SUCCESS)
      *   [1] 时间同步数组    = [0, serverTimeSec, 0, 0]  (客户端无条件访问 [1] 和 [3])
      *   [2] LoginUserType   = 1 (老用户 -> 走 OnLoginSuccess 进城; 必须 1 或 2 才解析 Json[4])
-     *   [3] cfgDataIndex    = 2001 (对应 APK 内置 map_game_data/2001)
+     *   [3] cfgDataIndex    = 2001 (当前客户端内置且可登录的配置)
      *   [4] EnterGameResult = [UserInitTable, login_notice, union_marks,
      *                          union_relations, national_techs, union_calendar]  (≥6 元素)
      *       其中 [0] 是 UserInitTable 数组, [1..5] 客户端仅 PutData, 空数组安全。
@@ -181,6 +181,13 @@ object GameResponses {
     }
 
     /**
+     * LandDetailMainPanel.RespondDefendersRecovery only accepts a two-element
+     * array and reads index 1 as ArmyRecoverTimestamp.
+     */
+    fun landNpcArmy(wid: Int): String =
+        mapper.writeValueAsString(listOf(wid.coerceAtLeast(0), 0L))
+
+    /**
      * 5026 (SEND_WORLD_SCENCE_FULL_INFO) 全量世界视野通知。
      *
      * MapDataCommon.ReceiveMapData 无条件读取 [0..29] 中的多个槽位；
@@ -193,17 +200,18 @@ object GameResponses {
         roleName: String,
         serverOrderId: Int = 1,
         march: PlayerMarch? = null,
+        marches: Collection<PlayerMarch> = march?.let(::listOf).orEmpty(),
         removedArmyId: Int? = null,
         occupiedLands: Set<Int> = emptySet(),
     ): String {
         val root = nf.arrayNode()
         root.add(nf.objectNode()) // 0: visual field
         root.add(worldMapUsers(userId, cityWid, roleName)) // 1: map users
-        root.add(nf.arrayNode())  // 2: reserved
+        root.add(nf.objectNode()) // 2: reserved
         root.add(nf.objectNode()) // 3: unions
         root.add(nf.objectNode()) // 4: strategies
         root.add(nf.objectNode()) // 5: nation strategies
-        root.add(worldMapArmies(userId, cityWid, march, removedArmyId)) // 6: armies
+        root.add(worldMapArmies(userId, cityWid, marches, removedArmyId)) // 6: armies
         root.add(nf.arrayNode())  // 7: reserved
         root.add(nf.objectNode()) // 8: assist armies
         root.add(nf.arrayNode())  // 9: reserved
@@ -214,7 +222,7 @@ object GameResponses {
         root.add(worldCityChunk(userId, cityWid, roleName, occupiedLands)) // 14: world chunks
         root.add(nf.arrayNode())  // 15: reserved
         root.add(nf.objectNode()) // 16: ext garrison changes
-        root.add(nf.arrayNode())  // 17: reserved
+        root.addNull()            // 17: reserved
         root.add(serverOrderId.coerceAtLeast(1)) // 18: server order id
         root.add(nf.objectNode()) // 19: manor family changes
         root.add(nf.objectNode()) // 20: block info
@@ -227,6 +235,7 @@ object GameResponses {
         root.add(nf.arrayNode())  // 27: reserved
         root.add(nf.arrayNode())  // 28: reserved
         root.add(nf.objectNode()) // 29: real march
+        root.addNull()            // 30: reserved (present in 9.2.2 captures)
         return mapper.writeValueAsString(root)
     }
 
@@ -237,15 +246,16 @@ object GameResponses {
     private fun worldMapArmies(
         userId: Int,
         cityWid: Int,
-        march: PlayerMarch?,
+        marches: Collection<PlayerMarch>,
         removedArmyId: Int?,
     ) =
         nf.objectNode().apply {
-            if (march == null) {
+            if (marches.isEmpty()) {
                 removedArmyId?.let { putArray(it.toString()).add(0) }
                 return@apply
             }
-            putArray(march.armyId.toString()).apply {
+            marches.forEach { march ->
+                putArray(march.armyId.toString()).apply {
                 add(1) // 0 state: IN_EXPEDITION
                 add(userId) // 1 user id
                 add(march.fromWid) // 2 from wid
@@ -278,7 +288,10 @@ object GameResponses {
                 add("") // 29 buffs
                 add(0) // 30 lu jiao wid
                 add("") // 31 battle show
+                }
             }
+            removedArmyId?.takeIf { removedId -> marches.none { it.armyId == removedId } }
+                ?.let { putArray(it.toString()).add(0) }
         }
 
     /** MapDataCommon.ReceiveNewUserDataParam 读取的 24 槽玩家信息。 */
@@ -320,7 +333,7 @@ object GameResponses {
                 add(0)        // 9: guard_end_time
                 add(0)        // 10: begin time
                 add(0)        // 11: end time
-                add(1)        // 12: force type
+                add(0)        // 12: normal force (matches Tb_world_city.force_type)
                 add("")       // 13: city build data
                 repeat(7) { add(0) } // 14..20: clan/link/view metadata
             }
@@ -338,7 +351,7 @@ object GameResponses {
                         add("")       // 6: name
                         add(cityWid)  // 7: belong city
                         repeat(4) { add(0) } // 8..11: state/times
-                        add(1)        // 12: force type
+                        add(0)        // 12: normal force
                         add("")       // 13: city build data
                         repeat(7) { add(0) } // 14..20: clan/link/view metadata
                     }
@@ -350,7 +363,10 @@ object GameResponses {
      *
      * 客户端 CardOpRequest.RespondCardSummon 固定读取:
      *   [0] summonUid, [1] cardList, [2] giveTechNums, [3] childCfgId, [4] technicNums/fireworkCount
-     * cardList 每项至少 4 个 int: [heroUid, heroId, technicValue, unknown]。
+     * cardList 每项至少 5 个 int:
+     *   [heroUid, heroId, technicValue, unknown, hasAdvanced]。
+     * CardSummonResultPage 对缺少 hasAdvanced 的旧四列格式默认取 1，
+     * 因而必须显式下发 0 才不会显示“已自动进阶”。
      */
     fun cardRecruit(
         userId: Int,
@@ -394,6 +410,7 @@ object GameResponses {
 
     private fun recruitCards(packId: Int, count: Int): ArrayNode {
         val heroPool = HeroCatalog.fiveStarHeroIdsForCardPack(packId)
+        if (heroPool.isEmpty()) return nf.arrayNode()
         val start = recruitSeq.getAndAdd(count)
         val cards = nf.arrayNode()
         repeat(count) { offset ->
@@ -403,7 +420,8 @@ object GameResponses {
                     .add(0)
                     .add(heroId)
                     .add(0)
-                    .add(0),
+                    .add(0)
+                    .add(0), // hasAdvanced
             )
         }
         return cards
@@ -438,6 +456,42 @@ object GameResponses {
         return mapper.writeValueAsString(root)
     }
 
+    /**
+     * Real cmd=90005 update packets use NotifyType.Update (2) and sparse
+     * index/value pairs. Tb_hero's primary key is field 0.
+     */
+    fun heroSkillUpdateNotify(hero: PlayerHero): String =
+        mapper.writeValueAsString(
+            nf.arrayNode().add(
+                nf.arrayNode()
+                    .add(2)
+                    .add("Tb_hero")
+                    .add(
+                        nf.arrayNode()
+                            .add(0).add(hero.heroUid)
+                            .add(22).add(hero.skillString())
+                            .add(24).add(1),
+                    ),
+            ),
+        )
+
+    fun cardPacksSeenNotify(summonUids: Collection<Int>): String {
+        val root = nf.arrayNode()
+        summonUids.distinct().forEach { summonUid ->
+            root.add(
+                nf.arrayNode()
+                    .add(2)
+                    .add("Tb_user_card_extract")
+                    .add(
+                        nf.arrayNode()
+                            .add(0).add(summonUid)
+                            .add(7).add(0),
+                    ),
+            )
+        }
+        return mapper.writeValueAsString(root)
+    }
+
     fun userResourceUpsertNotify(userId: Int, resources: PlayerResources): String =
         mapper.writeValueAsString(
             nf.arrayNode().add(
@@ -448,13 +502,13 @@ object GameResponses {
             ),
         )
 
-    fun armyUpsertNotify(state: PlayerState): String =
+    fun armyUpsertNotify(state: PlayerState, armyId: Int = state.primaryArmyId()): String =
         mapper.writeValueAsString(
             nf.arrayNode().add(
                 nf.arrayNode()
                     .add(1)
                     .add("Tb_army")
-                    .add(tbArmy(state)),
+                    .add(tbArmy(state, armyId)),
             ),
         )
 
@@ -463,7 +517,11 @@ object GameResponses {
      * rows and their referencing army row in one packet, with heroes first, so
      * an army refresh can never observe an unknown hero uid.
      */
-    fun armyAndHeroesUpsertNotify(state: PlayerState, heroes: List<PlayerHero>): String {
+    fun armyAndHeroesUpsertNotify(
+        state: PlayerState,
+        heroes: List<PlayerHero>,
+        armyIds: Collection<Int> = listOf(state.primaryArmyId()),
+    ): String {
         val root = nf.arrayNode()
         heroes.distinctBy { it.heroUid }.forEach { hero ->
             root.add(
@@ -473,12 +531,14 @@ object GameResponses {
                     .add(tbHero(hero, state.userId)),
             )
         }
-        root.add(
-            nf.arrayNode()
-                .add(1)
-                .add("Tb_army")
-                .add(tbArmy(state)),
-        )
+        armyIds.distinct().forEach { armyId ->
+            root.add(
+                nf.arrayNode()
+                    .add(1)
+                    .add("Tb_army")
+                    .add(tbArmy(state, armyId)),
+            )
+        }
         return mapper.writeValueAsString(root)
     }
 
@@ -511,6 +571,46 @@ object GameResponses {
                             .add("")
                             .add(0)
                             .add(0),
+                    ),
+            ),
+        )
+
+    fun occupiedLandUpsertNotify(
+        userId: Int,
+        cityWid: Int,
+        landWid: Int,
+    ): String =
+        mapper.writeValueAsString(
+            nf.arrayNode().add(
+                nf.arrayNode()
+                    .add(1)
+                    .add("Tb_world_city")
+                    .add(
+                        nf.arrayNode().apply {
+                            add(landWid)  // 0 wid
+                            add(2)        // 1 city_type = player land
+                            add(0)        // 2 param
+                            add("")       // 3 facade
+                            add("")       // 4 facade3d
+                            add("")       // 5 name
+                            add(userId)   // 6 userid
+                            add(0)        // 7 farmer_userid
+                            add(0)        // 8 union_id
+                            add(0)        // 9 clan_id
+                            add(userId)   // 10 op_userid
+                            add(1)        // 11 force_type = normal
+                            add(100)      // 12 durability_cur
+                            add(100)      // 13 durability_max
+                            add(0)        // 14 durability_time
+                            add(0)        // 15 durability_add_ratio
+                            add(0)        // 16 protect_end_time
+                            add(0)        // 17 flied_protect_end_time
+                            add(0)        // 18 begin_time
+                            add(0)        // 19 end_time
+                            add(0)        // 20 first_end_time
+                            add(cityWid)  // 21 belong_city
+                            add(0)        // 22 state
+                        },
                     ),
             ),
         )
@@ -588,8 +688,8 @@ object GameResponses {
     private fun BattleOutcome.toArmyBattleResult(): Int =
         when (this) {
             BattleOutcome.ATTACKER_WIN -> 1
-            BattleOutcome.DEFENDER_WIN -> 2
-            BattleOutcome.DRAW -> 3
+            BattleOutcome.DEFENDER_WIN -> 0
+            BattleOutcome.DRAW -> 6
         }
 
     private fun tbHero(hero: PlayerHero, userId: Int): ArrayNode =
@@ -601,7 +701,7 @@ object GameResponses {
             add(0)           // 4 hurt_end_time
             add(0)           // 5 state
             add(hero.level)   // 6 level
-            add(hero.stamina) // 7 energy
+            add(PlayerHero.MAX_STAMINA) // 7 energy: infinite stamina
             add(0)           // 8 energy_add
             add(hero.createdAtSec) // 9 energy_time
             add(0)           // 10 exp
@@ -616,8 +716,10 @@ object GameResponses {
             add(0)           // 19 intel_add
             add(0)           // 20 speed_add
             add(0)           // 21 destroy_add
-            add("")          // 22 skill
-            repeat(9) { add(0) } // 23..31 gear/state fields
+            add(hero.skillString()) // 22 skill
+            add(0) // 23 gearid_u
+            add(1) // 24 awake_state
+            repeat(7) { add(0) } // 25..31 state fields
             add(hero.heroType) // 32 hero_type
             add("") // 33 hero_type_ext
             add("") // 34 hero_type_availible
@@ -628,11 +730,11 @@ object GameResponses {
             add(hero.dynamicIcon) // 43 dynamic_icon
         }
 
-    private fun tbArmy(state: PlayerState): ArrayNode {
-        val team = state.teamHeroes()
-        val march = state.activeMarch()
+    private fun tbArmy(state: PlayerState, armyId: Int): ArrayNode {
+        val team = state.teamHeroes(armyId)
+        val march = state.activeMarch(armyId)
         return nf.arrayNode().apply {
-            add(state.primaryArmyId())       // 0 armyid
+            add(armyId)                      // 0 armyid
             add(state.userId)                // 1 userid
             add(march?.fromWid ?: state.cityWid) // 2 reside_wid
             add(0)                           // 3 city_type
@@ -677,20 +779,20 @@ object GameResponses {
             add(userId)        // 1 userid
             add(10_000)        // 2 durability_max
             add(5)             // 3 reside_max
-            add(100)           // 4 hp_max
+            add(PlayerHero.MAX_TROOPS - PlayerHero.DEFAULT_LEVEL * 100) // 4 hp_max
             add(0)             // 5 recruit_time
-            add("")            // 6 country_add_han
-            add(0)
-            add("")
-            add(0)
-            add("")
-            add(0)
-            add("")
-            add(0)
-            add("")
-            add(0)
-            add("")
-            add(0)
+            add("295010")      // 6 country_add_han
+            add(PlayerState.MAX_COUNTRY_BUILD_LEVEL)
+            add("295020")
+            add(PlayerState.MAX_COUNTRY_BUILD_LEVEL)
+            add("295030")
+            add(PlayerState.MAX_COUNTRY_BUILD_LEVEL)
+            add("295040")
+            add(PlayerState.MAX_COUNTRY_BUILD_LEVEL)
+            add("295050")
+            add(PlayerState.MAX_COUNTRY_BUILD_LEVEL)
+            add("295140")
+            add(PlayerState.MAX_COUNTRY_BUILD_LEVEL)
             add(10)            // 18 recruit_redif_max
             add(0)
             add(0)

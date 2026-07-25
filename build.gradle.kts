@@ -28,3 +28,28 @@ kotlin {
 tasks.test {
     useJUnitPlatform()
 }
+
+tasks.processResources {
+    from(
+        "../stzb_9.2.2_out_branch_9.1.1776213/assets/npk_extracted_all/others/res/csharp/data/tcfg",
+    ) {
+        include(
+            "tb_cfg_army.bin",
+            "tb_cfg_army_count.bin",
+            "tb_cfg_hero_u.bin",
+        )
+        into("client-config")
+    }
+    from(
+        "../stzb_9.2.2_out_branch_9.1.1776213/assets/npk_extracted_all/others/res/csharp/data/tcfg/default",
+    ) {
+        include("tb_cfg_card_extract*.bin")
+        into("client-config")
+    }
+    from(
+        "../stzb_9.2.2_out_branch_9.1.1776213/assets/npk_extracted_all/others/res/csharp/data/tcfg",
+    ) {
+        include("tb_cfg_card_prob*.bin")
+        into("client-config")
+    }
+}

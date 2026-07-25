@@ -76,6 +76,8 @@ object BattleEngine {
                             ) ?: break
                             applySkillCastResult(actorRef, skillCast, attacker, defender, statuses, events, round)
                         }
+                    } else {
+                        runtimeState?.interruptPreparations(actorRef)
                     }
                     if (!actorStatuses.has(BattleStatus.DISARM)) {
                         performNormalAttackAndPursuit(
@@ -83,6 +85,8 @@ object BattleEngine {
                             skillRuntime, runtimeState, random, events,
                         )
                     }
+                } else {
+                    runtimeState?.interruptPreparations(actorRef)
                 }
                 events.add(BattleEvent.HeroActionEnd(round, actorRef))
 
@@ -159,6 +163,7 @@ object BattleEngine {
                 enemies = enemies.values.map { target ->
                     target.withEffectiveStats(statuses[target.ref(actorRef.side.opposite())].orEmpty())
                 },
+                random = random,
             ) ?: return
             val targetRef = resolved.event.target
             val targetStatuses = statuses[targetRef].orEmpty()
@@ -242,6 +247,7 @@ object BattleEngine {
                     power = if (event.power != 0) event.power else actor?.stats?.strategy?.coerceAtLeast(1) ?: 1,
                     statDelta = event.statDelta,
                     skillId = event.skillId,
+                    sourceSnapshot = actor,
                 )
             }
         }
@@ -418,6 +424,22 @@ object BattleEngine {
                     BattleModifier.DamageTakenPercent(null, status.power)
                 status.status == BattleStatus.DEFENSE_BUFF && status.power != 0 ->
                     BattleModifier.DamageTakenPercent(null, status.power)
+                status.status == BattleStatus.PHYSICAL_DAMAGE_DEALT_INCREASED && status.power != 0 ->
+                    BattleModifier.DamageDealtPercent(DamageKind.PHYSICAL, status.power)
+                status.status == BattleStatus.PHYSICAL_DAMAGE_DEALT_REDUCED && status.power != 0 ->
+                    BattleModifier.DamageDealtPercent(DamageKind.PHYSICAL, -status.power)
+                status.status == BattleStatus.STRATEGY_DAMAGE_DEALT_INCREASED && status.power != 0 ->
+                    BattleModifier.DamageDealtPercent(DamageKind.STRATEGY, status.power)
+                status.status == BattleStatus.STRATEGY_DAMAGE_DEALT_REDUCED && status.power != 0 ->
+                    BattleModifier.DamageDealtPercent(DamageKind.STRATEGY, -status.power)
+                status.status == BattleStatus.PHYSICAL_DAMAGE_TAKEN_INCREASED && status.power != 0 ->
+                    BattleModifier.DamageTakenPercent(DamageKind.PHYSICAL, status.power)
+                status.status == BattleStatus.PHYSICAL_DAMAGE_TAKEN_REDUCED && status.power != 0 ->
+                    BattleModifier.DamageTakenPercent(DamageKind.PHYSICAL, -status.power)
+                status.status == BattleStatus.STRATEGY_DAMAGE_TAKEN_INCREASED && status.power != 0 ->
+                    BattleModifier.DamageTakenPercent(DamageKind.STRATEGY, status.power)
+                status.status == BattleStatus.STRATEGY_DAMAGE_TAKEN_REDUCED && status.power != 0 ->
+                    BattleModifier.DamageTakenPercent(DamageKind.STRATEGY, -status.power)
                 else -> null
             }
         }
@@ -478,6 +500,15 @@ object BattleEngine {
     }
 
     private fun ongoingDamage(status: ActiveBattleStatus, target: BattleHero): Int {
+        val source = status.sourceSnapshot
+        if (source != null && status.power > 0) {
+            return BattleDamageCalculator.strategy(
+                source = source,
+                target = target,
+                ratePercent = status.power,
+                ongoing = true,
+            )
+        }
         val base = when (status.status) {
             BattleStatus.SHAKE -> status.power / 3
             BattleStatus.PANIC -> status.power / 2

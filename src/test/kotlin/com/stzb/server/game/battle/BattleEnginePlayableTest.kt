@@ -107,6 +107,11 @@ class BattleEnginePlayableTest {
         assertTrue(dotEvents.any { it.status == BattleStatus.PANIC && it.round == 2 })
         assertTrue(dotEvents.any { it.status == BattleStatus.PANIC && it.round == 3 })
         assertTrue(dotEvents.none { it.status == BattleStatus.PANIC && it.round == 4 })
+        assertEquals(
+            48,
+            dotEvents.first { it.status == BattleStatus.PANIC && it.round == 2 }.damage,
+            "ongoing strategy damage must use the reference troop and strategy curve",
+        )
     }
 
     @Test

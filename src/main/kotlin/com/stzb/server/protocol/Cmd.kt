@@ -32,6 +32,10 @@ object Cmd {
     const val SWITCH_HERO_IN_ARMY = 32
     const val CONSCRIPT = 37
     const val CONSCRIPT_IMMEDIATELY = 38
+    const val LEARN_HERO_SKILL = 71
+    const val FORGET_HERO_SKILL = 72
+    const val REMOVE_USER_SKILL = 77
+    const val REPLACE_HERO_SKILL = 98
     const val CARD_RECRUIT = 301
     const val CARD_SET_ALL_NOT_NEW = 302
     const val CARD_QUICK_RECRUIT = 304
@@ -47,6 +51,7 @@ object Cmd {
     const val RANDOM_ROLE_NAME = 511
     const val SYNC_SERVER_TIME = 694
     const val SET_CLIENT_RED_DOT_DATA = 3400
+    const val GET_LAND_NPC_ARMY = 4330
     const val QUERY_ARMY_RELATED_FORT = 4159
     const val GET_WORLD_SCENCE_INFO = 5025
     const val SEND_WORLD_SCENCE_FULL_INFO = 5026
@@ -66,6 +71,7 @@ object Cmd {
 object GameServerConfig {
     const val SERVER_ID = 1001
     const val RUN_SERVER_ID = 1001
+    /** 当前客户端内置并可安全加载的地图/登录配置。征服状态由 Tb_sys_param 声明。 */
     const val CFG_DB_ID = 2001
     const val SERVER_NAME = "本地一区"
     // 真机联调使用 adb reverse: 手机 127.0.0.1:59979 -> Mac 127.0.0.1:59979。

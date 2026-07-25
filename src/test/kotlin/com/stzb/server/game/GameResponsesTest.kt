@@ -29,9 +29,10 @@ class GameResponsesTest {
 
         val firstCard = response[1][0]
         assertTrue(firstCard.isArray)
-        assertTrue(firstCard.size() >= 4)
+        assertTrue(firstCard.size() >= 5)
         assertEquals(0, firstCard[0].asInt())
         assertTrue(firstCard[1].asInt() in HeroCatalog.fiveStarHeroIdsForCardPack(281))
+        assertEquals(0, firstCard[4].asInt(), "HasAdvanced must be explicit; missing defaults to 1 in client")
     }
 
     @Test
@@ -68,12 +69,33 @@ class GameResponsesTest {
         assertTrue(response[7].isArray)
         assertEquals(10, response[7].size())
         assertTrue(response[7].all { it[0].asInt() == 0 })
+        assertTrue(response[7].all { it.size() >= 5 && it[4].asInt() == 0 })
         assertTrue(
             response[7].all {
                 it[1].asInt() in HeroCatalog.fiveStarHeroIdsForCardPack(281) &&
                     HeroCatalog.heroQuality(it[1].asInt()) == 4
             },
         )
+    }
+
+    @Test
+    fun `recruit from a cross-season pack stays inside that client pool`() {
+        val packId = 2004
+        val expectedPool = ClientCardPackCatalog.heroIdsForPack(packId)
+            .filter { HeroCatalog.heroQuality(it) == 4 }
+        assertTrue(expectedPool.isNotEmpty())
+
+        val response = mapper.readTree(
+            GameResponses.cardRecruit(
+                userId = 42,
+                summonUid = ClientCardPackCatalog.summonUid(42, packId),
+                summonCfgId = packId,
+                childCfgId = 0,
+                summonOpType = 1,
+            ),
+        )
+
+        assertTrue(response[1].all { it[1].asInt() in expectedPool })
     }
 
     @Test
@@ -94,13 +116,14 @@ class GameResponsesTest {
         assertEquals(4_200_001, row[0].asInt())
         assertEquals(100017, row[1].asInt())
         assertEquals(42, row[2].asInt())
-        assertEquals(1, row[6].asInt())
-        assertEquals("", row[22].asText())
+        assertEquals(PlayerHero.DEFAULT_LEVEL, row[6].asInt())
+        assertEquals("200017,10;200223,10;200031,10;", row[22].asText())
+        assertEquals(1, row[24].asInt())
         assertEquals(2, row[32].asInt())
     }
 
     @Test
-    fun `hero upsert notify includes current stamina and troops`() {
+    fun `hero upsert notify always includes infinite stamina and current troops`() {
         val hero = PlayerHero(
             heroUid = 4_200_002,
             heroId = 100021,
@@ -120,9 +143,65 @@ class GameResponsesTest {
         assertEquals(100021, row[1].asInt())
         assertEquals(42, row[2].asInt())
         assertEquals(3, row[6].asInt())
-        assertEquals(60, row[7].asInt())
+        assertEquals(PlayerHero.MAX_STAMINA, row[7].asInt())
         assertEquals(640, row[11].asInt())
+        assertEquals("200021,10;200223,10;200031,10;", row[22].asText())
+        assertEquals(1, row[24].asInt())
         assertEquals(2, row[32].asInt())
+    }
+
+    @Test
+    fun `hero upsert serializes persistent empty and replaced skill slots`() {
+        val hero = PlayerHero(
+            heroUid = 4_200_004,
+            heroId = 100021,
+            createdAtSec = 1_700_000_000,
+            skillIds = mutableListOf(200021, 0, 200070),
+        )
+
+        val row = mapper.readTree(
+            GameResponses.heroUpsertNotify(userId = 42, heroes = listOf(hero)),
+        )[0][2]
+
+        assertEquals("200021,10;0,0;200070,10;", row[22].asText())
+        assertEquals(1, row[24].asInt())
+    }
+
+    @Test
+    fun `hero skill update uses the real sparse db notification shape`() {
+        val hero = PlayerHero(
+            heroUid = 4_200_005,
+            heroId = 100021,
+            createdAtSec = 1_700_000_000,
+            skillIds = mutableListOf(200021, 0, 200070),
+        )
+
+        val update = mapper.readTree(GameResponses.heroSkillUpdateNotify(hero))
+
+        assertEquals(1, update.size())
+        assertEquals(2, update[0][0].asInt())
+        assertEquals("Tb_hero", update[0][1].asText())
+        assertEquals(
+            listOf(0, 4_200_005, 22, "200021,10;0,0;200070,10;", 24, 1),
+            update[0][2].map { if (it.isTextual) it.asText() else it.asInt() },
+        )
+    }
+
+    @Test
+    fun `card pack seen notify clears is new for every active extract row`() {
+        val summonUids = listOf(7469, 7470, 7471)
+
+        val update = mapper.readTree(GameResponses.cardPacksSeenNotify(summonUids))
+
+        assertEquals(3, update.size())
+        update.forEachIndexed { index, item ->
+            assertEquals(2, item[0].asInt())
+            assertEquals("Tb_user_card_extract", item[1].asText())
+            assertEquals(
+                listOf(0, summonUids[index], 7, 0),
+                item[2].map { it.asInt() },
+            )
+        }
     }
 
     @Test
@@ -181,6 +260,32 @@ class GameResponsesTest {
     }
 
     @Test
+    fun `army upsert notify targets requested second army`() {
+        val state = PlayerStateRepository.getOrCreate(userId = 47, cityWid = 10047, roleName = "主公")
+        val hero = state.addHero(100017)
+        val secondArmyId = state.armyIds()[1]
+        state.assignTeamHero(hero.heroUid, pos = 1, armyId = secondArmyId)
+
+        val row = mapper.readTree(GameResponses.armyUpsertNotify(state, secondArmyId))[0][2]
+
+        assertEquals(secondArmyId, row[0].asInt())
+        assertEquals(hero.heroUid, row[7].asInt())
+    }
+
+    @Test
+    fun `second army upsert exposes its own active march`() {
+        val state = PlayerState(userId = 49, cityWid = 10049, roleName = "主公")
+        val secondArmyId = state.armyIds()[1]
+        state.startMarch(targetWid = 10060, nowSec = 1_700_000_000, armyId = secondArmyId)
+
+        val row = mapper.readTree(GameResponses.armyUpsertNotify(state, secondArmyId))[0][2]
+
+        assertEquals(secondArmyId, row[0].asInt())
+        assertEquals(1, row[11].asInt())
+        assertEquals(10060, row[13].asInt())
+    }
+
+    @Test
     fun `army hero upsert is atomic and writes heroes before army`() {
         val state = PlayerStateRepository.getOrCreate(userId = 46, cityWid = 10046, roleName = "主公")
         val hero = state.addHero(100017)
@@ -195,6 +300,30 @@ class GameResponsesTest {
         assertEquals(hero.heroUid, response[0][2][0].asInt())
         assertEquals("Tb_army", response[1][1].asText())
         assertEquals(hero.heroUid, response[1][2][7].asInt())
+    }
+
+    @Test
+    fun `army hero upsert includes every affected army`() {
+        val state = PlayerStateRepository.getOrCreate(userId = 48, cityWid = 10048, roleName = "主公")
+        val first = state.addHero(100017)
+        val second = state.addHero(100021)
+        val firstArmyId = state.armyIds()[0]
+        val secondArmyId = state.armyIds()[1]
+        state.assignTeamHero(first.heroUid, 1, firstArmyId)
+        state.assignTeamHero(second.heroUid, 1, secondArmyId)
+
+        val response = mapper.readTree(
+            GameResponses.armyAndHeroesUpsertNotify(
+                state,
+                listOf(first, second),
+                listOf(firstArmyId, secondArmyId),
+            ),
+        )
+
+        assertEquals(
+            listOf(firstArmyId, secondArmyId),
+            response.toList().takeLast(2).map { it[2][0].asInt() },
+        )
     }
 
     @Test
@@ -231,9 +360,57 @@ class GameResponsesTest {
         assertEquals(1_000_002, row[0].asInt())
         assertEquals(42, row[1].asInt())
         assertEquals(100011, row[3].asInt())
-        assertEquals(2, row[6].asInt())
+        assertEquals(0, row[6].asInt())
         assertEquals(10002, row[7].asInt())
         assertEquals("100017", row[10].asText())
+    }
+
+    @Test
+    fun `battle report insert uses the same result enum as report profile`() {
+        val attackerWin = mapper.readTree(
+            GameResponses.battleReportAttackInsertNotify(
+                userId = 42,
+                battleId = 1,
+                armyId = 2,
+                targetWid = 3,
+                outcome = BattleOutcome.ATTACKER_WIN,
+                heroIds = emptyList(),
+            ),
+        )
+        val draw = mapper.readTree(
+            GameResponses.battleReportAttackInsertNotify(
+                userId = 42,
+                battleId = 1,
+                armyId = 2,
+                targetWid = 3,
+                outcome = BattleOutcome.DRAW,
+                heroIds = emptyList(),
+            ),
+        )
+
+        assertEquals(1, attackerWin[0][2][6].asInt())
+        assertEquals(6, draw[0][2][6].asInt())
+    }
+
+    @Test
+    fun `occupied land upsert assigns world city ownership to the player`() {
+        val response = mapper.readTree(
+            GameResponses.occupiedLandUpsertNotify(
+                userId = 42,
+                cityWid = 10001,
+                landWid = 10002,
+            ),
+        )
+
+        assertEquals(1, response[0][0].asInt())
+        assertEquals("Tb_world_city", response[0][1].asText())
+        val row = response[0][2]
+        assertEquals(10002, row[0].asInt())
+        assertEquals(2, row[1].asInt())
+        assertEquals(42, row[6].asInt())
+        assertEquals(1, row[11].asInt())
+        assertEquals(10001, row[21].asInt())
+        assertEquals(0, row[22].asInt())
     }
 
     @Test
@@ -260,6 +437,11 @@ class GameResponsesTest {
         assertEquals(1, response[1][0].asInt())
         assertEquals("Tb_build_effect_city", response[1][1].asText())
         assertEquals(10001, response[1][2][0].asInt())
+        assertEquals(5_000, response[1][2][4].asInt())
+        assertEquals("295010", response[1][2][6].asText())
+        assertEquals(PlayerState.MAX_COUNTRY_BUILD_LEVEL, response[1][2][7].asInt())
+        assertEquals("295140", response[1][2][16].asText())
+        assertEquals(PlayerState.MAX_COUNTRY_BUILD_LEVEL, response[1][2][17].asInt())
         assertEquals(100, response[1][2][26].asInt())
         assertEquals(1, response[2][0].asInt())
         assertEquals("Tb_user_res", response[2][1].asText())
@@ -345,6 +527,15 @@ class GameResponsesTest {
     }
 
     @Test
+    fun `land npc army response matches defender recovery callback`() {
+        val response = mapper.readTree(GameResponses.landNpcArmy(120002))
+
+        assertEquals(2, response.size())
+        assertEquals(120002, response[0].asInt())
+        assertEquals(0L, response[1].asLong())
+    }
+
+    @Test
     fun `pre server token response allows login flow to continue`() {
         val response = mapper.readTree(GameResponses.preServerTokenCheck())
 
@@ -373,17 +564,21 @@ class GameResponsesTest {
         )
 
         assertTrue(response.isArray)
-        assertEquals(30, response.size())
+        assertEquals(31, response.size())
         assertTrue(response[0].isObject)
         assertTrue(response[1].isObject)
+        assertTrue(response[2].isObject)
         assertTrue(response[14].isObject)
+        assertTrue(response[17].isNull)
         assertEquals(1, response[18].asInt())
         assertTrue(response[29].isObject)
+        assertTrue(response[30].isNull)
         assertEquals("主公", response[1]["42"][0].asText())
         assertEquals(10001, response[1]["42"][1].asInt())
         assertEquals(1, response[14]["10001"]["0"][0].asInt())
         assertEquals(42, response[14]["10001"]["0"][2].asInt())
         assertEquals("主公", response[14]["10001"]["0"][6].asText())
+        assertEquals(0, response[14]["10001"]["0"][12].asInt())
     }
 
     @Test
@@ -425,6 +620,21 @@ class GameResponsesTest {
         )
 
         assertEquals(0, response[6]["100011"][0].asInt())
+    }
+
+    @Test
+    fun `world scene includes simultaneous marches from different armies`() {
+        val marches = listOf(
+            PlayerMarch(100011, 10001, 10002, 10, 13),
+            PlayerMarch(100012, 10001, 10003, 11, 14),
+        )
+
+        val response = mapper.readTree(
+            GameResponses.worldSceneFullInfo(42, 10001, "主公", marches = marches),
+        )
+
+        assertEquals(10002, response[6]["100011"][3].asInt())
+        assertEquals(10003, response[6]["100012"][3].asInt())
     }
 
     @Test

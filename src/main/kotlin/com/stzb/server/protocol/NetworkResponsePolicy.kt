@@ -17,12 +17,17 @@ object NetworkResponsePolicy {
         when {
             cmdId == 100 -> GenericGameResponses.unionInfoUnavailable()
             cmdId == 212 -> GenericGameResponses.userLookup()
+            cmdId in dictionaryCommands -> GenericGameResponses.emptyObject()
             cmdId in pagedListCommands -> GenericGameResponses.emptyPagedList()
             cmdId in objectResultCommands -> GenericGameResponses.emptyObjectResult()
             cmdId in noOpArrayCommands -> GenericGameResponses.emptyArray()
             isBusinessCommand(cmdId) -> GenericGameResponses.emptyArray()
             else -> null
         }
+
+    private val dictionaryCommands = setOf(
+        6219, 6239,
+    )
 
     private val pagedListCommands = setOf(
         91, 180, 206, 3611, 3719, 4331, 5022,

@@ -23,17 +23,34 @@ class PlayerConscriptServiceTest {
     }
 
     @Test
+    fun `conscript returns the army that owns a second army hero`() {
+        val state = PlayerStateRepository.getOrCreate(userId = 914, cityWid = 1914, roleName = "主公")
+        val hero = state.addHero(heroId = 100017, nowSec = 1_700_000_001)
+        val secondArmyId = state.armyIds()[1]
+        state.assignTeamHero(hero.heroUid, pos = 1, armyId = secondArmyId)
+        hero.troops = 500
+
+        val result = PlayerConscriptService().conscript(
+            state,
+            ConscriptRequest(type = 0, allocations = listOf(ConscriptAllocation(hero.heroUid, 100))),
+        )
+
+        assertEquals(secondArmyId, result.armyId)
+        assertEquals(600, hero.troops)
+    }
+
+    @Test
     fun `conscript does not exceed max troops`() {
         val state = PlayerStateRepository.getOrCreate(userId = 912, cityWid = 1912, roleName = "主公")
         val hero = state.addHero(heroId = 100017, nowSec = 1_700_000_001)
-        state.hero(hero.heroUid)?.troops = 900
+        state.hero(hero.heroUid)?.troops = 9_900
 
         PlayerConscriptService().conscript(
             state = state,
-            request = ConscriptRequest(type = 0, allocations = listOf(ConscriptAllocation(hero.heroUid, 250))),
+            request = ConscriptRequest(type = 0, allocations = listOf(ConscriptAllocation(hero.heroUid, 2_500))),
         )
 
-        assertEquals(1_000, state.hero(hero.heroUid)?.troops)
+        assertEquals(10_000, state.hero(hero.heroUid)?.troops)
         assertEquals(PlayerResources.UNLIMITED_AMOUNT, state.resources.food)
         assertEquals(PlayerResources.UNLIMITED_AMOUNT, state.resources.money)
     }

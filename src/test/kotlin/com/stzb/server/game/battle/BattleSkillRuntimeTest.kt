@@ -210,6 +210,136 @@ class BattleSkillRuntimeTest {
         assertEquals(1, random.calls)
     }
 
+    @Test
+    fun `hesitation interruption cancels an in progress prepared skill`() {
+        val sourceRef = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(100017))
+        val source = hero(100017, skillIds = listOf(200031))
+        val state = SkillRuntimeState()
+        val enemies = BattleTeam(listOf(hero(1)))
+        val allies = BattleTeam(listOf(source))
+
+        val preparation = runtime.tryAct(
+            1, sourceRef, source, enemies, allies, FixedBattleRandom(0), state,
+        )
+        state.interruptPreparations(sourceRef)
+        val nextAction = runtime.tryAct(
+            2, sourceRef, source, enemies, allies, FixedBattleRandom(0), state,
+        )
+
+        assertTrue(preparation!!.events.any { it is BattleEvent.SkillPreparationStarted })
+        assertTrue(nextAction!!.events.any { it is BattleEvent.SkillPreparationStarted })
+        assertTrue(nextAction.events.none { it is BattleEvent.SkillDamage })
+    }
+
+    @Test
+    fun `zhuge pouch applies its beneficial effects to allies rather than enemies`() {
+        val sourceRef = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(100017))
+        val source = hero(100017, position = 0, troops = 500, skillIds = listOf(200017))
+        val ally = hero(100021, position = 1, troops = 500)
+        val enemy = hero(1, position = 0, troops = 1_000)
+
+        val result = runtime.tryAct(
+            round = 1,
+            sourceRef = sourceRef,
+            source = source,
+            targets = BattleTeam(listOf(enemy)),
+            allies = BattleTeam(listOf(source, ally)),
+            random = FixedBattleRandom(0),
+            state = SkillRuntimeState(),
+        )
+
+        assertNotNull(result)
+        val statuses = result.events.filterIsInstance<BattleEvent.StatusApplied>()
+        assertTrue(statuses.none { it.target.side == Side.DEFENDER })
+        assertTrue(statuses.any {
+            it.target.heroId == source.id &&
+                it.status == BattleStatus.STRATEGY_DAMAGE_TAKEN_REDUCED
+        })
+        assertTrue(statuses.any {
+            it.target.heroId == ally.id &&
+                it.status == BattleStatus.PHYSICAL_DAMAGE_DEALT_INCREASED
+        })
+        assertTrue(statuses.any {
+            it.target.heroId == source.id &&
+                it.status == BattleStatus.FIRST_ACTION
+        })
+    }
+
+    @Test
+    fun `morale and probability modifiers affect active skill activation rate`() {
+        val sourceRef = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(100017))
+        val enemies = BattleTeam(listOf(hero(1)))
+        val normal = hero(100017, skillIds = listOf(200017)).copy(morale = 50)
+        val boosted = normal.copy(
+            modifiers = listOf(BattleModifier.SkillProbabilityPercent(20)),
+        )
+
+        val failed = runtime.tryAct(
+            1, sourceRef, normal, enemies, BattleTeam(listOf(normal)),
+            FixedBattleRandom(30), SkillRuntimeState(),
+        )
+        val succeeded = runtime.tryAct(
+            1, sourceRef, boosted, enemies, BattleTeam(listOf(boosted)),
+            FixedBattleRandom(30), SkillRuntimeState(),
+        )
+
+        assertEquals(null, failed)
+        assertNotNull(succeeded)
+    }
+
+    @Test
+    fun `physical skill damage follows the reference troop and attack curve`() {
+        val sourceRef = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(100021))
+        val source = hero(100021, troops = 10_000, skillIds = listOf(200021)).copy(
+            maxTroops = 10_000,
+            stats = BattleStats(attack = 200, defense = 100, strategy = 100, speed = 100, siege = 0, hitRange = 5),
+        )
+        val enemy = hero(1, troops = 10_000).copy(
+            maxTroops = 10_000,
+            stats = BattleStats(attack = 100, defense = 100, strategy = 100, speed = 50, siege = 0, hitRange = 3),
+        )
+
+        val result = runtime.tryAct(
+            1, sourceRef, source, BattleTeam(listOf(enemy)), BattleTeam(listOf(source)),
+            FixedBattleRandom(0), SkillRuntimeState(),
+        )
+
+        assertNotNull(result)
+        assertEquals(
+            listOf(840, 840),
+            result.events.filterIsInstance<BattleEvent.SkillDamage>().map { it.damage },
+        )
+    }
+
+    @Test
+    fun `strategy skill damage follows the reference troop and strategy curve`() {
+        val sourceRef = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(100017))
+        val source = hero(100017, troops = 10_000, skillIds = listOf(200031)).copy(
+            maxTroops = 10_000,
+            stats = BattleStats(attack = 100, defense = 100, strategy = 200, speed = 100, siege = 0, hitRange = 5),
+        )
+        val enemy = hero(1, troops = 10_000).copy(
+            maxTroops = 10_000,
+            stats = BattleStats(attack = 100, defense = 100, strategy = 100, speed = 50, siege = 0, hitRange = 3),
+        )
+        val state = SkillRuntimeState()
+
+        runtime.tryAct(
+            1, sourceRef, source, BattleTeam(listOf(enemy)), BattleTeam(listOf(source)),
+            FixedBattleRandom(0), state,
+        )
+        val result = runtime.tryAct(
+            2, sourceRef, source, BattleTeam(listOf(enemy)), BattleTeam(listOf(source)),
+            FixedBattleRandom(0), state,
+        )
+
+        assertNotNull(result)
+        assertEquals(
+            303,
+            result.events.filterIsInstance<BattleEvent.SkillDamage>().single().damage,
+        )
+    }
+
     private fun hero(
         heroId: Int,
         position: Int = 0,

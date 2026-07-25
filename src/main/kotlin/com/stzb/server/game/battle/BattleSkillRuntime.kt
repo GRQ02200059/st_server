@@ -1,10 +1,21 @@
 package com.stzb.server.game.battle
 
+import kotlin.math.roundToInt
+
 data class SkillRuntimeState(
     val defaultCooldownRounds: Int = 0,
-    val preparingUntilRound: MutableMap<Pair<Int, Int>, Int> = mutableMapOf(),
-    val cooldownUntilRound: MutableMap<Pair<Int, Int>, Int> = mutableMapOf(),
-    val attemptedRound: MutableMap<Pair<Int, Int>, Int> = mutableMapOf(),
+    val preparingUntilRound: MutableMap<SkillRuntimeKey, Int> = mutableMapOf(),
+    val cooldownUntilRound: MutableMap<SkillRuntimeKey, Int> = mutableMapOf(),
+    val attemptedRound: MutableMap<SkillRuntimeKey, Int> = mutableMapOf(),
+) {
+    fun interruptPreparations(source: BattleHeroRef) {
+        preparingUntilRound.keys.removeAll { it.source == source }
+    }
+}
+
+data class SkillRuntimeKey(
+    val source: BattleHeroRef,
+    val skillId: Int,
 )
 
 class BattleSkillRuntime(
@@ -24,7 +35,7 @@ class BattleSkillRuntime(
         for (skillId in source.skillIds) {
             val skill = config.skill(skillId) ?: continue
             if (skill.kind !in allowedKinds) continue
-            val key = source.id.value to skillId
+            val key = SkillRuntimeKey(sourceRef, skillId)
             if (!allowRepeatedAttempt && state.attemptedRound[key] == round) continue
             val readyRound = state.preparingUntilRound[key]
             if (readyRound != null) {
@@ -40,7 +51,7 @@ class BattleSkillRuntime(
             }
             if (!allowRepeatedAttempt && (state.cooldownUntilRound[key] ?: -1) >= round) continue
             state.attemptedRound[key] = round
-            if (random.nextInt(100) >= skill.probabilityMax) continue
+            if (random.nextInt(100) >= effectiveProbability(source, skill.probabilityMax)) continue
 
             if (skill.prepareRounds > 0) {
                 val completesAt = round + skill.prepareRounds
@@ -198,7 +209,7 @@ class BattleSkillRuntime(
                             else -> BattleStatus.DISARM
                         }
                         val power = when (detail.effectId) {
-                            303, 304, 305, 306 -> source.stats.strategy
+                            303, 304, 305, 306 -> skillRate(source, detail)
                             else -> 0
                         }
                         val refSide = if (targetSide == TargetSide.ENEMY) sourceRef.side.opposite() else sourceRef.side
@@ -213,8 +224,28 @@ class BattleSkillRuntime(
                         )
                     }
                 }
+                511, 514, 521, 522, 523, 524, 531, 532, 533, 534, 544, 561, 761 -> {
+                    val pool = when (targetSide) {
+                        TargetSide.ENEMY -> updatedEnemies
+                        TargetSide.ALLY, TargetSide.SELF -> updatedAllies
+                    }
+                    val selected = selectTargets(pool.values, detail, sourceRef, random, targetSide == TargetSide.SELF)
+                    selected.forEach { target ->
+                        val status = statusForEffect(detail.effectId)
+                        val refSide = if (targetSide == TargetSide.ENEMY) sourceRef.side.opposite() else sourceRef.side
+                        events += BattleEvent.StatusApplied(
+                            round = round,
+                            source = sourceRef,
+                            target = BattleHeroRef(refSide, target.position, target.id),
+                            status = status,
+                            durationRounds = detail.availableRounds.coerceAtLeast(1),
+                            power = effectPower(source, detail),
+                            skillId = skillId,
+                        )
+                    }
+                }
                 101, 102, 103, 104 -> {
-                    selfStatDelta = statDeltaForEffect(detail.effectId, detail.constantParam)
+                    selfStatDelta += statDeltaForEffect(detail.effectId, detail.constantParam)
                     selfBuffDuration = detail.availableRounds.coerceAtLeast(2)
                 }
                 else -> events += BattleEvent.UnsupportedSkillEffect(
@@ -241,11 +272,14 @@ class BattleSkillRuntime(
 
     private fun resolveTargetSide(detail: SkillDetailConfig): TargetSide {
         if (detail.targetType == 0) {
-            return when (detail.effectId) {
-                in 301..399, in 500..599 -> TargetSide.ENEMY
-                in 400..499, in 100..199 -> TargetSide.SELF
-                else -> TargetSide.ENEMY
+            config.skillEffect(detail.effectId)?.let { effect ->
+                return when (effect.buffType) {
+                    2 -> TargetSide.ALLY
+                    1 -> TargetSide.ENEMY
+                    else -> targetSideByEffect(detail.effectId)
+                }
             }
+            return targetSideByEffect(detail.effectId)
         }
         val ones = detail.targetType % 10
         return when (ones) {
@@ -253,6 +287,22 @@ class BattleSkillRuntime(
             3 -> TargetSide.SELF
             else -> TargetSide.ENEMY
         }
+    }
+
+    private fun targetSideByEffect(effectId: Int): TargetSide =
+        when (effectId) {
+            in 301..399, in 500..599 -> TargetSide.ENEMY
+            in 400..499, in 100..199 -> TargetSide.SELF
+            else -> TargetSide.ENEMY
+        }
+
+    private fun effectiveProbability(source: BattleHero, configured: Int): Int {
+        val moraleAddition = (source.morale - 100).toDouble() / (100 + 0.5 * source.morale)
+        val moraleAdjusted = (configured * (1 + moraleAddition)).toInt()
+        val equipmentAdjusted = source.modifiers
+            .filterIsInstance<BattleModifier.SkillProbabilityPercent>()
+            .sumOf { it.percent }
+        return (moraleAdjusted + equipmentAdjusted).coerceIn(0, 100)
     }
 
     private fun selectTargets(
@@ -290,6 +340,32 @@ class BattleSkillRuntime(
         }
     }
 
+    private fun statusForEffect(effectId: Int): BattleStatus =
+        when (effectId) {
+            511 -> BattleStatus.INSIGHT
+            514 -> BattleStatus.EVADE
+            521 -> BattleStatus.PHYSICAL_DAMAGE_TAKEN_INCREASED
+            522 -> BattleStatus.PHYSICAL_DAMAGE_TAKEN_REDUCED
+            523 -> BattleStatus.STRATEGY_DAMAGE_TAKEN_INCREASED
+            524 -> BattleStatus.STRATEGY_DAMAGE_TAKEN_REDUCED
+            531 -> BattleStatus.PHYSICAL_DAMAGE_DEALT_INCREASED
+            532 -> BattleStatus.PHYSICAL_DAMAGE_DEALT_REDUCED
+            533 -> BattleStatus.STRATEGY_DAMAGE_DEALT_INCREASED
+            534 -> BattleStatus.STRATEGY_DAMAGE_DEALT_REDUCED
+            544 -> BattleStatus.DOUBLE_ATTACK
+            561, 761 -> BattleStatus.FIRST_ACTION
+            else -> error("unsupported status effect: $effectId")
+        }
+
+    private fun effectPower(source: BattleHero, detail: SkillDetailConfig): Int {
+        val strategyBonus = if (detail.intelParam == 0) {
+            0
+        } else {
+            ((source.stats.strategy - 80).coerceAtLeast(0) * detail.intelParam / 10_000.0).toInt()
+        }
+        return detail.constantParam + strategyBonus
+    }
+
     private fun selectDisorderEffects(
         details: List<SkillDetailConfig>,
         random: BattleRandom,
@@ -306,23 +382,25 @@ class BattleSkillRuntime(
     }
 
     private fun skillDamage(source: BattleHero, target: BattleHero, detail: SkillDetailConfig): Int {
-        val sourcePower = if (detail.effectId == 302) source.stats.strategy else source.stats.attack
-        val targetGuard = if (detail.effectId == 302) target.stats.strategy / 3 else target.stats.defense / 2
-        val rate = detail.constantParam.coerceAtLeast(1) / 100.0
-        val base = ((sourcePower - targetGuard).coerceAtLeast(1) * rate).toInt().coerceAtLeast(1)
-        val kind = if (detail.effectId == 302) DamageKind.STRATEGY else DamageKind.PHYSICAL
-        val bonusPercent = source.modifiers
-            .filterIsInstance<BattleModifier.DamageDealtPercent>()
-            .filter { it.kind == null || it.kind == kind || it.kind == DamageKind.ACTIVE_SKILL }
-            .sumOf { it.percent }
-        val takenPercent = target.modifiers
-            .filterIsInstance<BattleModifier.DamageTakenPercent>()
-            .filter { it.kind == null || it.kind == kind || it.kind == DamageKind.ACTIVE_SKILL }
-            .sumOf { it.percent }
-        return (base * (100 + bonusPercent) / 100 * (100 + takenPercent) / 100)
-            .coerceAtLeast(1)
-            .coerceAtMost(target.troops)
+        val rate = skillRate(source, detail)
+        return if (detail.effectId == 302) {
+            BattleDamageCalculator.strategy(source, target, rate)
+        } else {
+            BattleDamageCalculator.physical(source, target, rate)
+        }
     }
+
+    private fun skillRate(source: BattleHero, detail: SkillDetailConfig): Int =
+        if (detail.intelParam == 0) {
+            detail.constantParam.coerceAtLeast(1)
+        } else {
+            val base = detail.constantParam
+            if (source.stats.strategy < 80) {
+                (base * 0.4 + base * 0.6 * source.stats.strategy / 80.0).roundToInt()
+            } else {
+                (base + detail.intelParam / 1_000.0 * (source.stats.strategy - 80)).roundToInt()
+            }.coerceAtLeast(1)
+        }
 
     private fun BattleTeam.insideRange(sourcePosition: Int, hitRange: Int?): BattleTeam =
         if (hitRange == null) {

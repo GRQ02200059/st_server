@@ -5,6 +5,11 @@ import kotlin.test.assertEquals
 
 class GameServerConfigTest {
     @Test
+    fun `server keeps the client bundled login config while user tables declare conquest`() {
+        assertEquals(2001, GameServerConfig.CFG_DB_ID)
+    }
+
+    @Test
     fun `advertised host can be overridden for remote deployment`() {
         val key = "stzb.publicHost"
         val previous = System.getProperty(key)

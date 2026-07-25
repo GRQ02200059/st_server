@@ -19,6 +19,12 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `reinforce stay checks return dictionaries required by conquest army ui`() {
+        assertEquals("{}", NetworkResponsePolicy.fallbackBody(6219))
+        assertEquals("{}", NetworkResponsePolicy.fallbackBody(6239))
+    }
+
+    @Test
     fun `friend mail user lookup returns user data tuple`() {
         val response = mapper.readTree(NetworkResponsePolicy.fallbackBody(212))
         assertEquals(1, response[0].asInt())

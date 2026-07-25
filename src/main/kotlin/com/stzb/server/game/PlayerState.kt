@@ -18,20 +18,43 @@ data class PlayerResources(
     }
 }
 
-data class PlayerHero(
+class PlayerHero(
     val heroUid: Int,
     val heroId: Int,
     val createdAtSec: Int,
     var armyId: Int = 0,
-    var troops: Int = 1_000,
+    troops: Int = 1_000,
     var stamina: Int = MAX_STAMINA,
-    var level: Int = 1,
+    var level: Int = DEFAULT_LEVEL,
     var heroType: Int = PlayerHeroTypes.forHero(heroId),
     var dynamicIcon: Int = 0,
+    var awakeState: Int = 1,
+    var skillIds: MutableList<Int> = HeroCatalog.defaultSkillIds(heroId).toMutableList(),
 ) {
+    var troops: Int = troops.coerceIn(0, MAX_TROOPS)
+        set(value) {
+            field = value.coerceIn(0, MAX_TROOPS)
+        }
+
+    fun normalizedSkillIds(): List<Int> =
+        (skillIds.take(SKILL_SLOT_COUNT) + List(SKILL_SLOT_COUNT) { 0 })
+            .take(SKILL_SLOT_COUNT)
+            .mapIndexed { index, skillId ->
+                if (index == 0) HeroCatalog.initialSkillId(heroId) else skillId.coerceAtLeast(0)
+            }
+
+    fun skillString(): String =
+        normalizedSkillIds().joinToString(separator = "") { skillId ->
+            if (skillId > 0) "$skillId,$MAX_SKILL_LEVEL;" else "0,0;"
+        }
+
     companion object {
         // Tb_hero.energy uses 1/10,000 display units; 1,000,000 displays as 100 energy.
         const val MAX_STAMINA = 1_000_000
+        const val MAX_TROOPS = 10_000
+        const val DEFAULT_LEVEL = 50
+        const val MAX_SKILL_LEVEL = 10
+        const val SKILL_SLOT_COUNT = 3
     }
 }
 
@@ -50,9 +73,11 @@ data class PlayerHeroSnapshot(
     val armyId: Int = 0,
     val troops: Int = 1_000,
     val stamina: Int = PlayerHero.MAX_STAMINA,
-    val level: Int = 1,
+    val level: Int = PlayerHero.DEFAULT_LEVEL,
     val heroType: Int = PlayerHeroTypes.forHero(heroId),
     val dynamicIcon: Int = 0,
+    val awakeState: Int = 1,
+    val skillIds: List<Int> = emptyList(),
 )
 
 data class PlayerMarchSnapshot(
@@ -72,8 +97,11 @@ data class PlayerStateSnapshot(
     val buildLevels: Map<Int, Int> = emptyMap(),
     val heroes: List<PlayerHeroSnapshot> = emptyList(),
     val team: List<Int> = List(3) { 0 },
+    val armies: Map<Int, List<Int>> = emptyMap(),
     val march: PlayerMarchSnapshot? = null,
+    val marches: Map<Int, PlayerMarchSnapshot> = emptyMap(),
     val occupiedLands: Set<Int> = emptySet(),
+    val cardPacksSeen: Boolean = false,
 )
 
 /**
@@ -92,18 +120,25 @@ class PlayerState(
     val accountKey: String = "legacy-user-$userId",
 ) {
     val resources = PlayerResources()
-    private val buildLevels = ConcurrentHashMap<Int, Int>().apply { this[10] = 1 }
+    private val buildLevels = ConcurrentHashMap<Int, Int>().apply { this[10] = maxBuildLevel(10) }
     private val heroes = LinkedHashMap<Int, PlayerHero>()
-    private val team = MutableList(3) { 0 }
+    private val armies = LinkedHashMap<Int, MutableList<Int>>().apply {
+        repeat(MAX_ARMIES) { index -> this[cityWid * 10 + index + 1] = MutableList(3) { 0 } }
+    }
     private val heroSeq = AtomicInteger(0)
-    private var march: PlayerMarch? = null
+    private val marches = LinkedHashMap<Int, PlayerMarch>()
     private val lands = linkedSetOf<Int>()
+    var cardPacksSeen: Boolean = false
+        private set
 
-    fun buildLevel(buildId: Int): Int =
-        buildLevels[buildId] ?: 1
+    fun markCardPacksSeen() {
+        cardPacksSeen = true
+    }
+
+    fun buildLevel(buildId: Int): Int = maxBuildLevel(buildId)
 
     fun upgradeBuild(buildId: Int, targetLevel: Int): Int {
-        val next = maxOf(buildLevel(buildId) + 1, targetLevel).coerceIn(1, 20)
+        val next = maxBuildLevel(buildId)
         buildLevels[buildId] = next
         return next
     }
@@ -128,24 +163,47 @@ class PlayerState(
         return true
     }
 
-    fun saveTeam(heroUids: List<Int>) {
+    fun learnHeroSkill(heroUid: Int, skillId: Int, slotIndex: Int): Boolean {
+        val hero = hero(heroUid) ?: return false
+        if (skillId <= 0 || slotIndex !in 2..PlayerHero.SKILL_SLOT_COUNT) return false
+        val slots = hero.normalizedSkillIds().toMutableList()
+        slots[slotIndex - 1] = skillId
+        hero.skillIds = slots
+        return true
+    }
+
+    fun forgetHeroSkill(heroUid: Int, skillId: Int): Boolean {
+        val hero = hero(heroUid) ?: return false
+        val slots = hero.normalizedSkillIds().toMutableList()
+        val slotIndex = slots.indexOfFirst { it == skillId }
+        if (slotIndex !in 1 until PlayerHero.SKILL_SLOT_COUNT) return false
+        slots[slotIndex] = 0
+        hero.skillIds = slots
+        return true
+    }
+
+    fun saveTeam(heroUids: List<Int>, armyId: Int = primaryArmyId()) {
+        val team = armySlots(armyId)
         val normalized = heroUids.take(3) + List((3 - heroUids.size).coerceAtLeast(0)) { 0 }
         repeat(3) { team[it] = normalized[it] }
         refreshHeroArmyIds()
     }
 
-    fun assignTeamHero(heroUid: Int, pos: Int) {
+    fun assignTeamHero(heroUid: Int, pos: Int, armyId: Int = primaryArmyId()) {
         if (heroUid <= 0 || hero(heroUid) == null) return
         val index = (pos - 1).coerceIn(0, 2)
-        repeat(3) {
-            if (team[it] == heroUid) team[it] = 0
+        armies.values.forEach { team ->
+            repeat(3) {
+                if (team[it] == heroUid) team[it] = 0
+            }
         }
         hero(heroUid)?.takeIf { it.stamina <= 0 }?.stamina = PlayerHero.MAX_STAMINA
-        team[index] = heroUid
+        armySlots(armyId)[index] = heroUid
         refreshHeroArmyIds()
     }
 
-    fun removeTeamHero(pos: Int): Int {
+    fun removeTeamHero(pos: Int, armyId: Int = primaryArmyId()): Int {
+        val team = armySlots(armyId)
         val index = (pos - 1).coerceIn(0, 2)
         val removedHeroUid = team[index]
         team[index] = 0
@@ -153,39 +211,61 @@ class PlayerState(
         return removedHeroUid
     }
 
-    fun switchTeamHeroes(pos1: Int, pos2: Int): List<Int> {
+    fun switchTeamHeroes(
+        pos1: Int,
+        pos2: Int,
+        armyId1: Int = primaryArmyId(),
+        armyId2: Int = armyId1,
+    ): List<Int> {
+        val team1 = armySlots(armyId1)
+        val team2 = armySlots(armyId2)
         val index1 = (pos1 - 1).coerceIn(0, 2)
         val index2 = (pos2 - 1).coerceIn(0, 2)
-        if (index1 == index2) return listOfNotNull(team[index1].takeIf { it > 0 })
-        val first = team[index1]
-        team[index1] = team[index2]
-        team[index2] = first
+        if (armyId1 == armyId2 && index1 == index2) return listOfNotNull(team1[index1].takeIf { it > 0 })
+        val first = team1[index1]
+        team1[index1] = team2[index2]
+        team2[index2] = first
         refreshHeroArmyIds()
-        return listOf(team[index1], team[index2]).filter { it > 0 }
+        return listOf(team1[index1], team2[index2]).filter { it > 0 }
     }
 
-    fun teamHeroes(): List<Int> =
-        team.toList()
+    fun teamHeroes(armyId: Int = primaryArmyId()): List<Int> =
+        armySlots(armyId).toList()
+
+    fun armyIds(): List<Int> = armies.keys.toList()
 
     fun primaryArmyId(): Int =
         cityWid * 10 + 1
 
-    fun startMarch(targetWid: Int, nowSec: Int): PlayerMarch {
+    fun startMarch(
+        targetWid: Int,
+        nowSec: Int,
+        armyId: Int = primaryArmyId(),
+    ): PlayerMarch {
         val beginSec = nowSec.coerceAtLeast(1)
         return PlayerMarch(
-            armyId = primaryArmyId(),
+            armyId = normalizeArmyId(armyId),
             fromWid = cityWid,
             targetWid = targetWid,
             beginSec = beginSec,
             endSec = beginSec + MARCH_DURATION_SECONDS,
-        ).also { march = it }
+        ).also { marches[it.armyId] = it }
     }
 
-    fun activeMarch(): PlayerMarch? =
-        march
+    fun activeMarch(armyId: Int = primaryArmyId()): PlayerMarch? =
+        marches[normalizeArmyId(armyId)]
 
-    fun completeMarchIfDue(nowSec: Int): PlayerMarch? =
-        march?.takeIf { nowSec >= it.endSec }?.also { march = null }
+    fun activeMarches(): List<PlayerMarch> = marches.values.toList()
+
+    fun completeMarchIfDue(
+        nowSec: Int,
+        armyId: Int = primaryArmyId(),
+    ): PlayerMarch? {
+        val normalizedArmyId = normalizeArmyId(armyId)
+        return marches[normalizedArmyId]
+            ?.takeIf { nowSec >= it.endSec }
+            ?.also { marches.remove(normalizedArmyId) }
+    }
 
     fun occupyLand(wid: Int) {
         if (wid > 0 && wid != cityWid) lands += wid
@@ -214,10 +294,13 @@ class PlayerState(
                     level = hero.level,
                     heroType = hero.heroType,
                     dynamicIcon = hero.dynamicIcon,
+                    awakeState = hero.awakeState,
+                    skillIds = hero.normalizedSkillIds(),
                 )
             },
-            team = team.toList(),
-            march = march?.let {
+            team = teamHeroes(),
+            armies = armies.mapValues { it.value.toList() },
+            march = activeMarch()?.let {
                 PlayerMarchSnapshot(
                     armyId = it.armyId,
                     fromWid = it.fromWid,
@@ -226,20 +309,71 @@ class PlayerState(
                     endSec = it.endSec,
                 )
             },
+            marches = marches.mapValues { (_, march) ->
+                PlayerMarchSnapshot(
+                    armyId = march.armyId,
+                    fromWid = march.fromWid,
+                    targetWid = march.targetWid,
+                    beginSec = march.beginSec,
+                    endSec = march.endSec,
+                )
+            },
             occupiedLands = lands.toSet(),
+            cardPacksSeen = cardPacksSeen,
         )
 
     private fun refreshHeroArmyIds() {
-        val armyId = primaryArmyId()
+        val heroArmies = armies.flatMap { (armyId, slots) ->
+            slots.filter { it > 0 }.map { heroUid -> heroUid to armyId }
+        }.toMap()
         heroes.values.forEach { hero ->
-            hero.armyId = if (hero.heroUid in team) armyId else 0
+            hero.armyId = heroArmies[hero.heroUid] ?: 0
         }
     }
 
+    private fun armySlots(armyId: Int): MutableList<Int> =
+        armies.getOrPut(normalizeArmyId(armyId)) { MutableList(3) { 0 } }
+
+    private fun normalizeArmyId(armyId: Int): Int =
+        armyId.takeIf { it in primaryArmyId() until (primaryArmyId() + MAX_ARMIES) }
+            ?: primaryArmyId()
+
     companion object {
         private const val MARCH_DURATION_SECONDS = 3
+        private const val MAX_ARMIES = 5
+        const val MAX_BUILD_LEVEL = 8
+        const val MAX_COUNTRY_BUILD_LEVEL = 10
 
-        fun fromSnapshot(snapshot: PlayerStateSnapshot): PlayerState =
+        /**
+         * cfg 344 gives each main-city building its own maximum.  Advertising
+         * one global level makes BuildTreeUI.RefreshName request the nonexistent
+         * next cost row (buildId * 100 + level + 1).
+         */
+        fun maxBuildLevel(buildId: Int): Int = MAIN_CITY_BUILD_MAX_LEVELS[buildId] ?: 1
+
+        private val MAIN_CITY_BUILD_MAX_LEVELS = mapOf(
+            10 to 8,
+            13 to 20,
+            20 to 20, 21 to 20, 22 to 20, 23 to 20, 24 to 20,
+            25 to 1,
+            30 to 20,
+            31 to 10, 32 to 10, 33 to 10, 34 to 10, 35 to 10,
+            36 to 20,
+            37 to 10,
+            40 to 5, 42 to 5,
+            43 to 15,
+            44 to 3,
+            51 to 10, 52 to 10, 53 to 10, 54 to 10,
+            61 to 5, 62 to 6, 63 to 5, 64 to 5, 65 to 5,
+            66 to 10,
+            67 to 3,
+            160 to 10,
+        )
+
+        fun fromSnapshot(
+            snapshot: PlayerStateSnapshot,
+            nowSec: Int = (System.currentTimeMillis() / 1000).toInt(),
+        ): PlayerState =
             PlayerState(
                 userId = snapshot.userId,
                 cityWid = snapshot.cityWid,
@@ -255,8 +389,12 @@ class PlayerState(
                 state.resources.hufu = snapshot.resources.hufu
                 state.resources.freeYuanBao = snapshot.resources.freeYuanBao
                 state.buildLevels.clear()
-                state.buildLevels.putAll(snapshot.buildLevels)
-                if (state.buildLevels.isEmpty()) state.buildLevels[10] = 1
+                state.buildLevels.putAll(
+                    snapshot.buildLevels.mapValues { (buildId, _) ->
+                        maxBuildLevel(buildId)
+                    },
+                )
+                if (state.buildLevels.isEmpty()) state.buildLevels[10] = maxBuildLevel(10)
                 state.heroes.clear()
                 snapshot.heroes.forEach { saved ->
                     state.heroes[saved.heroUid] = PlayerHero(
@@ -264,36 +402,62 @@ class PlayerState(
                         heroId = saved.heroId,
                         createdAtSec = saved.createdAtSec,
                         armyId = saved.armyId,
-                        troops = saved.troops,
-                        stamina = migrateLegacyStamina(saved.stamina),
-                        level = saved.level,
+                        troops = saved.troops.coerceIn(0, PlayerHero.MAX_TROOPS),
+                        stamina = PlayerHero.MAX_STAMINA,
+                        level = saved.level.coerceAtLeast(PlayerHero.DEFAULT_LEVEL),
                         heroType = saved.heroType.takeIf { it in 1..3 }
                             ?: PlayerHeroTypes.forHero(saved.heroId),
                         dynamicIcon = saved.dynamicIcon.takeIf {
                             it == 0 || HeroFacadeCatalog.canUse(it, saved.heroId)
                         } ?: 0,
+                        awakeState = 1,
+                        skillIds = normalizedSavedSkillIds(saved.heroId, saved.skillIds),
                     )
                 }
                 state.heroSeq.set(
                     snapshot.heroes.maxOfOrNull { it.heroUid % 100_000 } ?: 0,
                 )
-                state.team.clear()
-                state.team.addAll(snapshot.team.take(3).let { it + List(3 - it.size) { 0 } })
-                state.march = snapshot.march?.let {
-                    PlayerMarch(
-                        armyId = it.armyId,
-                        fromWid = it.fromWid,
-                        targetWid = it.targetWid,
-                        beginSec = it.beginSec,
-                        endSec = it.endSec,
+                state.armies.values.forEach { slots -> slots.fill(0) }
+                val restoredArmies = snapshot.armies.ifEmpty {
+                    mapOf(state.primaryArmyId() to snapshot.team)
+                }
+                restoredArmies.forEach { (armyId, savedSlots) ->
+                    val slots = state.armySlots(armyId)
+                    val normalized = savedSlots.take(3) + List((3 - savedSlots.size).coerceAtLeast(0)) { 0 }
+                    repeat(3) { slots[it] = normalized[it] }
+                }
+                state.refreshHeroArmyIds()
+                state.marches.clear()
+                val restoredMarches = snapshot.marches.ifEmpty {
+                    snapshot.march?.let { mapOf(it.armyId to it) }.orEmpty()
+                }
+                restoredMarches
+                    .filterValues { saved -> saved.endSec > nowSec }
+                    .forEach { (armyId, saved) ->
+                    val normalizedArmyId = state.normalizeArmyId(armyId)
+                    state.marches[normalizedArmyId] = PlayerMarch(
+                        armyId = normalizedArmyId,
+                        fromWid = saved.fromWid,
+                        targetWid = saved.targetWid,
+                        beginSec = saved.beginSec,
+                        endSec = saved.endSec,
                     )
                 }
                 state.lands.clear()
                 state.lands.addAll(snapshot.occupiedLands.filter { it > 0 && it != state.cityWid })
+                state.cardPacksSeen = snapshot.cardPacksSeen
             }
 
-        private fun migrateLegacyStamina(stamina: Int): Int =
-            if (stamina in 1..100) stamina * 10_000 else stamina
+        private fun normalizedSavedSkillIds(heroId: Int, savedSkillIds: List<Int>): MutableList<Int> {
+            if (savedSkillIds.isEmpty()) return HeroCatalog.defaultSkillIds(heroId).toMutableList()
+            return (savedSkillIds.take(PlayerHero.SKILL_SLOT_COUNT) +
+                List(PlayerHero.SKILL_SLOT_COUNT) { 0 })
+                .take(PlayerHero.SKILL_SLOT_COUNT)
+                .mapIndexed { index, skillId ->
+                    if (index == 0) HeroCatalog.initialSkillId(heroId) else skillId.coerceAtLeast(0)
+                }
+                .toMutableList()
+        }
     }
 }
 

@@ -1,0 +1,24 @@
+[
+  {
+    "affair_idu": 0,
+    "army_id": 0,
+    "baodi_event_info": "",
+    "begin_time": 1773231330,
+    "end_time": 1773317730,
+    "event_id": 93,
+    "id": 634159,
+    "is_finish": 0,
+    "mini_game_record": "",
+    "refresh_sub_type": 4,
+    "refresh_type": 11,
+    "reward_ratio": 1,
+    "show_info": "",
+    "user_id": 14559,
+    "user_map_event_server_id": 0,
+    "wid": 1640720
+  },
+  [
+    4,
+    500
+  ]
+]

@@ -15,15 +15,19 @@ class BattleActionResolver {
         sourceRef: BattleHeroRef,
         source: BattleHero,
         enemies: Collection<BattleHero>,
+        random: BattleRandom? = null,
     ): NormalAttackResult? {
-        val target = enemies
+        val candidates = enemies
             .filter { it.troops > 0 }
             .map { it to formationDistance(source.position, it.position) }
             .filter { (_, distance) -> distance <= source.stats.hitRange }
-            .minWithOrNull(compareBy<Pair<BattleHero, Int>> { it.second }.thenByDescending { it.first.position })
-            ?.first
-            ?: return null
-        val damage = normalAttackDamage(source, target)
+            .sortedWith(compareBy<Pair<BattleHero, Int>> { it.second }.thenByDescending { it.first.position })
+        val target = when {
+            candidates.isEmpty() -> return null
+            random == null -> candidates.first().first
+            else -> candidates[random.nextInt(candidates.size)].first
+        }
+        val damage = normalAttackDamage(source, target, random)
         val updated = target.copy(troops = (target.troops - damage).coerceAtLeast(0))
         return NormalAttackResult(
             target = updated,
@@ -40,20 +44,15 @@ class BattleActionResolver {
     private fun formationDistance(sourcePosition: Int, targetPosition: Int): Int =
         5 - sourcePosition - targetPosition
 
-    private fun normalAttackDamage(source: BattleHero, target: BattleHero): Int {
-        val troopScale = source.troops.toDouble() / source.maxTroops.coerceAtLeast(1)
-        val raw = (source.stats.attack - target.stats.defense / 2).coerceAtLeast(1)
-        val modifier = source.modifiers
-            .filterIsInstance<BattleModifier.DamageDealtPercent>()
-            .filter { it.kind == null || it.kind == DamageKind.NORMAL || it.kind == DamageKind.PHYSICAL }
-            .sumOf { it.percent }
-        val takenModifier = target.modifiers
-            .filterIsInstance<BattleModifier.DamageTakenPercent>()
-            .filter { it.kind == null || it.kind == DamageKind.NORMAL || it.kind == DamageKind.PHYSICAL }
-            .sumOf { it.percent }
-        return (raw * troopScale * (100 + modifier) / 100 * (100 + takenModifier) / 100)
-            .toInt()
-            .coerceAtLeast(1)
-            .coerceAtMost(target.troops)
+    private fun normalAttackDamage(
+        source: BattleHero,
+        target: BattleHero,
+        random: BattleRandom?,
+    ): Int {
+        return BattleDamageCalculator.physical(
+            source = source,
+            target = target,
+            attributeRandomTenths = 30 + (random?.nextInt(10) ?: 5),
+        )
     }
 }
