@@ -1,10 +1,32 @@
 package com.stzb.server.game
 
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotEquals
 
 class PlayerStateRepositoryTest {
+    @Test
+    fun `account registry restores the same identity across repository instances`() {
+        val root = createTempDirectory("stzb-account-registry")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val first = PlayerStateRepository.getOrCreate("persistent-acct", 100001, "主公")
+            val hero = first.addHero(100017, 1_700_000_000)
+            PlayerStateRepository.save(first)
+
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val restored = PlayerStateRepository.getOrCreate("persistent-acct", 100001, "主公")
+
+            assertEquals(first.userId, restored.userId)
+            assertEquals(hero.heroUid, restored.allHeroes().single().heroUid)
+            assertNotEquals(first, restored)
+        } finally {
+            PlayerStateRepository.reset()
+        }
+    }
+
     @Test
     fun `default player state has resources main build and empty team`() {
         val state = PlayerStateRepository.getOrCreate(userId = 77, cityWid = 10077, roleName = "测试")

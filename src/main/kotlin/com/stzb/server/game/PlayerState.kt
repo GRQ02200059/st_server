@@ -269,10 +269,46 @@ class PlayerState(
 }
 
 object PlayerStateRepository {
-    private val players = ConcurrentHashMap<Int, PlayerState>()
+    private val players = ConcurrentHashMap<String, PlayerState>()
+    @Volatile
+    private var repository: PlayerRepository = FilePlayerRepository(defaultRoot())
 
-    fun getOrCreate(userId: Int, cityWid: Int, roleName: String): PlayerState =
-        players.compute(userId) { _, old ->
-            old?.apply { this.roleName = roleName } ?: PlayerState(userId, cityWid, roleName)
-        }!!
+    @Synchronized
+    fun configure(repository: PlayerRepository) {
+        this.repository = repository
+        players.clear()
+    }
+
+    @Synchronized
+    fun reset() {
+        repository = FilePlayerRepository(defaultRoot())
+        players.clear()
+    }
+
+    fun getOrCreate(accountKey: String, cityWid: Int, roleName: String): PlayerState {
+        require(accountKey.isNotBlank()) { "accountKey 不能为空" }
+        return players.computeIfAbsent(accountKey) {
+            repository.getOrCreate(accountKey, cityWid, roleName)
+        }.also { it.roleName = roleName }
+    }
+
+    fun getOrCreate(userId: Int, cityWid: Int, roleName: String): PlayerState {
+        val accountKey = "legacy-user-$userId"
+        return players.computeIfAbsent(accountKey) {
+            repository.findByAccount(accountKey)
+                ?: PlayerState(
+                    userId = userId,
+                    cityWid = cityWid,
+                    roleName = roleName,
+                    accountKey = accountKey,
+                ).also(repository::save)
+        }.also { it.roleName = roleName }
+    }
+
+    fun save(state: PlayerState) {
+        repository.save(state)
+    }
+
+    private fun defaultRoot() =
+        java.nio.file.Path.of(System.getenv("STZB_DATA_DIR") ?: "data")
 }
