@@ -22,6 +22,7 @@ data class HeroBattleConfig(
     val stats: BattleStats,
     val growth: BattleStats,
     val initialSkillId: Int,
+    val qualityName: String,
 )
 
 data class SkillBattleConfig(
@@ -35,6 +36,7 @@ data class SkillBattleConfig(
     val mainDetailId: Int,
     val mainDetail: SkillDetailConfig?,
     val mainEffect: SkillEffectConfig?,
+    val qualityLevel: String,
 )
 
 data class SkillDetailConfig(
@@ -92,6 +94,8 @@ class BattleConfigRepository private constructor(
     fun skill(skillId: Int): SkillBattleConfig? = skills[skillId]
 
     fun allHeroIds(): Set<Int> = heroes.keys
+
+    fun allHeroes(): Collection<HeroBattleConfig> = heroes.values
 
     fun allSkillIds(): Set<Int> = skills.keys
 
@@ -174,6 +178,7 @@ class BattleConfigRepository private constructor(
                         mainDetailId = mainDetail,
                         mainDetail = detail,
                         mainEffect = detail?.effectId?.let { effects[it] },
+                        qualityLevel = row["skill_quality_level"].orEmpty(),
                     )
                 }
             val heroes = Csv.read(projectRoot.resolve("hero_table.csv"))
@@ -201,6 +206,7 @@ class BattleConfigRepository private constructor(
                             hitRange = 0,
                         ),
                         initialSkillId = row.int("skill_init"),
+                        qualityName = row["quality_name"].orEmpty(),
                     )
                 }
             val cfgRoot = projectRoot.resolve("server/assent/cfg")
