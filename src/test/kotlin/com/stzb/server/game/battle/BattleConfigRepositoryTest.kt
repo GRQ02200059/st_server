@@ -76,6 +76,36 @@ class BattleConfigRepositoryTest {
     }
 
     @Test
+    fun `repository preserves every field consumed by rule interpreters`() {
+        fun detail(detailId: Int) =
+            repo.skillDetails(detailId / 100).single { it.detailId == detailId }
+
+        assertEquals(20000301, detail(20000331).effectParam)
+        assertEquals(311, detail(20000102).calcPos)
+        assertEquals(1, detail(20001213).calcParam)
+        assertEquals(3, detail(20002316).selectSkillParam)
+        assertEquals(1, detail(20000311).availableHit)
+        assertEquals(1, detail(20019403).bindFlag)
+        assertEquals(4013, detail(20000301).castCondition)
+        assertEquals(19, detail(20024801).precondition)
+        assertEquals(26636, detail(20000802).condition)
+        assertEquals(2, detail(20002103).addCountMax)
+        assertEquals(0, detail(20000101).buffType)
+        assertEquals(2, detail(20001403).delayRound)
+        assertEquals(2, detail(20100801).delayHit)
+        assertEquals(2, detail(20000101).availableRounds)
+        assertEquals(true, detail(20079534).clearPerHit)
+        assertEquals(1, detail(20000200).selectFlag)
+        assertEquals(1, detail(20000802).inherent)
+        assertEquals(true, detail(20019601).moraleAffected)
+        assertEquals(0, detail(20000101).calculationType)
+
+        val effect = repo.skillEffect(77)
+        assertNotNull(effect)
+        assertEquals(1, effect.replaceType)
+    }
+
+    @Test
     fun `matches army bonus when team contains configured heroes`() {
         val bonuses = repo.armyBonusesFor(listOf(100352, 100345, 100344))
 
