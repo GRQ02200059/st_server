@@ -13,7 +13,7 @@ class BattleEngineSkillTest {
             listOf(
                 hero(
                     heroId = 100479,
-                    position = 0,
+                    position = 2,
                     attack = 100,
                     defense = 50,
                     strategy = 20,
@@ -23,7 +23,7 @@ class BattleEngineSkillTest {
             ),
         )
         val defender = BattleTeam(
-            listOf(hero(heroId = 1, position = 0, attack = 10, defense = 20, strategy = 10, speed = 10)),
+            listOf(hero(heroId = 1, position = 2, attack = 10, defense = 20, strategy = 10, speed = 10)),
         )
 
         val result = BattleEngine.resolve(
@@ -32,9 +32,59 @@ class BattleEngineSkillTest {
             random = FixedBattleRandom(0),
         )
 
-        val firstDamage = result.events.first { it is BattleEvent.SkillDamage || it is BattleEvent.NormalAttack }
-        assertTrue(firstDamage is BattleEvent.SkillDamage)
-        assertTrue(result.defender.heroes.single().troops < 1000)
+        val skillIndex = result.events.indexOfFirst {
+            it is BattleEvent.SkillDamage && it.source.heroId == BattleHeroId(100479)
+        }
+        val attackIndex = result.events.indexOfFirst {
+            it is BattleEvent.NormalAttack && it.source.heroId == BattleHeroId(100479)
+        }
+
+        assertTrue(skillIndex >= 0)
+        assertTrue(attackIndex > skillIndex)
+    }
+
+    @Test
+    fun `preparing an active skill does not consume the normal attack`() {
+        val attacker = BattleTeam(
+            listOf(hero(100017, 2, 100, 50, 120, 100, skillIds = listOf(200031))),
+        )
+        val defender = BattleTeam(
+            listOf(hero(1, 2, 10, 20, 10, 10)),
+        )
+
+        val result = BattleEngine.resolve(
+            BattleRequest(attacker, defender, maxRounds = 1),
+            repo,
+            FixedBattleRandom(0),
+        )
+
+        assertTrue(result.events.none { it is BattleEvent.SkillDamage })
+        assertTrue(result.events.any {
+            it is BattleEvent.NormalAttack && it.source.heroId == BattleHeroId(100017)
+        })
+    }
+
+    @Test
+    fun `each equipped active skill gets an independent activation attempt`() {
+        val attacker = BattleTeam(
+            listOf(hero(100017, 2, 100, 50, 120, 100, skillIds = listOf(200012, 200031))),
+        )
+        val defender = BattleTeam(
+            listOf(hero(1, 2, 10, 20, 10, 10)),
+        )
+
+        val result = BattleEngine.resolve(
+            BattleRequest(attacker, defender, maxRounds = 1),
+            repo,
+            FixedBattleRandom(0),
+        )
+
+        assertTrue(result.events.any {
+            it is BattleEvent.SkillDamage && it.skillId == 200012
+        })
+        assertTrue(result.events.any {
+            it is BattleEvent.SkillPreparationStarted && it.skillId == 200031
+        })
     }
 
     @Test
@@ -74,8 +124,8 @@ class BattleEngineSkillTest {
     fun `legacy engine resolve remains available`() {
         val result = BattleEngine.resolve(
             BattleRequest(
-                attacker = BattleTeam(listOf(hero(heroId = 1, position = 0, attack = 500, defense = 0, strategy = 0, speed = 100))),
-                defender = BattleTeam(listOf(hero(heroId = 2, position = 0, attack = 1, defense = 0, strategy = 0, speed = 1))),
+                attacker = BattleTeam(listOf(hero(heroId = 1, position = 2, attack = 500, defense = 0, strategy = 0, speed = 100))),
+                defender = BattleTeam(listOf(hero(heroId = 2, position = 2, attack = 1, defense = 0, strategy = 0, speed = 1))),
                 maxRounds = 1,
             ),
         )

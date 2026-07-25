@@ -41,7 +41,7 @@ class BattleIntegrationTest {
     }
 
     @Test
-    fun `playable battle uses real heroes skills equipment and full round budget`() {
+    fun `playable battle uses real heroes skills equipment and matching client rounds`() {
         val repo = BattleConfigRepository.loadDefault()
         val equipmentRepo = BattleEquipmentRepository.loadDefault()
         val builder = BattleTeamBuilder(repo, equipmentRepo)
@@ -79,8 +79,9 @@ class BattleIntegrationTest {
         val records = text.split("#")
 
         assertEquals(1, records.count { it == "04" })
-        assertEquals(8, result.events.filterIsInstance<BattleEvent.RoundStart>().size)
-        assertEquals(8, records.count { it.startsWith("09") })
+        val engineRoundCount = result.events.filterIsInstance<BattleEvent.RoundStart>().size
+        assertTrue(engineRoundCount in 1..8)
+        assertEquals(engineRoundCount, records.count { it.startsWith("09") })
         assertTrue(records.none { it.startsWith("0u") })
         assertTrue(records.any { it.startsWith("68") })
         assertTrue(records.any { it == "0d" })

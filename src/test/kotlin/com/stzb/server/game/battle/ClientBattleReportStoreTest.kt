@@ -7,10 +7,72 @@ import java.util.zip.GZIPInputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class ClientBattleReportStoreTest {
     private val mapper = jacksonObjectMapper()
+
+    @Test
+    fun `default report uses its configured random source`() {
+        var requestedSeed: Int? = null
+        val store = ClientBattleReportStore.createDefault(
+            nowSec = 1_700_000_000,
+            battleRandomFactory = { seed ->
+                requestedSeed = seed
+                FixedBattleRandom(0)
+            },
+        )
+
+        val report = store.getOrCreateDefault()
+
+        assertEquals(report.battleId xor report.timeSec, requestedSeed)
+    }
+
+    @Test
+    fun `default three hero replay has complete client action segments`() {
+        val report = ClientBattleReportStore.createDefault(
+            nowSec = 1_700_000_000,
+            battleRandomFactory = { FixedBattleRandom(0) },
+        ).getOrCreateDefault()
+        val actions = ClientBattleTextReplayAdapter.adapt(report.result)
+
+        assertEquals(
+            (1..6).toList(),
+            actions.filter { it.id == ClientBattleTextReplayProtocol.HERO_NAME }
+                .map { it.params.first() },
+        )
+        assertTrue(actions.any { it.id == ClientBattleTextReplayProtocol.SKILL_PREPARATION_STARTED })
+        assertEquals(
+            actions.count { it.id == ClientBattleTextReplayProtocol.NORMAL_ATTACK_BEGIN },
+            actions.count { it.id == ClientBattleTextReplayProtocol.NORMAL_ATTACK_END },
+        )
+        assertEquals(
+            actions.count { it.id == ClientBattleTextReplayProtocol.SKILL_BEGIN },
+            actions.count { it.id == ClientBattleTextReplayProtocol.SKILL_END },
+        )
+        assertActionSegmentsAreBalanced(actions)
+
+        val normalAttackSources = actions
+            .filter { it.id == ClientBattleTextReplayProtocol.NORMAL_DAMAGE }
+            .map { it.params[1] as Int }
+        assertTrue(normalAttackSources.any { it in 1..3 })
+        assertTrue(normalAttackSources.any { it in 4..6 })
+    }
+
+    @Test
+    fun `independent report stores do not reuse cached battle ids`() {
+        val firstStore = ClientBattleReportStore.createDefault(nowSec = 1_700_000_000)
+        val secondStore = ClientBattleReportStore.createDefault(nowSec = 1_700_000_000)
+
+        val firstDefault = firstStore.getOrCreateDefault()
+        val secondDefault = secondStore.getOrCreateDefault()
+        val firstBattle = firstStore.record(wid = 1, timeSec = 1_700_000_000, result = firstDefault.result)
+        val secondBattle = secondStore.record(wid = 1, timeSec = 1_700_000_000, result = secondDefault.result)
+
+        assertNotEquals(firstDefault.battleId, secondDefault.battleId)
+        assertNotEquals(firstBattle.battleId, secondBattle.battleId)
+    }
 
     @Test
     fun `provides client profile response for requested battle ids`() {
@@ -73,5 +135,28 @@ class ClientBattleReportStoreTest {
 
         assertNotNull(report)
         assertTrue(report.battleId > 0)
+    }
+
+    private fun assertActionSegmentsAreBalanced(actions: List<ClientReportAction>) {
+        var openSegment: Int? = null
+        actions.forEach { action ->
+            when (action.id) {
+                ClientBattleTextReplayProtocol.NORMAL_ATTACK_BEGIN,
+                ClientBattleTextReplayProtocol.SKILL_BEGIN,
+                -> {
+                    assertEquals(null, openSegment)
+                    openSegment = action.id
+                }
+                ClientBattleTextReplayProtocol.NORMAL_ATTACK_END -> {
+                    assertEquals(ClientBattleTextReplayProtocol.NORMAL_ATTACK_BEGIN, openSegment)
+                    openSegment = null
+                }
+                ClientBattleTextReplayProtocol.SKILL_END -> {
+                    assertEquals(ClientBattleTextReplayProtocol.SKILL_BEGIN, openSegment)
+                    openSegment = null
+                }
+            }
+        }
+        assertEquals(null, openSegment)
     }
 }

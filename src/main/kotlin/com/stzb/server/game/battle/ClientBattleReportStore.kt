@@ -7,6 +7,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.protocol.GameServerConfig
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ThreadLocalRandom
 
 data class ClientBattleReport(
     val battleId: Int,
@@ -18,11 +19,17 @@ data class ClientBattleReport(
 class ClientBattleReportStore private constructor(
     private val nowSec: Int,
     private val reports: ConcurrentHashMap<Int, ClientBattleReport>,
+    private val battleRandomFactory: (Int) -> BattleRandom,
 ) {
-    private val battleSeq = AtomicInteger(reports.keys.maxOrNull() ?: DEFAULT_BATTLE_ID)
+    private val defaultBattleId = nextBattleIdRange()
+    private val battleSeq = AtomicInteger(reports.keys.maxOrNull() ?: defaultBattleId)
 
     fun getOrCreateDefault(): ClientBattleReport =
-        reports[DEFAULT_BATTLE_ID] ?: createDefaultReport(nowSec).also { reports[it.battleId] = it }
+        reports[defaultBattleId] ?: createDefaultReport(
+            nowSec,
+            defaultBattleId,
+            battleRandomFactory,
+        ).also { reports[it.battleId] = it }
 
     fun findOrDefault(battleId: Int): ClientBattleReport =
         reports[battleId] ?: getOrCreateDefault()
@@ -149,17 +156,36 @@ class ClientBattleReportStore private constructor(
     companion object {
         private val nf: JsonNodeFactory = JsonNodeFactory.instance
         private val mapper = jacksonObjectMapper()
-        private const val DEFAULT_BATTLE_ID = 100001
+        private const val MIN_BATTLE_ID = 100_000_000
+        private const val MAX_BATTLE_ID = 2_000_000_000
+        private const val BATTLE_ID_RANGE_SIZE = 10_000
+        private val nextBattleIdRangeStart = AtomicInteger(
+            ThreadLocalRandom.current().nextInt(MIN_BATTLE_ID, MAX_BATTLE_ID - BATTLE_ID_RANGE_SIZE),
+        )
 
         fun global(): ClientBattleReportStore = Holder.INSTANCE
 
-        fun createDefault(nowSec: Int = (System.currentTimeMillis() / 1000).toInt()): ClientBattleReportStore =
-            ClientBattleReportStore(nowSec, ConcurrentHashMap()).also { it.getOrCreateDefault() }
+        fun createDefault(
+            nowSec: Int = (System.currentTimeMillis() / 1000).toInt(),
+            battleRandomFactory: (Int) -> BattleRandom = ::SeededBattleRandom,
+        ): ClientBattleReportStore =
+            ClientBattleReportStore(nowSec, ConcurrentHashMap(), battleRandomFactory).also { it.getOrCreateDefault() }
 
         fun createEmpty(nowSec: Int = (System.currentTimeMillis() / 1000).toInt()): ClientBattleReportStore =
-            ClientBattleReportStore(nowSec, ConcurrentHashMap())
+            ClientBattleReportStore(nowSec, ConcurrentHashMap(), ::SeededBattleRandom)
 
-        private fun createDefaultReport(nowSec: Int): ClientBattleReport {
+        private fun nextBattleIdRange(): Int =
+            nextBattleIdRangeStart.getAndUpdate { current ->
+                (current + BATTLE_ID_RANGE_SIZE)
+                    .takeIf { it < MAX_BATTLE_ID }
+                    ?: MIN_BATTLE_ID
+            }
+
+        private fun createDefaultReport(
+            nowSec: Int,
+            battleId: Int,
+            battleRandomFactory: (Int) -> BattleRandom,
+        ): ClientBattleReport {
             val config = BattleConfigRepository.loadDefault()
             val equipment = BattleEquipmentRepository.loadDefault()
             val builder = BattleTeamBuilder(config, equipment)
@@ -178,10 +204,14 @@ class ClientBattleReportStore private constructor(
                 ),
             )
             return ClientBattleReport(
-                battleId = DEFAULT_BATTLE_ID,
+                battleId = battleId,
                 wid = GameServerConfig.CITY_WID + 1,
                 timeSec = nowSec,
-                result = BattleEngine.resolve(BattleRequest(attacker, defender, maxRounds = 8), config, FixedBattleRandom(0)),
+                result = BattleEngine.resolve(
+                    BattleRequest(attacker, defender, maxRounds = 8),
+                    config,
+                    battleRandomFactory(battleId xor nowSec),
+                ),
             )
         }
 

@@ -27,6 +27,7 @@ class ClientBattleTextReplayProtocolTest {
         assertTrue(
             setOf(
                 ClientBattleTextReplayProtocol.HERO_NAME,
+                ClientBattleTextReplayProtocol.HERO_INFO,
                 ClientBattleTextReplayProtocol.NORMAL_DAMAGE,
                 ClientBattleTextReplayProtocol.SKILL_CAST,
                 ClientBattleTextReplayProtocol.SKILL_DAMAGE,
@@ -37,5 +38,15 @@ class ClientBattleTextReplayProtocolTest {
                 ClientBattleTextReplayProtocol.FINAL_TROOPS,
             ).all(ids::contains),
         )
+    }
+
+    @Test
+    fun `client positions run from each base toward each front`() {
+        assertEquals(1, ClientBattleTextReplayProtocol.position(Side.ATTACKER, 0))
+        assertEquals(2, ClientBattleTextReplayProtocol.position(Side.ATTACKER, 1))
+        assertEquals(3, ClientBattleTextReplayProtocol.position(Side.ATTACKER, 2))
+        assertEquals(6, ClientBattleTextReplayProtocol.position(Side.DEFENDER, 0))
+        assertEquals(5, ClientBattleTextReplayProtocol.position(Side.DEFENDER, 1))
+        assertEquals(4, ClientBattleTextReplayProtocol.position(Side.DEFENDER, 2))
     }
 }

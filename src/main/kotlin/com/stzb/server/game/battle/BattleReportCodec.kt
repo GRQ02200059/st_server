@@ -68,6 +68,13 @@ object BattleReportCodec {
                 "damage" to damage,
                 "targetTroopsAfter" to targetTroopsAfter,
             )
+            is BattleEvent.SkillPreparationStarted -> mapOf(
+                "type" to "SkillPreparationStarted",
+                "round" to round,
+                "source" to source.toReportMap(),
+                "skillId" to skillId,
+                "readyRound" to readyRound,
+            )
             is BattleEvent.Recovery -> mapOf(
                 "type" to "Recovery",
                 "round" to round,

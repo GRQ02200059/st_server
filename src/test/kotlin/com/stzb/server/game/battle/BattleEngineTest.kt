@@ -11,13 +11,13 @@ class BattleEngineTest {
             BattleRequest(
                 attacker = BattleTeam(
                     listOf(
-                        hero(pos = 0, heroId = 100479, speed = 120, attack = 90, defense = 20, troops = 100),
+                        hero(pos = 0, heroId = 100479, hitRange = 5, speed = 120, attack = 90, defense = 20, troops = 100),
                         hero(pos = 1, heroId = 100017, speed = 60, attack = 30, defense = 20, troops = 100),
                     ),
                 ),
                 defender = BattleTeam(
                     listOf(
-                        hero(pos = 0, heroId = 100023, speed = 80, attack = 40, defense = 10, troops = 100),
+                        hero(pos = 0, heroId = 100023, hitRange = 5, speed = 80, attack = 40, defense = 10, troops = 100),
                     ),
                 ),
                 maxRounds = 1,
@@ -33,21 +33,67 @@ class BattleEngineTest {
     }
 
     @Test
-    fun `front hero cannot hit back target when hit range is too short`() {
-        val result = BattleEngine.resolve(
-            BattleRequest(
-                attacker = BattleTeam(
-                    listOf(hero(pos = 0, hitRange = 1, speed = 100, attack = 100, defense = 0, troops = 100)),
-                ),
-                defender = BattleTeam(
-                    listOf(hero(pos = 2, speed = 10, attack = 10, defense = 0, troops = 100)),
-                ),
-                maxRounds = 1,
+    fun `front heroes are distance one apart`() {
+        val result = resolveOneRound(
+            attacker = listOf(hero(pos = 2, hitRange = 1, speed = 100, attack = 100, defense = 0, troops = 100)),
+            defender = listOf(hero(pos = 2, speed = 10, attack = 10, defense = 0, troops = 100)),
+        )
+
+        assertTrue(result.events.any { it is BattleEvent.NormalAttack && it.source.side == Side.ATTACKER })
+    }
+
+    @Test
+    fun `base heroes need range five to hit each other`() {
+        val shortRange = resolveOneRound(
+            attacker = listOf(hero(pos = 0, hitRange = 4, speed = 100, attack = 100, defense = 0, troops = 100)),
+            defender = listOf(hero(pos = 0, speed = 10, attack = 10, defense = 0, troops = 100)),
+        )
+        val fullRange = resolveOneRound(
+            attacker = listOf(hero(pos = 0, hitRange = 5, speed = 100, attack = 100, defense = 0, troops = 100)),
+            defender = listOf(hero(pos = 0, speed = 10, attack = 10, defense = 0, troops = 100)),
+        )
+
+        assertTrue(shortRange.events.none { it is BattleEvent.NormalAttack && it.source.side == Side.ATTACKER })
+        assertTrue(fullRange.events.any { it is BattleEvent.NormalAttack && it.source.side == Side.ATTACKER })
+    }
+
+    @Test
+    fun `normal attack selects nearest enemy front first`() {
+        val result = resolveOneRound(
+            attacker = listOf(hero(pos = 2, hitRange = 5, speed = 100, attack = 10, defense = 0, troops = 100)),
+            defender = listOf(
+                hero(pos = 0, speed = 10, attack = 1, defense = 0, troops = 100),
+                hero(pos = 2, speed = 9, attack = 1, defense = 0, troops = 100),
             ),
         )
 
-        assertTrue(result.events.none { it is BattleEvent.NormalAttack })
-        assertEquals(100, result.defender.heroes.single().troops)
+        val firstAttack = result.events.filterIsInstance<BattleEvent.NormalAttack>()
+            .first { it.source.side == Side.ATTACKER }
+        assertEquals(2, firstAttack.target.position)
+    }
+
+    @Test
+    fun `all six heroes take turns and normal attack when targets are in range`() {
+        val result = resolveOneRound(
+            attacker = listOf(
+                hero(pos = 0, heroId = 10, hitRange = 5, speed = 60, attack = 10, defense = 0, troops = 1_000),
+                hero(pos = 1, heroId = 11, hitRange = 5, speed = 50, attack = 10, defense = 0, troops = 1_000),
+                hero(pos = 2, heroId = 12, hitRange = 5, speed = 40, attack = 10, defense = 0, troops = 1_000),
+            ),
+            defender = listOf(
+                hero(pos = 0, heroId = 20, hitRange = 5, speed = 30, attack = 10, defense = 0, troops = 1_000),
+                hero(pos = 1, heroId = 21, hitRange = 5, speed = 20, attack = 10, defense = 0, troops = 1_000),
+                hero(pos = 2, heroId = 22, hitRange = 5, speed = 10, attack = 10, defense = 0, troops = 1_000),
+            ),
+        )
+
+        val actionSources = result.events.filterIsInstance<BattleEvent.HeroActionStart>().map { it.source }.toSet()
+        val attackSources = result.events.filterIsInstance<BattleEvent.NormalAttack>().map { it.source }.toSet()
+
+        assertEquals(6, actionSources.size)
+        assertEquals(6, attackSources.size)
+        assertEquals(setOf(0, 1, 2), attackSources.filter { it.side == Side.ATTACKER }.map { it.position }.toSet())
+        assertEquals(setOf(0, 1, 2), attackSources.filter { it.side == Side.DEFENDER }.map { it.position }.toSet())
     }
 
     @Test
@@ -55,7 +101,7 @@ class BattleEngineTest {
         val result = BattleEngine.resolve(
             BattleRequest(
                 attacker = BattleTeam(
-                    listOf(hero(pos = 0, speed = 100, attack = 500, defense = 0, troops = 100)),
+                    listOf(hero(pos = 0, hitRange = 5, speed = 100, attack = 500, defense = 0, troops = 100)),
                 ),
                 defender = BattleTeam(
                     listOf(hero(pos = 0, speed = 10, attack = 10, defense = 0, troops = 80)),
@@ -69,6 +115,13 @@ class BattleEngineTest {
         assertEquals(1, result.events.filterIsInstance<BattleEvent.RoundStart>().size)
         assertTrue(result.events.last() is BattleEvent.BattleEnd)
     }
+
+    private fun resolveOneRound(
+        attacker: List<BattleHero>,
+        defender: List<BattleHero>,
+    ): BattleResult = BattleEngine.resolve(
+        BattleRequest(BattleTeam(attacker), BattleTeam(defender), maxRounds = 1),
+    )
 
     private fun hero(
         pos: Int,

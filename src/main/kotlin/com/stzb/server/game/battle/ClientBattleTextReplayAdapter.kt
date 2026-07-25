@@ -3,17 +3,20 @@ package com.stzb.server.game.battle
 internal object ClientBattleTextReplayAdapter {
     fun adapt(result: BattleResult): List<ClientReportAction> {
         val actions = mutableListOf<ClientReportAction>()
-        (
+        val heroes = (
             result.attacker.heroes.map { Side.ATTACKER to it } +
                 result.defender.heroes.map { Side.DEFENDER to it }
             )
             .sortedBy { (side, hero) -> ClientBattleTextReplayProtocol.position(side, hero.position) }
-            .forEach { (side, hero) ->
-                actions += ClientReportAction(
-                    ClientBattleTextReplayProtocol.HERO_NAME,
-                    listOf(ClientBattleTextReplayProtocol.position(side, hero.position), hero.id.value),
-                )
-            }
+        heroes.forEach { (side, hero) ->
+            actions += ClientReportAction(
+                ClientBattleTextReplayProtocol.HERO_NAME,
+                listOf(ClientBattleTextReplayProtocol.position(side, hero.position), hero.id.value),
+            )
+        }
+        heroes.forEach { (side, hero) ->
+            actions += heroInfo(side, hero)
+        }
         actions += ClientReportAction(ClientBattleTextReplayProtocol.PREPARE)
 
         result.events.forEach { event ->
@@ -22,40 +25,61 @@ internal object ClientBattleTextReplayAdapter {
                     ClientBattleTextReplayProtocol.ROUND,
                     listOf(event.round),
                 )
-                is BattleEvent.NormalAttack -> actions += ClientReportAction(
-                    ClientBattleTextReplayProtocol.NORMAL_DAMAGE,
+                is BattleEvent.SkillPreparationStarted -> actions += ClientReportAction(
+                    ClientBattleTextReplayProtocol.SKILL_PREPARATION_STARTED,
                     listOf(
-                        ClientBattleTextReplayProtocol.position(event.target),
                         ClientBattleTextReplayProtocol.position(event.source),
-                        0,
-                        event.damage,
-                        event.targetTroopsAfter,
+                        event.skillId,
                     ),
                 )
-                is BattleEvent.SkillDamage -> {
-                    actions += skillCast(event.source, event.skillId)
-                    actions += ClientReportAction(
-                        ClientBattleTextReplayProtocol.SKILL_DAMAGE,
+                is BattleEvent.NormalAttack -> actions += listOf(
+                    ClientReportAction(ClientBattleTextReplayProtocol.NORMAL_ATTACK_BEGIN),
+                    ClientReportAction(
+                        ClientBattleTextReplayProtocol.NORMAL_DAMAGE,
                         listOf(
-                            ClientBattleTextReplayProtocol.position(event.source),
-                            event.skillId,
                             ClientBattleTextReplayProtocol.position(event.target),
+                            ClientBattleTextReplayProtocol.position(event.source),
+                            0,
                             event.damage,
                             event.targetTroopsAfter,
+                        ),
+                    ),
+                    ClientReportAction(ClientBattleTextReplayProtocol.NORMAL_ATTACK_END),
+                )
+                is BattleEvent.SkillDamage -> {
+                    actions += skillSegment(
+                        event.source,
+                        event.skillId,
+                        listOf(
+                            ClientReportAction(
+                                ClientBattleTextReplayProtocol.SKILL_DAMAGE,
+                                listOf(
+                                    ClientBattleTextReplayProtocol.position(event.source),
+                                    event.skillId,
+                                    ClientBattleTextReplayProtocol.position(event.target),
+                                    event.damage,
+                                    event.targetTroopsAfter,
+                                ),
+                            ),
                         ),
                     )
                 }
                 is BattleEvent.Recovery -> {
                     if (event.skillId > 0) {
-                        actions += skillCast(event.source, event.skillId)
-                        actions += ClientReportAction(
-                            ClientBattleTextReplayProtocol.RECOVERY,
+                        actions += skillSegment(
+                            event.source,
+                            event.skillId,
                             listOf(
-                                ClientBattleTextReplayProtocol.position(event.source),
-                                event.skillId,
-                                ClientBattleTextReplayProtocol.position(event.target),
-                                event.amount,
-                                event.targetTroopsAfter,
+                                ClientReportAction(
+                                    ClientBattleTextReplayProtocol.RECOVERY,
+                                    listOf(
+                                        ClientBattleTextReplayProtocol.position(event.source),
+                                        event.skillId,
+                                        ClientBattleTextReplayProtocol.position(event.target),
+                                        event.amount,
+                                        event.targetTroopsAfter,
+                                    ),
+                                ),
                             ),
                         )
                     }
@@ -106,6 +130,35 @@ internal object ClientBattleTextReplayAdapter {
         return actions
     }
 
+    /**
+     * Client BattleAnimationData.SetRoundData action 205 layout:
+     * position, level, initialTroops, 3 * (skillId, skillLevel),
+     * heroTypeFeatureId1, heroTypeFeatureId2.
+     *
+     * ReportDetailView.GetHeroShareInfo always reads both feature slots, so
+     * they must be present even when the server has no feature data.
+     */
+    private fun heroInfo(side: Side, hero: BattleHero): ClientReportAction {
+        val skills = hero.skillIds
+            .take(3)
+            .flatMap { skillId -> listOf(skillId, DEFAULT_SKILL_LEVEL) }
+            .toMutableList()
+            .apply {
+                while (size < SKILL_SLOT_COUNT * 2) {
+                    add(0)
+                    add(0)
+                }
+            }
+        return ClientReportAction(
+            ClientBattleTextReplayProtocol.HERO_INFO,
+            listOf(
+                ClientBattleTextReplayProtocol.position(side, hero.position),
+                hero.level,
+                hero.maxTroops,
+            ) + skills + listOf(0, 0),
+        )
+    }
+
     private fun skillCast(source: BattleHeroRef, skillId: Int): List<ClientReportAction> =
         if (skillId > 0) {
             listOf(
@@ -122,37 +175,45 @@ internal object ClientBattleTextReplayAdapter {
             emptyList()
         }
 
+    private fun skillSegment(
+        source: BattleHeroRef,
+        skillId: Int,
+        effects: List<ClientReportAction>,
+    ): List<ClientReportAction> =
+        if (skillId > 0) {
+            listOf(ClientReportAction(ClientBattleTextReplayProtocol.SKILL_BEGIN)) +
+                skillCast(source, skillId) +
+                effects +
+                ClientReportAction(ClientBattleTextReplayProtocol.SKILL_END)
+        } else {
+            emptyList()
+        }
+
     private fun statusActions(
         source: BattleHeroRef,
         target: BattleHeroRef,
         skillId: Int,
         effectId: Int,
-    ): List<ClientReportAction> =
-        buildList {
-            if (skillId > 0) {
-                add(
-                    ClientReportAction(
-                        ClientBattleTextReplayProtocol.SKILL_CAST,
-                        listOf(
-                            ClientBattleTextReplayProtocol.position(source),
-                            ClientBattleTextReplayProtocol.position(source),
-                            skillId,
-                        ),
-                    ),
-                )
-            }
-            add(
-                ClientReportAction(
-                    ClientBattleTextReplayProtocol.STATUS,
-                    listOf(
-                        ClientBattleTextReplayProtocol.position(source),
-                        ClientBattleTextReplayProtocol.position(target),
-                        skillId,
-                        effectId,
-                    ),
-                ),
+    ): List<ClientReportAction> {
+        val status = ClientReportAction(
+            ClientBattleTextReplayProtocol.STATUS,
+            listOf(
+                ClientBattleTextReplayProtocol.position(source),
+                ClientBattleTextReplayProtocol.position(target),
+                skillId,
+                effectId,
+            ),
+        )
+        return if (skillId > 0) {
+            skillSegment(
+                source = source,
+                skillId = skillId,
+                effects = listOf(status),
             )
+        } else {
+            listOf(status)
         }
+    }
 
     private fun appendFinalization(
         actions: MutableList<ClientReportAction>,
@@ -176,4 +237,7 @@ internal object ClientBattleTextReplayAdapter {
             )
         }
     }
+
+    private const val SKILL_SLOT_COUNT = 3
+    private const val DEFAULT_SKILL_LEVEL = 1
 }

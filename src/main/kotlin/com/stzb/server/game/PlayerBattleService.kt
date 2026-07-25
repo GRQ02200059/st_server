@@ -1,6 +1,7 @@
 package com.stzb.server.game
 
 import com.stzb.server.game.battle.BattleConfigRepository
+import com.stzb.server.game.battle.BattleRandom
 import com.stzb.server.game.battle.BattleEngine
 import com.stzb.server.game.battle.BattleEquipmentRepository
 import com.stzb.server.game.battle.BattleHeroSpec
@@ -8,7 +9,7 @@ import com.stzb.server.game.battle.BattleOutcome
 import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleTeamBuilder
 import com.stzb.server.game.battle.ClientBattleReportStore
-import com.stzb.server.game.battle.FixedBattleRandom
+import com.stzb.server.game.battle.SeededBattleRandom
 
 data class PlayerBattleLaunchResult(
     val battleId: Int,
@@ -20,6 +21,7 @@ class PlayerBattleService(
     private val reportStore: ClientBattleReportStore,
     private val config: BattleConfigRepository = BattleConfigRepository.loadDefault(),
     equipmentRepository: BattleEquipmentRepository = BattleEquipmentRepository.loadDefault(),
+    private val battleRandomFactory: (Int) -> BattleRandom = ::SeededBattleRandom,
 ) {
     private val builder = BattleTeamBuilder(config, equipmentRepository)
 
@@ -71,7 +73,7 @@ class PlayerBattleService(
         val result = BattleEngine.resolve(
             BattleRequest(attacker = attacker, defender = defender, maxRounds = 8),
             config,
-            FixedBattleRandom(0),
+            battleRandomFactory(march.targetWid xor nowSec),
         )
 
         result.attacker.heroes.forEach { battleHero ->

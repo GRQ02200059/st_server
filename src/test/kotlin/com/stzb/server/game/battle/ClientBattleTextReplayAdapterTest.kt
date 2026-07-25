@@ -15,27 +15,58 @@ class ClientBattleTextReplayAdapterTest {
             actions.filter { it.id == ClientBattleTextReplayProtocol.ROUND }.map { it.params },
         )
         assertEquals(
-            listOf(1, 2, 4),
+            listOf(1, 2, 6),
             actions.filter { it.id == ClientBattleTextReplayProtocol.HERO_NAME }.map { it.params.first() },
         )
+    }
+
+    @Test
+    fun `initializes every named hero with fixed width detail data`() {
+        val result = twoRoundResult().let { base ->
+            base.copy(
+                attacker = base.attacker.copy(
+                    heroes = base.attacker.heroes.mapIndexed { index, hero ->
+                        if (index == 0) hero.copy(level = 20, skillIds = listOf(200012, 200834)) else hero
+                    },
+                ),
+            )
+        }
+
+        val actions = ClientBattleTextReplayAdapter.adapt(result)
+        val heroInfo = actions.filter { it.id == ClientBattleTextReplayProtocol.HERO_INFO }
+
+        assertEquals(3, heroInfo.size)
+        assertEquals(
+            listOf<Any>(1, 20, 1_000, 200012, 1, 200834, 1, 0, 0, 0, 0),
+            heroInfo.first().params,
+        )
+        assertTrue(heroInfo.all { it.params.size == 11 })
+        assertTrue(heroInfo.all { it.params.takeLast(2) == listOf<Any>(0, 0) })
     }
 
     @Test
     fun `projects normal skill damage and recovery into distinct text actions`() {
         val actions = ClientBattleTextReplayAdapter.adapt(eventResult())
 
-        assertTrue(actions.any {
+        val normalDamageIndex = actions.indexOfFirst {
             it.id == ClientBattleTextReplayProtocol.NORMAL_DAMAGE &&
-                it.params == listOf<Any>(4, 1, 0, 120, 880)
-        })
+                it.params == listOf<Any>(6, 1, 0, 120, 880)
+        }
+        assertTrue(normalDamageIndex > 0)
+        assertEquals(ClientBattleTextReplayProtocol.NORMAL_ATTACK_BEGIN, actions[normalDamageIndex - 1].id)
+        assertEquals(ClientBattleTextReplayProtocol.NORMAL_ATTACK_END, actions[normalDamageIndex + 1].id)
+
+        val skillDamageIndex = actions.indexOfFirst {
+            it.id == ClientBattleTextReplayProtocol.SKILL_DAMAGE &&
+                it.params == listOf<Any>(1, 200012, 6, 180, 700)
+        }
+        assertTrue(skillDamageIndex > 1)
+        assertEquals(ClientBattleTextReplayProtocol.SKILL_BEGIN, actions[skillDamageIndex - 2].id)
         assertTrue(actions.any {
             it.id == ClientBattleTextReplayProtocol.SKILL_CAST &&
                 it.params == listOf<Any>(1, 1, 200012)
         })
-        assertTrue(actions.any {
-            it.id == ClientBattleTextReplayProtocol.SKILL_DAMAGE &&
-                it.params == listOf<Any>(1, 200012, 4, 180, 700)
-        })
+        assertEquals(ClientBattleTextReplayProtocol.SKILL_END, actions[skillDamageIndex + 1].id)
         assertTrue(actions.any {
             it.id == ClientBattleTextReplayProtocol.RECOVERY &&
                 it.params == listOf<Any>(1, 200001, 1, 70, 950)
@@ -43,20 +74,43 @@ class ClientBattleTextReplayAdapterTest {
     }
 
     @Test
+    fun `projects preparation start with the real client action`() {
+        val source = BattleHeroRef(Side.ATTACKER, 1, BattleHeroId(1))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.RoundStart(1),
+                BattleEvent.SkillPreparationStarted(1, source, 200031, readyRound = 2),
+                BattleEvent.RoundEnd(1),
+            ),
+        )
+
+        val actions = ClientBattleTextReplayAdapter.adapt(result)
+
+        assertTrue(actions.any {
+            it.id == ClientBattleTextReplayProtocol.SKILL_PREPARATION_STARTED &&
+                it.params == listOf<Any>(2, 200031)
+        })
+    }
+
+    @Test
     fun `projects status dot evade and stat change with their original skill id`() {
         val actions = ClientBattleTextReplayAdapter.adapt(stateResult())
 
-        assertTrue(actions.any {
+        val statusIndex = actions.indexOfFirst {
             it.id == ClientBattleTextReplayProtocol.STATUS &&
-                it.params == listOf<Any>(1, 4, 200002, 305)
-        })
+                it.params == listOf<Any>(1, 6, 200002, 305)
+        }
+        assertTrue(statusIndex > 1)
+        assertEquals(ClientBattleTextReplayProtocol.SKILL_BEGIN, actions[statusIndex - 2].id)
+        assertEquals(ClientBattleTextReplayProtocol.SKILL_CAST, actions[statusIndex - 1].id)
+        assertEquals(ClientBattleTextReplayProtocol.SKILL_END, actions[statusIndex + 1].id)
         assertTrue(actions.any {
             it.id == ClientBattleTextReplayProtocol.ONGOING_DAMAGE &&
-                it.params == listOf<Any>(1, 200002, 4, 60, 640, 305)
+                it.params == listOf<Any>(1, 200002, 6, 60, 640, 305)
         })
         assertTrue(actions.any {
             it.id == ClientBattleTextReplayProtocol.STATUS &&
-                it.params == listOf<Any>(1, 4, 0, 515)
+                it.params == listOf<Any>(1, 6, 0, 515)
         })
         assertTrue(actions.any {
             it.id == ClientBattleTextReplayProtocol.STATUS &&
@@ -71,7 +125,7 @@ class ClientBattleTextReplayAdapterTest {
         assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.RECOVERY })
         assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.ONGOING_DAMAGE })
         assertEquals(
-            listOf(listOf<Any>(1, 4, 0, 515)),
+            listOf(listOf<Any>(1, 6, 0, 515)),
             actions.filter { it.id == ClientBattleTextReplayProtocol.STATUS }.map { it.params },
         )
         assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.SKILL_CAST })
@@ -119,7 +173,7 @@ class ClientBattleTextReplayAdapterTest {
         assertEquals(3, finalTroops.size)
         assertEquals(listOf<Any>(1, 950, 50), finalTroops[0].params)
         assertEquals(listOf<Any>(2, 1000, 0), finalTroops[1].params)
-        assertEquals(listOf<Any>(4, 700, 300), finalTroops[2].params)
+        assertEquals(listOf<Any>(6, 700, 300), finalTroops[2].params)
     }
 
     private fun twoRoundResult(): BattleResult =

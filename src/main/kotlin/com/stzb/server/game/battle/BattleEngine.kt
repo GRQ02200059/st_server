@@ -52,48 +52,25 @@ object BattleEngine {
                 val actorStatuses = statuses[actorRef].orEmpty()
 
                 events.add(BattleEvent.HeroActionStart(round, actorRef))
-                if (!actor.shouldSkipAction(actorStatuses)) {
+                if (!actorStatuses.has(BattleStatus.CONFUSION)) {
                     val effectiveActor = actor.withEffectiveStats(actorStatuses)
-                    val skillCast = tryCastSkill(round, actorRef, effectiveActor, attacker, defender, statuses, skillRuntime, runtimeState, random, setOf(SkillKind.ACTIVE))
-                    if (skillCast != null) {
-                        applySkillCastResult(actorRef, skillCast, attacker, defender, statuses, events, round)
-                    } else {
-                        val targetRef = selectNormalAttackTarget(actorRef, effectiveActor, attacker, defender, statuses)
-                        if (targetRef != null) {
-                            val target = currentHero(targetRef.side, targetRef.position, attacker, defender) ?: continue
-                            val targetStatuses = statuses[targetRef].orEmpty()
-                            if (tryEvade(round, actorRef, targetRef, targetStatuses, statuses, events)) {
-                                events.add(BattleEvent.HeroActionEnd(round, actorRef))
-                                outcome = currentOutcome(attacker, defender)
-                                if (outcome != BattleOutcome.DRAW) {
-                                    events.add(BattleEvent.BattleEnd(outcome))
-                                    return result(outcome, attacker, defender, events)
-                                }
-                                continue
-                            }
-                            val effectiveTarget = target.withEffectiveStats(targetStatuses)
-                            val damage = normalAttackDamage(effectiveActor, effectiveTarget)
-                            val newTarget = target.copy(troops = (target.troops - damage).coerceAtLeast(0))
-                            if (targetRef.side == Side.ATTACKER) {
-                                attacker[targetRef.position] = newTarget
-                            } else {
-                                defender[targetRef.position] = newTarget
-                            }
-                            events.add(
-                                BattleEvent.NormalAttack(
-                                    round = round,
-                                    source = actorRef,
-                                    target = targetRef,
-                                    damage = damage,
-                                    targetTroopsAfter = newTarget.troops,
-                                ),
-                            )
-                            val pursuitActor = currentHero(actorRef.side, actorRef.position, attacker, defender) ?: actor
-                            val pursuit = tryCastSkill(round, actorRef, pursuitActor.withEffectiveStats(statuses[actorRef].orEmpty()), attacker, defender, statuses, skillRuntime, runtimeState, random, setOf(SkillKind.PURSUIT))
-                            if (pursuit != null) {
-                                applySkillCastResult(actorRef, pursuit, attacker, defender, statuses, events, round)
-                            }
+                    if (!actorStatuses.has(BattleStatus.HESITATION)) {
+                        for (attempt in effectiveActor.skillIds.indices) {
+                            val skillActor = currentHero(actorRef.side, actorRef.position, attacker, defender)
+                                ?.withEffectiveStats(statuses[actorRef].orEmpty())
+                                ?: break
+                            val skillCast = tryCastSkill(
+                                round, actorRef, skillActor, attacker, defender, statuses,
+                                skillRuntime, runtimeState, random, setOf(SkillKind.ACTIVE),
+                            ) ?: break
+                            applySkillCastResult(actorRef, skillCast, attacker, defender, statuses, events, round)
                         }
+                    }
+                    if (!actorStatuses.has(BattleStatus.DISARM)) {
+                        performNormalAttackAndPursuit(
+                            round, actorRef, attacker, defender, statuses,
+                            skillRuntime, runtimeState, random, events,
+                        )
                     }
                 }
                 events.add(BattleEvent.HeroActionEnd(round, actorRef))
@@ -112,6 +89,52 @@ object BattleEngine {
         outcome = currentOutcome(attacker, defender)
         events.add(BattleEvent.BattleEnd(outcome))
         return result(outcome, attacker, defender, events)
+    }
+
+    private fun performNormalAttackAndPursuit(
+        round: Int,
+        actorRef: BattleHeroRef,
+        attacker: MutableMap<Int, BattleHero>,
+        defender: MutableMap<Int, BattleHero>,
+        statuses: MutableMap<BattleHeroRef, MutableList<ActiveBattleStatus>>,
+        skillRuntime: BattleSkillRuntime?,
+        runtimeState: SkillRuntimeState?,
+        random: BattleRandom?,
+        events: MutableList<BattleEvent>,
+    ) {
+        val actor = currentHero(actorRef.side, actorRef.position, attacker, defender) ?: return
+        val effectiveActor = actor.withEffectiveStats(statuses[actorRef].orEmpty())
+        val targetRef = selectNormalAttackTarget(actorRef, effectiveActor, attacker, defender, statuses) ?: return
+        val target = currentHero(targetRef.side, targetRef.position, attacker, defender) ?: return
+        val targetStatuses = statuses[targetRef].orEmpty()
+        if (tryEvade(round, actorRef, targetRef, targetStatuses, statuses, events)) return
+
+        val effectiveTarget = target.withEffectiveStats(targetStatuses)
+        val damage = normalAttackDamage(effectiveActor, effectiveTarget)
+        val newTarget = target.copy(troops = (target.troops - damage).coerceAtLeast(0))
+        if (targetRef.side == Side.ATTACKER) {
+            attacker[targetRef.position] = newTarget
+        } else {
+            defender[targetRef.position] = newTarget
+        }
+        events.add(
+            BattleEvent.NormalAttack(
+                round = round,
+                source = actorRef,
+                target = targetRef,
+                damage = damage,
+                targetTroopsAfter = newTarget.troops,
+            ),
+        )
+
+        val pursuitActor = currentHero(actorRef.side, actorRef.position, attacker, defender) ?: actor
+        val pursuit = tryCastSkill(
+            round, actorRef, pursuitActor.withEffectiveStats(statuses[actorRef].orEmpty()),
+            attacker, defender, statuses, skillRuntime, runtimeState, random, setOf(SkillKind.PURSUIT),
+        )
+        if (pursuit != null) {
+            applySkillCastResult(actorRef, pursuit, attacker, defender, statuses, events, round)
+        }
     }
 
     private fun seedInitialActiveStatuses(
@@ -293,15 +316,15 @@ object BattleEngine {
         val enemies = if (actorRef.side == Side.ATTACKER) defender else attacker
         return enemies.values
             .filter { it.troops > 0 }
-            .filter { target -> isInRange(actor.position, target.position, actor.stats.hitRange) }
-            .minByOrNull { it.position }
+            .map { target -> target to formationDistance(actor.position, target.position) }
+            .filter { (_, distance) -> distance <= actor.stats.hitRange }
+            .minWithOrNull(compareBy<Pair<BattleHero, Int>> { it.second }.thenByDescending { it.first.position })
+            ?.first
             ?.ref(actorRef.side.opposite())
     }
 
-    private fun isInRange(sourcePos: Int, targetPos: Int, hitRange: Int): Boolean {
-        val distance = targetPos - sourcePos + 1
-        return distance in 1..hitRange
-    }
+    private fun formationDistance(sourcePos: Int, targetPos: Int): Int =
+        5 - sourcePos - targetPos
 
     private fun normalAttackDamage(source: BattleHero, target: BattleHero): Int {
         val troopScale = source.troops.toDouble() / source.maxTroops.coerceAtLeast(1)
@@ -346,9 +369,8 @@ object BattleEngine {
     private fun BattleHero.ref(side: Side): BattleHeroRef =
         BattleHeroRef(side = side, position = position, heroId = id)
 
-    private fun BattleHero.shouldSkipAction(runtimeStatuses: List<ActiveBattleStatus>): Boolean =
-        runtimeStatuses.map { it.status }
-            .any { it == BattleStatus.CONFUSION || it == BattleStatus.HESITATION || it == BattleStatus.DISARM }
+    private fun List<ActiveBattleStatus>.has(status: BattleStatus): Boolean =
+        any { it.status == status }
 
     private fun BattleHero.withEffectiveStats(runtimeStatuses: List<ActiveBattleStatus>): BattleHero {
         val delta = runtimeStatuses.fold(BattleStats.ZERO) { acc, s -> acc + s.statDelta }

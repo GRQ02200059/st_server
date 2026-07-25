@@ -10,16 +10,16 @@ class BattleEnginePlayableTest {
     @Test
     fun `equipment physical damage modifier increases skill damage`() {
         val baseAttacker = BattleTeam(
-            listOf(hero(heroId = 100036, position = 0, skillIds = listOf(200070))),
+            listOf(hero(heroId = 100036, position = 2, skillIds = listOf(200070))),
         )
         val equippedAttacker = BattleTeam(
             listOf(
-                hero(heroId = 100036, position = 0, skillIds = listOf(200070)).copy(
+                hero(heroId = 100036, position = 2, skillIds = listOf(200070)).copy(
                     modifiers = listOf(BattleModifier.DamageDealtPercent(DamageKind.PHYSICAL, 8)),
                 ),
             ),
         )
-        val defender = BattleTeam(listOf(hero(heroId = 1, position = 0)))
+        val defender = BattleTeam(listOf(hero(heroId = 1, position = 2)))
 
         val base = BattleEngine.resolve(BattleRequest(baseAttacker, defender, maxRounds = 1), repo, FixedBattleRandom(0))
         val equipped = BattleEngine.resolve(BattleRequest(equippedAttacker, defender, maxRounds = 1), repo, FixedBattleRandom(0))
@@ -30,45 +30,59 @@ class BattleEnginePlayableTest {
     }
 
     @Test
-    fun `hesitation blocks active skills and disarm blocks normal attacks`() {
-        val activeBlocked = BattleEngine.resolve(
-            BattleRequest(
-                attacker = BattleTeam(listOf(hero(heroId = 100036, position = 0, skillIds = listOf(200070), statuses = setOf(BattleStatus.HESITATION)))),
-                defender = BattleTeam(listOf(hero(heroId = 1, position = 0))),
-                maxRounds = 1,
-            ),
-            repo,
-            FixedBattleRandom(0),
-        )
-        val normalBlocked = BattleEngine.resolve(
-            BattleRequest(
-                attacker = BattleTeam(listOf(hero(heroId = 100036, position = 0, attack = 500, statuses = setOf(BattleStatus.DISARM)))),
-                defender = BattleTeam(listOf(hero(heroId = 1, position = 0))),
-                maxRounds = 1,
-            ),
-            repo,
-            FixedBattleRandom(0),
-        )
+    fun `hesitation blocks active skill but allows normal attack`() {
+        val result = controlledResult(BattleStatus.HESITATION, skillIds = listOf(200070))
 
-        assertTrue(activeBlocked.events.none { it is BattleEvent.SkillDamage })
-        assertTrue(normalBlocked.events.none { it is BattleEvent.NormalAttack && it.source.heroId == BattleHeroId(100036) })
+        assertTrue(result.events.none {
+            it is BattleEvent.SkillDamage && it.source.side == Side.ATTACKER
+        })
+        assertTrue(result.events.any {
+            it is BattleEvent.NormalAttack && it.source.side == Side.ATTACKER
+        })
+    }
+
+    @Test
+    fun `disarm blocks normal attack but allows active skill`() {
+        val result = controlledResult(BattleStatus.DISARM, skillIds = listOf(200070))
+
+        assertTrue(result.events.any {
+            it is BattleEvent.SkillDamage && it.source.side == Side.ATTACKER
+        })
+        assertTrue(result.events.none {
+            it is BattleEvent.NormalAttack && it.source.side == Side.ATTACKER
+        })
+    }
+
+    @Test
+    fun `confusion blocks both active skill and normal attack`() {
+        val result = controlledResult(BattleStatus.CONFUSION, skillIds = listOf(200070))
+
+        assertTrue(result.events.none {
+            (it is BattleEvent.SkillDamage || it is BattleEvent.NormalAttack) &&
+                when (it) {
+                    is BattleEvent.SkillDamage -> it.source.side == Side.ATTACKER
+                    is BattleEvent.NormalAttack -> it.source.side == Side.ATTACKER
+                    else -> false
+                }
+        })
     }
 
     @Test
     fun `disorder applies control and damage over time statuses`() {
         val result = BattleEngine.resolve(
             BattleRequest(
-                attacker = BattleTeam(listOf(hero(heroId = 100002, position = 0, skillIds = listOf(200002)))),
-                defender = BattleTeam(listOf(hero(heroId = 1, position = 0))),
+                attacker = BattleTeam(listOf(hero(heroId = 100002, position = 2, skillIds = listOf(200002)))),
+                defender = BattleTeam(listOf(hero(heroId = 1, position = 2))),
                 maxRounds = 1,
             ),
             repo,
-            FixedBattleRandom(0),
+            SequenceBattleRandom(0, 1, 2, 3),
         )
 
-        assertTrue(result.events.filterIsInstance<BattleEvent.StatusApplied>().any { it.status == BattleStatus.BURN })
-        assertTrue(result.events.filterIsInstance<BattleEvent.StatusApplied>().any { it.status == BattleStatus.CONFUSION })
-        assertTrue(result.events.filterIsInstance<BattleEvent.StatusApplied>().any { it.status == BattleStatus.DISARM })
+        assertEquals(
+            listOf(BattleStatus.PANIC, BattleStatus.BURN, BattleStatus.HEX),
+            result.events.filterIsInstance<BattleEvent.StatusApplied>().map { it.status },
+        )
     }
 
     @Test
@@ -77,22 +91,22 @@ class BattleEnginePlayableTest {
             BattleRequest(
                 attacker = BattleTeam(
                     listOf(
-                        hero(heroId = 100002, position = 0, skillIds = listOf(200002)).copy(
+                        hero(heroId = 100002, position = 2, skillIds = listOf(200002)).copy(
                             stats = BattleStats(attack = 100, defense = 20, strategy = 120, speed = 100, siege = 0, hitRange = 3),
                         ),
                     ),
                 ),
-                defender = BattleTeam(listOf(hero(heroId = 1, position = 0))),
+                defender = BattleTeam(listOf(hero(heroId = 1, position = 2))),
                 maxRounds = 4,
             ),
             repo,
-            FixedBattleRandom(0),
+            SequenceBattleRandom(0, 1, 1, 1),
         )
 
         val dotEvents = result.events.filterIsInstance<BattleEvent.OngoingDamage>()
-        assertTrue(dotEvents.any { it.status == BattleStatus.BURN && it.round == 2 })
-        assertTrue(dotEvents.any { it.status == BattleStatus.BURN && it.round == 3 })
-        assertTrue(dotEvents.none { it.status == BattleStatus.BURN && it.round == 4 })
+        assertTrue(dotEvents.any { it.status == BattleStatus.PANIC && it.round == 2 })
+        assertTrue(dotEvents.any { it.status == BattleStatus.PANIC && it.round == 3 })
+        assertTrue(dotEvents.none { it.status == BattleStatus.PANIC && it.round == 4 })
     }
 
     @Test
@@ -126,12 +140,12 @@ class BattleEnginePlayableTest {
     fun `control statuses expire and allow later normal attacks`() {
         val result = BattleEngine.resolve(
             BattleRequest(
-                attacker = BattleTeam(listOf(hero(heroId = 100002, position = 0, skillIds = listOf(200002)))),
-                defender = BattleTeam(listOf(hero(heroId = 1, position = 0, speed = 10))),
+                attacker = BattleTeam(listOf(hero(heroId = 100002, position = 2, skillIds = listOf(200002)))),
+                defender = BattleTeam(listOf(hero(heroId = 1, position = 2, speed = 10))),
                 maxRounds = 4,
             ),
             repo,
-            FixedBattleRandom(0),
+            SequenceBattleRandom(0, 4, 4, 4),
         )
 
         assertTrue(result.events.filterIsInstance<BattleEvent.NormalAttack>().none { it.source.side == Side.DEFENDER && it.round == 2 })
@@ -142,8 +156,8 @@ class BattleEnginePlayableTest {
     fun `pursuit skills trigger after normal attacks`() {
         val result = BattleEngine.resolve(
             BattleRequest(
-                attacker = BattleTeam(listOf(hero(heroId = 100026, position = 0, skillIds = listOf(200206)))),
-                defender = BattleTeam(listOf(hero(heroId = 1, position = 0))),
+                attacker = BattleTeam(listOf(hero(heroId = 100026, position = 2, skillIds = listOf(200206)))),
+                defender = BattleTeam(listOf(hero(heroId = 1, position = 2))),
                 maxRounds = 1,
             ),
             repo,
@@ -174,8 +188,8 @@ class BattleEnginePlayableTest {
     fun `evade status dodges one damage instance and is consumed`() {
         val result = BattleEngine.resolve(
             BattleRequest(
-                attacker = BattleTeam(listOf(hero(heroId = 1, position = 0, attack = 200, speed = 200))),
-                defender = BattleTeam(listOf(hero(heroId = 2, position = 0, defense = 0, speed = 50, statuses = setOf(BattleStatus.EVADE), troops = 1000))),
+                attacker = BattleTeam(listOf(hero(heroId = 1, position = 2, attack = 200, speed = 200))),
+                defender = BattleTeam(listOf(hero(heroId = 2, position = 2, defense = 0, speed = 50, statuses = setOf(BattleStatus.EVADE), troops = 1000))),
                 maxRounds = 2,
             ),
             repo,
@@ -190,8 +204,8 @@ class BattleEnginePlayableTest {
     fun `stat buff from skill increases damage on subsequent actions`() {
         val noBuff = BattleEngine.resolve(
             BattleRequest(
-                attacker = BattleTeam(listOf(hero(heroId = 1, position = 0, attack = 100, speed = 200))),
-                defender = BattleTeam(listOf(hero(heroId = 2, position = 0, defense = 50, speed = 50))),
+                attacker = BattleTeam(listOf(hero(heroId = 1, position = 2, attack = 100, speed = 200))),
+                defender = BattleTeam(listOf(hero(heroId = 2, position = 2, defense = 50, speed = 50))),
                 maxRounds = 1,
             ),
             repo,
@@ -199,8 +213,8 @@ class BattleEnginePlayableTest {
         )
         val withBuffSkill = BattleEngine.resolve(
             BattleRequest(
-                attacker = BattleTeam(listOf(hero(heroId = 100036, position = 0, attack = 100, speed = 200, skillIds = listOf(200036)))),
-                defender = BattleTeam(listOf(hero(heroId = 2, position = 0, defense = 50, speed = 50))),
+                attacker = BattleTeam(listOf(hero(heroId = 100036, position = 2, attack = 100, speed = 200, skillIds = listOf(200036)))),
+                defender = BattleTeam(listOf(hero(heroId = 2, position = 2, defense = 50, speed = 50))),
                 maxRounds = 3,
             ),
             repo,
@@ -242,6 +256,21 @@ class BattleEnginePlayableTest {
         assertTrue(statChangedEvents.all { it.skillId == 200001 })
     }
 
+    private fun controlledResult(
+        status: BattleStatus,
+        skillIds: List<Int>,
+    ): BattleResult = BattleEngine.resolve(
+        BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100036, 2, attack = 500, skillIds = skillIds, statuses = setOf(status))),
+            ),
+            defender = BattleTeam(listOf(hero(1, 2))),
+            maxRounds = 1,
+        ),
+        repo,
+        FixedBattleRandom(0),
+    )
+
     private fun hero(
         heroId: Int,
         position: Int,
@@ -262,4 +291,14 @@ class BattleEnginePlayableTest {
             skillIds = skillIds,
             activeStatuses = statuses,
         )
+
+    private class SequenceBattleRandom(
+        vararg values: Int,
+    ) : BattleRandom {
+        private val values = values.toList()
+        private var index = 0
+
+        override fun nextInt(bound: Int): Int =
+            values.getOrElse(index++) { bound - 1 }.coerceIn(0, bound - 1)
+    }
 }

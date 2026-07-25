@@ -147,6 +147,12 @@ sealed interface BattleEvent {
         val damage: Int,
         val targetTroopsAfter: Int,
     ) : BattleEvent
+    data class SkillPreparationStarted(
+        val round: Int,
+        val source: BattleHeroRef,
+        val skillId: Int,
+        val readyRound: Int,
+    ) : BattleEvent
     data class Recovery(
         val round: Int,
         val source: BattleHeroRef,

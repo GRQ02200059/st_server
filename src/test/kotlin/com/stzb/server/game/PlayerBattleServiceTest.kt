@@ -2,6 +2,8 @@ package com.stzb.server.game
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.game.battle.ClientBattleReportStore
+import com.stzb.server.game.battle.FixedBattleRandom
+import com.stzb.server.game.battle.BattleEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -77,5 +79,27 @@ class PlayerBattleServiceTest {
         assertEquals(null, result)
         assertEquals(0, state.hero(hero.heroUid)?.stamina)
         assertEquals(1_000, state.hero(hero.heroUid)?.troops)
+    }
+
+    @Test
+    fun `settlement uses its configured random source instead of forcing every skill roll to zero`() {
+        val state = PlayerStateRepository.getOrCreate(userId = 904, cityWid = 1904, roleName = "主公")
+        val hero = state.addHero(heroId = 130031, nowSec = 1_700_000_001)
+        state.saveTeam(listOf(hero.heroUid))
+        val store = ClientBattleReportStore.createEmpty()
+        val service = PlayerBattleService(
+            reportStore = store,
+            battleRandomFactory = { FixedBattleRandom(99) },
+        )
+
+        service.launchPveBattle(state = state, targetWid = 1905, nowSec = 1_700_000_010)
+            ?: error("expedition should start")
+        val settlement = service.settlePveBattle(state, nowSec = 1_700_000_013)
+            ?: error("arrival should resolve battle")
+        val report = store.findOrDefault(settlement.battleId)
+
+        assertTrue(report.result.events.none {
+            it is BattleEvent.SkillPreparationStarted && it.skillId == 200031
+        })
     }
 }

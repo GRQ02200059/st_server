@@ -13,8 +13,14 @@ internal data class ClientReportAction(
 
 internal object ClientBattleTextReplayProtocol {
     const val HERO_NAME = 14
+    const val HERO_INFO = 205
     const val PREPARE = 4
     const val ROUND = 9
+    const val SKILL_PREPARATION_STARTED = 23
+    const val SKILL_BEGIN = 213
+    const val SKILL_END = 214
+    const val NORMAL_ATTACK_BEGIN = 222
+    const val NORMAL_ATTACK_END = 223
     const val NORMAL_DAMAGE = 62
     const val SKILL_CAST = 301
     const val SKILL_DAMAGE = 60
@@ -28,7 +34,7 @@ internal object ClientBattleTextReplayProtocol {
         require(formationPosition in 0..2) { "battle formation position must be 0..2: $formationPosition" }
         return when (side) {
             Side.ATTACKER -> formationPosition + 1
-            Side.DEFENDER -> formationPosition + 4
+            Side.DEFENDER -> 6 - formationPosition
         }
     }
 

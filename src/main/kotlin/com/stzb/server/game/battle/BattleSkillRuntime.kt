@@ -2,8 +2,9 @@ package com.stzb.server.game.battle
 
 data class SkillRuntimeState(
     val defaultCooldownRounds: Int = 0,
-    val preparing: MutableSet<Pair<Int, Int>> = mutableSetOf(),
+    val preparingUntilRound: MutableMap<Pair<Int, Int>, Int> = mutableMapOf(),
     val cooldownUntilRound: MutableMap<Pair<Int, Int>, Int> = mutableMapOf(),
+    val attemptedRound: MutableMap<Pair<Int, Int>, Int> = mutableMapOf(),
 )
 
 class BattleSkillRuntime(
@@ -23,16 +24,45 @@ class BattleSkillRuntime(
             val skill = config.skill(skillId) ?: continue
             if (skill.kind !in allowedKinds) continue
             val key = source.id.value to skillId
+            if (state.attemptedRound[key] == round) continue
+            val readyRound = state.preparingUntilRound[key]
+            if (readyRound != null) {
+                if (round < readyRound) continue
+                state.attemptedRound[key] = round
+                state.preparingUntilRound.remove(key)
+                val result = executeDetails(
+                    round, skillId, sourceRef, source,
+                    targets.insideRange(source.position, skill.hitRange), allies, random, state,
+                )
+                state.cooldownUntilRound[key] = round + state.defaultCooldownRounds
+                return result
+            }
             if ((state.cooldownUntilRound[key] ?: 0) >= round) continue
+            state.attemptedRound[key] = round
             if (random.nextInt(100) >= skill.probabilityMax) continue
 
-            if (skill.prepareRounds > 0 && key !in state.preparing) {
-                state.preparing += key
-                return SkillCastResult(skillId, targets, emptyList(), allies)
+            if (skill.prepareRounds > 0) {
+                val completesAt = round + skill.prepareRounds
+                state.preparingUntilRound[key] = completesAt
+                return SkillCastResult(
+                    skillId = skillId,
+                    updatedEnemies = targets,
+                    events = listOf(
+                        BattleEvent.SkillPreparationStarted(
+                            round = round,
+                            source = sourceRef,
+                            skillId = skillId,
+                            readyRound = completesAt,
+                        ),
+                    ),
+                    updatedAllies = allies,
+                )
             }
-            state.preparing -= key
 
-            val result = executeDetails(round, skillId, sourceRef, source, targets, allies, random, state)
+            val result = executeDetails(
+                round, skillId, sourceRef, source,
+                targets.insideRange(source.position, skill.hitRange), allies, random, state,
+            )
             val cooldown = if (skillId == 200002) 3 else state.defaultCooldownRounds
             state.cooldownUntilRound[key] = round + cooldown
             return result
@@ -231,7 +261,8 @@ class BattleSkillRuntime(
             5 -> alive.sortedByDescending { it.troops }
             else -> alive.sortedBy { it.position }
         }
-        return if (isAoe) candidates else listOf(candidates.first())
+        val targetCount = detail.attackMax.coerceAtLeast(1)
+        return if (isAoe || targetCount > 1) candidates.take(targetCount) else listOf(candidates.first())
     }
 
     private fun statDeltaForEffect(effectId: Int, constantParam: Int): BattleStats {
@@ -249,16 +280,15 @@ class BattleSkillRuntime(
         details: List<SkillDetailConfig>,
         random: BattleRandom,
     ): List<SkillDetailConfig> {
-        val groups = listOf(
-            details.firstOrNull { it.effectId == 305 },
-            details.firstOrNull { it.effectId == 501 },
-            details.firstOrNull { it.effectId == 552 },
-        ).filterNotNull()
-        if (groups.size == 3) return groups
-
-        val candidates = details.filter { it.effectId in setOf(303, 304, 305, 306, 501, 502, 503, 552, 505) }
+        val candidates = details
+            .filter { it.effectId in disorderEffectIds }
+            .distinctBy { it.effectId }
         if (candidates.size <= 3) return candidates
         return List(3) { candidates[random.nextInt(candidates.size)] }
+    }
+
+    private companion object {
+        val disorderEffectIds = setOf(303, 304, 305, 306, 501, 502, 503, 552, 505)
     }
 
     private fun skillDamage(source: BattleHero, target: BattleHero, detail: SkillDetailConfig): Int {
@@ -273,4 +303,11 @@ class BattleSkillRuntime(
             .sumOf { it.percent }
         return (base * (100 + bonusPercent) / 100).coerceAtLeast(1).coerceAtMost(target.troops)
     }
+
+    private fun BattleTeam.insideRange(sourcePosition: Int, hitRange: Int?): BattleTeam =
+        if (hitRange == null) {
+            this
+        } else {
+            copy(heroes = heroes.filter { target -> 5 - sourcePosition - target.position <= hitRange })
+        }
 }
