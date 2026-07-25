@@ -41,4 +41,21 @@ class FilePlayerRepositoryTest {
         )
         assertEquals("acct-b", state.accountKey)
     }
+
+    @Test
+    fun `new account id advances beyond ids already stored on disk`() {
+        val root = createTempDirectory("stzb-player-repository")
+        FilePlayerRepository(root).save(
+            PlayerState(
+                userId = 1_500_000,
+                cityWid = 100001,
+                roleName = "旧账号",
+                accountKey = "old-account",
+            ),
+        )
+
+        val newState = FilePlayerRepository(root).getOrCreate("new-account", 100001, "新账号")
+
+        assertTrue(newState.userId > 1_500_000)
+    }
 }

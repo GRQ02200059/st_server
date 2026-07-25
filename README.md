@@ -60,3 +60,21 @@ systemd 部署则重新执行一键脚本：
 ```bash
 curl -fsSL https://raw.githubusercontent.com/GRQ02200059/st_server/main/scripts/bootstrap_remote.sh | STZB_PUBLIC_HOST=152.136.236.184 bash
 ```
+
+## 玩家账号存档
+
+服务端会将账号、角色、资源、建筑、武将、队伍和进行中的行军保存到本地 JSON 文件：
+
+```text
+data/accounts/<account-key>.json
+```
+
+默认目录是当前服务端工作目录下的 `data`，也可以通过环境变量修改：
+
+```bash
+STZB_DATA_DIR=/opt/stzb-data ./gradlew run
+```
+
+写入使用临时文件和原子替换。发现损坏存档时，原文件会保留为
+`<account-key>.json.corrupt.<timestamp>`，服务端会创建一个新的默认存档。
+删除 `data/accounts` 会重置本地开发账号。

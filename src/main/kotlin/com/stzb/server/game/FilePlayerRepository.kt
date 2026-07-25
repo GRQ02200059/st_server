@@ -57,7 +57,7 @@ class FilePlayerRepository(
         return runCatching {
             mapper.readValue(path.toFile(), PlayerStateSnapshot::class.java)
                 .let(PlayerState::fromSnapshot)
-        }.getOrElse { error ->
+        }.getOrElse { _ ->
             val backup = path.resolveSibling(
                 "${path.fileName}.corrupt.${System.currentTimeMillis()}",
             )
@@ -112,8 +112,27 @@ class FilePlayerRepository(
             .digest(value.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 
-    private fun nextUserId(): Int =
-        userIdSequence.incrementAndGet()
+    private fun nextUserId(): Int {
+        val persistedMax = maxPersistedUserId()
+        return userIdSequence.updateAndGet { current ->
+            maxOf(current, persistedMax) + 1
+        }
+    }
+
+    private fun maxPersistedUserId(): Int {
+        if (!accountsDir.exists()) return 10_000
+        return Files.list(accountsDir).use { paths ->
+            paths.iterator().asSequence()
+                .filter { it.fileName.toString().endsWith(".json") }
+                .mapNotNull { path ->
+                    runCatching {
+                        mapper.readValue(path.toFile(), PlayerStateSnapshot::class.java).userId
+                    }.getOrNull()
+                }
+                .maxOrNull()
+                ?: 10_000
+        }
+    }
 
     companion object {
         private val SAFE_ACCOUNT_KEY = Regex("[A-Za-z0-9._-]+")

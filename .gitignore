@@ -16,3 +16,6 @@ out/
 
 local.properties
 *.tmp
+
+# Local player account data
+data/
