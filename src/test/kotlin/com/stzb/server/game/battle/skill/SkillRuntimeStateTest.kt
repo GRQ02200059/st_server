@@ -13,6 +13,29 @@ class SkillRuntimeStateTest {
     private val refB = ref(Side.ATTACKER, 1, 100018)
 
     @Test
+    fun `battle triggers retain the required values and order`() {
+        assertEquals(
+            listOf(
+                "BATTLE_PASSIVE",
+                "BATTLE_COMMAND",
+                "ROUND_START",
+                "ACTION_BEFORE",
+                "ACTIVE_SKILL_ATTEMPT",
+                "NORMAL_ATTACK_BEFORE",
+                "NORMAL_ATTACK_AFTER",
+                "DAMAGE_BEFORE",
+                "DAMAGE_AFTER",
+                "HURT_AFTER",
+                "PURSUIT_ATTEMPT",
+                "ACTION_AFTER",
+                "ROUND_END",
+                "BASE_HERO_DEFEATED",
+            ),
+            BattleTrigger.entries.map(BattleTrigger::name),
+        )
+    }
+
+    @Test
     fun `runtime keys include side position hero trigger and skill`() {
         val state = SkillRuntimeState()
         val attack = ref(Side.ATTACKER, 0, 100017)
@@ -42,6 +65,52 @@ class SkillRuntimeStateTest {
     }
 
     @Test
+    fun `prepare suppresses same source and current skill without replacing snapshot`() {
+        val state = SkillRuntimeState()
+        val original = PreparedSkill(
+            source = refA,
+            skillId = 200031,
+            rootSkillId = 200001,
+            startedRound = 1,
+            readyRound = 2,
+        )
+        val duplicate = original.copy(rootSkillId = 200002, startedRound = 3, readyRound = 4)
+        val otherSource = original.copy(source = ref(Side.DEFENDER, 0, 100017))
+        val otherSkill = original.copy(skillId = 200032)
+
+        assertEquals(true, state.prepare(original))
+        assertEquals(false, state.prepare(duplicate))
+        assertEquals(true, state.prepare(otherSource))
+        assertEquals(true, state.prepare(otherSkill))
+
+        assertEquals(listOf(original, otherSource, otherSkill), state.preparedSkills())
+    }
+
+    @Test
+    fun `prepared and delayed records retain source root and current skill ids`() {
+        val prepared = PreparedSkill(
+            source = refA,
+            skillId = 200031,
+            rootSkillId = 200001,
+            readyRound = 2,
+        )
+        val delayed = DelayedEffect(
+            source = refB,
+            rootSkillId = 200002,
+            skillId = 200032,
+            detailId = 1,
+            dueRound = 2,
+        )
+
+        assertEquals(refA, prepared.source)
+        assertEquals(200001, prepared.rootSkillId)
+        assertEquals(200031, prepared.skillId)
+        assertEquals(refB, delayed.source)
+        assertEquals(200002, delayed.rootSkillId)
+        assertEquals(200032, delayed.skillId)
+    }
+
+    @Test
     fun `due effects use round hit and stable insertion order`() {
         val state = SkillRuntimeState()
         state.schedule(delayed(200003, dueRound = 3, dueHit = 0))
@@ -62,8 +131,21 @@ class SkillRuntimeStateTest {
     }
 
     @Test
-    fun `call stack reports exact cycle path and remains unchanged`() {
+    fun `schedule assigns runtime sequence and ignores caller sequence`() {
         val state = SkillRuntimeState()
+        state.schedule(delayed(200001, dueRound = 2, dueHit = 0).copy(sequence = 99))
+        state.schedule(delayed(200002, dueRound = 2, dueHit = 0).copy(sequence = 7))
+
+        val due = state.dueEffects(round = 2)
+
+        assertEquals(listOf(200001, 200002), due.map { it.skillId })
+        assertEquals(listOf(0L, 1L), due.map { it.sequence })
+    }
+
+    @Test
+    fun `call stack reports full root cycle path and remains unchanged`() {
+        val state = SkillRuntimeState()
+        state.enter(100)
         state.enter(1)
         state.enter(2)
 
@@ -71,8 +153,21 @@ class SkillRuntimeStateTest {
             state.enter(1)
         }
 
-        assertTrue(failure.message.orEmpty().contains("1 -> 2 -> 1"))
-        assertEquals(listOf(1, 2), state.currentCallPath())
+        assertEquals("Skill call cycle: 100 -> 1 -> 2 -> 1", failure.message)
+        assertEquals(listOf(100, 1, 2), state.currentCallPath())
+    }
+
+    @Test
+    fun `mismatched exit preserves call stack`() {
+        val state = SkillRuntimeState()
+        state.enter(100)
+        state.enter(1)
+
+        assertFailsWith<IllegalStateException> {
+            state.exit(100)
+        }
+
+        assertEquals(listOf(100, 1), state.currentCallPath())
     }
 
     @Test

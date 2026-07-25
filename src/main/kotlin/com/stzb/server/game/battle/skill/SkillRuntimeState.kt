@@ -19,8 +19,12 @@ class SkillRuntimeState {
         return updated
     }
 
-    fun prepare(skill: PreparedSkill) {
+    fun prepare(skill: PreparedSkill): Boolean {
+        if (preparations.any { it.source == skill.source && it.skillId == skill.skillId }) {
+            return false
+        }
         preparations += skill
+        return true
     }
 
     fun preparedSkills(): List<PreparedSkill> = preparations.toList()
@@ -43,9 +47,8 @@ class SkillRuntimeState {
 
     fun enter(skillId: Int) {
         val path = callStack.toList()
-        val cycleStart = path.indexOf(skillId)
-        check(cycleStart < 0) {
-            "Skill call cycle: ${(path.drop(cycleStart) + skillId).joinToString(" -> ")}"
+        check(skillId !in path) {
+            "Skill call cycle: ${(path + skillId).joinToString(" -> ")}"
         }
         check(callStack.size < MAX_CHILD_DEPTH) {
             "Skill call path exceeds maximum child depth $MAX_CHILD_DEPTH: " +
