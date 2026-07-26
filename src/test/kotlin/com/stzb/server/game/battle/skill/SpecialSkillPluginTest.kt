@@ -81,6 +81,10 @@ class SpecialSkillPluginTest {
                             130005101, 230005101, 130005205, 130005301, 230005301,
                         )
                     )
+                || it.field == SkillConditionField.PRECONDITION &&
+                it.value in setOf(18, -18) ||
+                it.field == SkillConditionField.CONDITION &&
+                it.value == 17000
         }
         assertEquals(
             (ScopedConditionCodeCatalog.codes - resolvedTargetCodes)

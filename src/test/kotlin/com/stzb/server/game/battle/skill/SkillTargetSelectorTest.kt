@@ -440,6 +440,27 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `country difference condition excludes targets sharing the source country`() {
+        val metadata = allRefs().associateWith {
+            metadata(
+                SkillHeroGender.MALE,
+                SkillTroopType.INFANTRY,
+                country = if (it == enemyBase) 1 else 2,
+            )
+        }.toMutableMap().apply {
+            put(source, metadata(SkillHeroGender.MALE, SkillTroopType.INFANTRY, country = 1))
+        }
+
+        assertEquals(
+            listOf(enemyFront, enemyMiddle),
+            select(
+                rule(selectType = 34, condition = 17000),
+                context(view(metadata = metadata, sourceRange = 5)),
+            ),
+        )
+    }
+
+    @Test
     fun `minimum and maximum selectors use live troops and four combat stats`() {
         val states = defaultStates().toMutableMap().apply {
             put(enemyBase, state(troops = 300, attack = 80, defense = 10, strategy = 70, speed = 40))

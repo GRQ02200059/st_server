@@ -95,6 +95,10 @@ class SkillConditionInterpreterTest {
                         130005101, 230005101, 130005205, 130005301, 230005301,
                     )
                 ) ||
+            code.field == SkillConditionField.PRECONDITION &&
+            code.value in setOf(18, -18) ||
+            code.field == SkillConditionField.CONDITION &&
+            code.value == 17000 ||
             code.field == SkillConditionField.CONDITION &&
             code.value in setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060) ||
             code.field == SkillConditionField.CAST_CONDITION &&
@@ -509,6 +513,27 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.ConfigBranch(enabled = true),
             interpreter.compile(graph.detail(21064301)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `current recovery duration branch and foreign country target condition are explicit`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = true),
+            interpreter.compile(graph.detail(20088414)).conditions.first(),
+        )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = false),
+            interpreter.compile(graph.detail(20088415)).conditions.first(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.COUNTRY_DIFFERENT_FROM_SOURCE,
+            ),
+            interpreter.compile(graph.detail(20096402)).conditions.last(),
         )
     }
 

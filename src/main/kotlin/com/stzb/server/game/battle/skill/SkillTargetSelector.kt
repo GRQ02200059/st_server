@@ -70,6 +70,7 @@ class SkillTargetSelector {
             }
             .filter { target -> matchesPreconditionTarget(raw.precondition, context, target) }
             .filter { target -> matchesConditionTarget(raw.condition, context, target) }
+            .filter { target -> matchesCountryConditionTarget(raw.condition, context, target) }
             .filter { target -> matchesMoraleConditionTarget(raw.condition, context, target) }
             .filter { target ->
                 matchesStatusConditionTarget(raw.castCondition, raw.condition, context, target)
@@ -308,6 +309,24 @@ class SkillTargetSelector {
             2 -> state.troops.toLong() * 100 > state.maxTroops.toLong() * threshold
             else -> error("Unsupported troop-ratio condition=$condition")
         }
+    }
+
+    private fun matchesCountryConditionTarget(
+        condition: Int,
+        context: SkillBattleContext,
+        target: BattleHeroRef,
+    ): Boolean {
+        if (condition != 17000) return true
+        require(SkillBattleViewCapability.HERO_METADATA in context.battleView.capabilities) {
+            "condition=17000 requires live hero metadata"
+        }
+        val sourceCountry = requireNotNull(context.battleView.metadata(context.source)) {
+            "Missing live hero metadata for ${context.source}"
+        }.country
+        val targetCountry = requireNotNull(context.battleView.metadata(target)) {
+            "Missing live hero metadata for $target"
+        }.country
+        return targetCountry != sourceCountry
     }
 
     private fun matchesMoraleConditionTarget(

@@ -80,6 +80,7 @@ sealed interface SkillCondition {
             SPEED_NOT_LOWER_THAN_SOURCE,
             HAS_RECOVERY_BLOCK,
             MORALE_EQUAL,
+            COUNTRY_DIFFERENT_FROM_SOURCE,
         }
     }
 
@@ -439,6 +440,9 @@ class SkillConditionInterpreter(
         builtInClientBranchConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInCountryConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -530,6 +534,8 @@ private class BuiltInClientBranchConditionPlugin(
                     code.value.toString().startsWith(LEGACY_CLIENT_BRANCH_PREFIX) -> false
                     code.value in CURRENT_PARAMETER_BRANCHES -> true
                     code.value in LEGACY_PARAMETER_BRANCHES -> false
+                    code.field == SkillConditionField.PRECONDITION && code.value == 18 -> true
+                    code.field == SkillConditionField.PRECONDITION && code.value == -18 -> false
                     else -> error("Unsupported client branch condition $code")
                 },
             ),
@@ -543,12 +549,18 @@ private fun builtInClientBranchConditionPlugins(
     val codes = graph.details
         .flatMap(::conditionCodes)
         .filter {
-            it.field == SkillConditionField.CAST_CONDITION &&
-                (
+            (
+                it.field == SkillConditionField.CAST_CONDITION &&
+                    (
                     it.value.toString().startsWith(CURRENT_CLIENT_BRANCH_PREFIX) ||
                         it.value.toString().startsWith(LEGACY_CLIENT_BRANCH_PREFIX) ||
                         it.value in CURRENT_PARAMETER_BRANCHES ||
                         it.value in LEGACY_PARAMETER_BRANCHES
+                    )
+                ) ||
+                (
+                    it.field == SkillConditionField.PRECONDITION &&
+                        it.value in setOf(18, -18)
                     )
         }
         .filterNot(overridden::contains)
@@ -557,6 +569,40 @@ private fun builtInClientBranchConditionPlugins(
         emptyList()
     } else {
         listOf(BuiltInClientBranchConditionPlugin("builtin.client-balance-branch", codes))
+    }
+}
+
+private class BuiltInCountryConditionPlugin(
+    override val id: String,
+    ownedConditions: Set<SkillConditionCode>,
+) : SpecialSkillPlugin {
+    override val ownedConditions: Set<SkillConditionCode> =
+        Collections.unmodifiableSet(LinkedHashSet(ownedConditions))
+
+    override fun compile(
+        code: SkillConditionCode,
+        rule: SkillEffectRule,
+    ): List<SkillCondition> =
+        listOf(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.COUNTRY_DIFFERENT_FROM_SOURCE,
+            ),
+        )
+}
+
+private fun builtInCountryConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter { it.field == SkillConditionField.CONDITION && it.value == 17000 }
+        .filterNot(overridden::contains)
+        .toSet()
+    return if (codes.isEmpty()) {
+        emptyList()
+    } else {
+        listOf(BuiltInCountryConditionPlugin("builtin.target-country", codes))
     }
 }
 
