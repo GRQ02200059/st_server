@@ -255,7 +255,7 @@ enum class EffectCategory(val clientBuffType: Int) {
     }
 }
 
-data class ActiveSkillEffect(
+class ActiveSkillEffect(
     val source: BattleHeroRef,
     val target: BattleHeroRef,
     val rootSkillId: Int,
@@ -270,19 +270,29 @@ data class ActiveSkillEffect(
     val replaceType: Int,
     val bindFlag: Int,
     val maxStacks: Int,
-    var stacks: Int,
+    stacks: Int,
     var remainingRounds: Int?,
     var remainingHits: Int?,
     val clearPerHit: Boolean,
     val clearable: Boolean = true,
-    var aggregateStrength: Int = strength * stacks,
 ) {
+    private var layerStrengths: List<Int> = List(stacks) { strength }
+
     val effectiveStrength: Int
-        get() = aggregateStrength
+        get() = layerStrengths.sum()
+
+    val stacks: Int
+        get() = layerStrengths.size
 
     init {
-        require(skillKind != SkillKind.UNKNOWN) { "UNKNOWN skill kind cannot produce an active effect" }
         require(sourceSkillType > 0) { "sourceSkillType must preserve a positive raw skill_type" }
+        val normalizedKind = SkillKind.fromRawType(sourceSkillType)
+        require(normalizedKind != SkillKind.UNKNOWN) {
+            "Unsupported sourceSkillType=$sourceSkillType cannot produce an active effect"
+        }
+        require(skillKind == normalizedKind) {
+            "skillKind=$skillKind does not match sourceSkillType=$sourceSkillType ($normalizedKind)"
+        }
         require(replaceType in 0..3) { "Unsupported replace_type=$replaceType" }
         require(bindFlag >= 0) { "bindFlag must not be negative: $bindFlag" }
         require(maxStacks > 0) { "maxStacks must be positive: $maxStacks" }
@@ -296,6 +306,36 @@ data class ActiveSkillEffect(
             "remainingHits must be positive when present: $remainingHits"
         }
     }
+
+    internal fun addLayer(layerStrength: Int) {
+        require(stacks < maxStacks) { "Cannot exceed maxStacks=$maxStacks" }
+        layerStrengths = layerStrengths + layerStrength
+    }
+
+    internal fun detachedCopy(): ActiveSkillEffect =
+        ActiveSkillEffect(
+            source = source,
+            target = target,
+            rootSkillId = rootSkillId,
+            skillId = skillId,
+            skillKind = skillKind,
+            sourceSkillType = sourceSkillType,
+            detailId = detailId,
+            effectId = effectId,
+            category = category,
+            conflict = conflict,
+            strength = strength,
+            replaceType = replaceType,
+            bindFlag = bindFlag,
+            maxStacks = maxStacks,
+            stacks = stacks,
+            remainingRounds = remainingRounds,
+            remainingHits = remainingHits,
+            clearPerHit = clearPerHit,
+            clearable = clearable,
+        ).also { copy ->
+            copy.layerStrengths = layerStrengths.toList()
+        }
 }
 
 data class SkillCastResult(

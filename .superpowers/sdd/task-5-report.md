@@ -2,7 +2,11 @@
 
 ## Status
 
-DONE_WITH_CONCERNS
+DONE
+
+The initial implementation was recorded as `DONE_WITH_CONCERNS` before client
+behavior was calibrated. That historical status is superseded by the review
+and final-fix evidence below.
 
 ## Scope
 
@@ -79,15 +83,30 @@ incoming lifecycle dimensions exactly.
 
 ## Locked semantics
 
-- Conflict identity is exact target + client effect category + explicit client
-  conflict group + source `SkillKind`. It never collapses effects by
-  `BattleStatus`.
+- Conflict identity is exact target + client effect category + explicit
+  nonzero client conflict group. Raw policies 0 through 2 additionally require
+  the same normalized raw skill type; raw policy 3 conflicts across skill
+  types. It never collapses effects by `BattleStatus`.
+- A zero conflict group is unset. Its fallback identity additionally contains
+  detail ID, effect ID, and exact origin so unrelated effects remain isolated.
+- Exact origin is source hero + root skill ID + current skill ID + normalized
+  skill kind + raw source skill type. Detail and effect IDs do not participate
+  in exact origin, so the same origin can stack or refresh across those IDs
+  when the explicit conflict group is nonzero.
 - `replaceType=0`: add one stack up to `maxStacks`; adopt the incoming
-  lifecycle at the cap.
+  lifecycle at the cap, but only for the exact origin.
 - `replaceType=1`: keep the existing conflicting effect and reject incoming.
 - `replaceType=2`: stronger replaces, equal adopts the incoming lifecycle,
-  weaker is rejected.
-- `replaceType=3`: incoming always replaces the existing conflict.
+  weaker is rejected; equal refreshes only for the exact origin.
+- `replaceType=3`: keep the existing conflict and reject incoming across
+  normalized skill types.
+- Raw skill types 1 through 4 normalize to passive, command, active, and
+  pursuit respectively. Unknown raw types and mismatched kind/raw pairs cannot
+  create active effects; raw type 14 therefore remains repository metadata
+  until it gains an explicit supported kind.
+- Aggregate stack strength is store-owned. Callers construct effects from
+  per-effect strength and stack count but cannot inject an arbitrary aggregate;
+  detached snapshots preserve the store-computed aggregate.
 - Round duration decrements only at the explicit `ROUND_END` boundary.
 - Hit duration decrements only for the exact target/effect and optional exact
   source. `clearPerHit` expires the match on its first consumed hit.
@@ -110,9 +129,6 @@ incoming lifecycle dimensions exactly.
 
 ## Concerns
 
-- The client CSV exposes raw `replace_type` values but does not document their
-  official names. The four behaviors above are explicit and test-locked;
-  paper-golden calibration may require remapping the raw values later.
 - The store intentionally remains independent of the engine. A later task
   must decide precisely when engine events call round ticking, hit
   consumption, and clearing.
@@ -131,8 +147,8 @@ incoming lifecycle dimensions exactly.
   replacement.
 - `skill_table.csv` contains raw `skill_type=14` and the scoped graph reaches
   it. `rawSkillType` is now preserved by `SkillBattleConfig`, `SkillRule`, and
-  `ActiveSkillEffect`; `SkillKind.UNKNOWN` cannot be inserted into the effect
-  store.
+  repository/rule metadata. `ActiveSkillEffect` accepts only normalized raw
+  types 1 through 4 whose supplied kind matches that normalization.
 - Every one of the 12,694 rows in `skill_detail_table.csv` has
   `buff_type=0`. Zero is therefore treated as unset: its fallback conflict
   identity includes exact detail/effect and origin rather than forming one
@@ -211,3 +227,35 @@ construction-time rejection of zero lifecycle values.
 ## Updated status
 
 DONE
+
+## Final fix wave TDD
+
+### RED
+
+Command:
+
+```bash
+./gradlew test --rerun-tasks \
+  --tests com.stzb.server.game.battle.skill.BattleEffectStoreTest \
+  --no-daemon \
+  -Dkotlin.compiler.execution.strategy=in-process \
+  -Pkotlin.incremental=false
+```
+
+Result: `BUILD FAILED` with four expected regression failures:
+
+- same nonzero-conflict origin did not stack across detail/effect IDs;
+- same nonzero-conflict origin did not refresh across detail/effect IDs;
+- mismatched known and unsupported raw skill types were accepted;
+- aggregate strength was exposed as a public constructor parameter.
+
+### GREEN
+
+The same forced command completed with `BUILD SUCCESSFUL`; all 28
+`BattleEffectStoreTest` tests passed. The final mandated four-suite result is
+`BUILD SUCCESSFUL`; 48 tests passed with zero failures:
+
+- `BattleEffectStoreTest`: 28
+- `BattleEffectStateTest`: 3
+- `SkillRuleCatalogTest`: 8
+- `BattleConfigRepositoryTest`: 9

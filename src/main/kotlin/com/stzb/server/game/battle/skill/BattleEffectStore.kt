@@ -155,8 +155,7 @@ class BattleEffectStore {
     ): EffectApplyResult {
         val stacked = existing.stacks < existing.maxStacks
         if (stacked) {
-            existing.stacks++
-            existing.aggregateStrength += incoming.strength
+            existing.addLayer(incoming.strength)
         }
         refreshLifecycle(existing, incoming)
         return applyResult(
@@ -225,9 +224,8 @@ class BattleEffectStore {
         source == other.source &&
             rootSkillId == other.rootSkillId &&
             skillId == other.skillId &&
-            sourceSkillType == other.sourceSkillType &&
-            detailId == other.detailId &&
-            effectId == other.effectId
+            skillKind == other.skillKind &&
+            sourceSkillType == other.sourceSkillType
 
     private fun removeTargetIfEmpty(target: BattleHeroRef) {
         if (active[target].isNullOrEmpty()) active.remove(target)
@@ -264,7 +262,7 @@ class BattleEffectStore {
     ): List<ActiveSkillEffect> =
         Collections.unmodifiableList(effects.map { it.snapshot() })
 
-    private fun ActiveSkillEffect.snapshot(): ActiveSkillEffect = copy()
+    private fun ActiveSkillEffect.snapshot(): ActiveSkillEffect = detachedCopy()
 
     private data class BoundKey(val source: BattleHeroRef, val bindFlag: Int)
 

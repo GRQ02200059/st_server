@@ -13,6 +13,18 @@ enum class SkillKind {
     ACTIVE,
     PURSUIT,
     UNKNOWN,
+    ;
+
+    companion object {
+        fun fromRawType(rawSkillType: Int): SkillKind =
+            when (rawSkillType) {
+                1 -> PASSIVE
+                2 -> COMMAND
+                3 -> ACTIVE
+                4 -> PURSUIT
+                else -> UNKNOWN
+            }
+    }
 }
 
 data class HeroBattleConfig(
@@ -184,7 +196,7 @@ class BattleConfigRepository private constructor(
                     skillId to SkillBattleConfig(
                         id = skillId,
                         name = row["name"].orEmpty(),
-                        kind = parseSkillKind(rawSkillType, row["name"].orEmpty()),
+                        kind = SkillKind.fromRawType(rawSkillType),
                         rawSkillType = rawSkillType,
                         hitRange = row.intOrNull("hit_range")?.takeIf { it > 0 },
                         prepareRounds = row.int("prepare"),
@@ -329,18 +341,6 @@ class BattleConfigRepository private constructor(
                 hitRange = value("""攻击距离\+([0-9.]+)"""),
             )
         }
-
-        private fun parseSkillKind(skillType: Int, name: String): SkillKind =
-            when (skillType) {
-                1 -> SkillKind.PASSIVE
-                2 -> SkillKind.COMMAND
-                3 -> SkillKind.ACTIVE
-                4 -> SkillKind.PURSUIT
-                else -> when {
-                    name.contains("追击") -> SkillKind.PURSUIT
-                    else -> SkillKind.UNKNOWN
-                }
-            }
 
         private fun resolveProjectRoot(): Path {
             val cwd = Path.of("").toAbsolutePath()
