@@ -839,5 +839,6 @@ private fun EffectInvocation.liveHero(ref: BattleHeroRef): BattleHero {
         maxTroops = state.maxTroops,
         activeStatuses = state.statuses,
         morale = state.morale,
+        modifiers = state.modifiers ?: entry.modifiers,
     )
 }

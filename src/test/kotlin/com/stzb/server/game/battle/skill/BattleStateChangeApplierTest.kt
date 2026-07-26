@@ -4,6 +4,7 @@ import com.stzb.server.game.battle.BattleEffectValueUnit
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroId
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleStats
 import com.stzb.server.game.battle.BattleStatus
@@ -18,6 +19,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class BattleStateChangeApplierTest {
@@ -55,7 +57,7 @@ class BattleStateChangeApplierTest {
             ),
             round = 0,
         )
-        assertEquals(20, fixture.state.view.state(target)?.troops)
+        assertEquals(50, fixture.state.view.state(target)?.troops)
         assertEquals(0, fixture.state.view.state(target)?.woundedTroops)
     }
 
@@ -269,6 +271,260 @@ class BattleStateChangeApplierTest {
 
         assertEquals(1_000, fixture.state.view.state(target)?.troops)
         assertEquals(0, fixture.state.view.accumulatedDamageDealt(source))
+    }
+
+    @Test
+    fun `semantic failure in second change leaves troops effects and preparation unchanged`() {
+        val runtime = SkillRuntimeState().also {
+            assertTrue(it.prepare(PreparedSkill(target, 30, readyRound = 3)))
+        }
+        val fixture = fixture(runtime = runtime)
+        val unknown = BattleHeroRef(Side.DEFENDER, 1, BattleHeroId(999))
+
+        assertFailsWith<IllegalArgumentException> {
+            fixture.applier.apply(
+                listOf(
+                    CancelPreparedSkillsChange(spec(501)),
+                    ActionEffectChange(
+                        spec(544).copy(target = unknown),
+                        ActionEffectKind.DOUBLE_ATTACK,
+                    ),
+                ),
+                round = 1,
+            )
+        }
+
+        assertEquals(listOf(30), runtime.preparedSkills().map { it.skillId })
+        assertEquals(1_000, fixture.state.view.state(target)?.troops)
+        assertTrue(fixture.state.effectStore.effectsFor(target).isEmpty())
+    }
+
+    @Test
+    fun `rejected persistent behavior never leaks and cleanse removes accepted behavior`() {
+        val fixture = fixture()
+        val accepted = ScheduledDamageEffectChange(
+            spec = spec(304, category = EffectCategory.HARMFUL, rounds = 3)
+                .copy(conflict = 91, replaceType = 1),
+            school = DamageSchool.STRATEGY,
+            origin = DamageOrigin.COMMAND,
+            tags = setOf(DamageTag.ONGOING),
+            status = BattleStatus.PANIC,
+            coefficientSource = BattleCoefficientSource.NONE,
+            rawCoefficient = 0,
+            calculationTypes = emptyList(),
+        )
+        val rejected = accepted.copy(
+            spec = accepted.spec.copy(
+                source = target,
+                skillId = 11,
+                rootSkillId = 11,
+                detailId = 2_304,
+                potency = TypedBattlePotency.rate(500),
+            ),
+        )
+        fixture.applier.apply(listOf(accepted, rejected), round = 0)
+
+        assertEquals(1, fixture.state.effectStore.effectsFor(target).size)
+        assertTrue(BattleStatus.PANIC in requireNotNull(fixture.state.view.state(target)).statuses)
+        val firstTick = fixture.applier.onRoundStart(1)
+            .outputs.filterIsInstance<BattleStateOutput.DamageDealt>().single()
+        assertTrue(firstTick.amount < 500)
+
+        fixture.applier.apply(
+            listOf(CleanseEffectsChange(spec(511), EffectCategory.HARMFUL)),
+            round = 1,
+        )
+        assertTrue(fixture.state.effectStore.effectsFor(target).isEmpty())
+        assertFalse(BattleStatus.PANIC in requireNotNull(fixture.state.view.state(target)).statuses)
+        assertTrue(
+            fixture.applier.onRoundStart(2).outputs.none { it is BattleStateOutput.DamageDealt },
+        )
+    }
+
+    @Test
+    fun `stronger replacement swaps redirection behavior and expiry removes it`() {
+        val fixture = fixture()
+        val weak = DamageRedirectionEffectChange(
+            spec(506, rounds = 2, potency = TypedBattlePotency.flat(1))
+                .copy(conflict = 92, replaceType = 2),
+            listOf(target),
+            source,
+        )
+        val strongBearer = target
+        val strong = weak.copy(
+            spec = weak.spec.copy(
+                source = strongBearer,
+                rootSkillId = 12,
+                skillId = 12,
+                detailId = 2_506,
+                potency = TypedBattlePotency.flat(9),
+            ),
+            damageBearer = strongBearer,
+        )
+
+        fixture.applier.apply(listOf(weak, strong), round = 0)
+        assertEquals(strongBearer, fixture.applier.permissionFor(target).damageRedirectTarget)
+
+        fixture.applier.onRoundEnd(1)
+        assertEquals(strongBearer, fixture.applier.permissionFor(target).damageRedirectTarget)
+        fixture.applier.onRoundEnd(2)
+        assertEquals(null, fixture.applier.permissionFor(target).damageRedirectTarget)
+    }
+
+    @Test
+    fun `damage creates only actual wounded and paired recovery consumes only actual recovery`() {
+        val fixture = fixture(targetTroops = 10, targetWounded = 5)
+        fixture.applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source,
+                    target,
+                    99,
+                    0,
+                    DamageSchool.PHYSICAL,
+                    DamageOrigin.ACTIVE,
+                    emptySet(),
+                    10,
+                    301,
+                ),
+            ),
+            round = 0,
+        )
+        assertEquals(15, fixture.state.view.state(target)?.woundedTroops)
+
+        fixture.applier.apply(
+            listOf(
+                RecoverTroopsChange(source, target, 99, 1_000, 10, 401),
+                ConsumeWoundedTroopsChange(target, 99, 0, 10, 401),
+            ),
+            round = 0,
+        )
+        assertEquals(15, fixture.state.view.state(target)?.troops)
+        assertEquals(0, fixture.state.view.state(target)?.woundedTroops)
+
+        val capacityFixture = fixture(targetTroops = 995, targetWounded = 50)
+        capacityFixture.applier.apply(
+            listOf(
+                RecoverTroopsChange(source, target, 50, 1_000, 10, 401),
+                ConsumeWoundedTroopsChange(target, 50, 0, 10, 401),
+            ),
+            round = 0,
+        )
+        assertEquals(1_000, capacityFixture.state.view.state(target)?.troops)
+        assertEquals(45, capacityFixture.state.view.state(target)?.woundedTroops)
+    }
+
+    @Test
+    fun `live view advertises only available data and fails closed for missing adapters`() {
+        val fixture = fixture()
+        val capabilities = fixture.state.view.capabilities
+
+        assertTrue(SkillBattleViewCapability.LIVE_STATE in capabilities)
+        assertTrue(SkillBattleViewCapability.ACTIVE_EFFECTS in capabilities)
+        assertFalse(SkillBattleViewCapability.HERO_METADATA in capabilities)
+        assertFalse(SkillBattleViewCapability.TARGET_HISTORY in capabilities)
+        assertFalse(SkillBattleViewCapability.STATE_FILTERS in capabilities)
+        assertFailsWith<MissingLiveBattleViewData> { fixture.state.view.metadata(target) }
+        assertFailsWith<MissingLiveBattleViewData> { fixture.state.view.currentTarget(source) }
+        assertFailsWith<MissingLiveBattleViewData> {
+            fixture.state.view.matchesStateFilter(SkillTargetStateFilter.FLAG_1, source, target)
+        }
+    }
+
+    @Test
+    fun `damage modifier reaches live hero damage calculation and expires with store`() {
+        val fixture = fixture()
+        val baseline = com.stzb.server.game.battle.BattleDamageCalculator.physical(
+            fixture.state.liveHero(source),
+            fixture.state.liveHero(target),
+            origin = DamageOrigin.ACTIVE,
+        )
+        fixture.applier.apply(
+            listOf(
+                DamageModifierChange(
+                    source = source,
+                    target = source,
+                    direction = DamageModifierChange.Direction.DEALT,
+                    school = DamageSchool.PHYSICAL,
+                    origin = DamageOrigin.ACTIVE,
+                    tag = null,
+                    percent = 50,
+                    durationRounds = 1,
+                    skillId = 10,
+                    effectId = 531,
+                ),
+            ),
+            round = 0,
+        )
+
+        assertTrue(
+            fixture.state.liveHero(source).modifiers
+                .filterIsInstance<BattleModifier.DamageDealtPercent>()
+                .any { it.percent == 50 },
+        )
+        val modified = com.stzb.server.game.battle.BattleDamageCalculator.physical(
+            fixture.state.liveHero(source),
+            fixture.state.liveHero(target),
+            origin = DamageOrigin.ACTIVE,
+        )
+        assertNotEquals(baseline, modified)
+
+        fixture.applier.onRoundEnd(1)
+        assertTrue(
+            fixture.state.liveHero(source).modifiers
+                .filterIsInstance<BattleModifier.DamageDealtPercent>()
+                .none { it.percent == 50 },
+        )
+    }
+
+    @Test
+    fun `delayed activation is rejected by ordinary apply and accepted only at due boundary`() {
+        val fixture = fixture()
+        val scheduled = ScheduledEffectActivationChange(
+            spec = spec(544).copy(
+                startBoundary = EffectStartBoundary.AFTER_DELAY,
+                delayRound = 1,
+            ),
+            actionKind = ActionEffectKind.DOUBLE_ATTACK,
+            status = BattleStatus.DOUBLE_ATTACK,
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            fixture.applier.apply(listOf(scheduled), round = 1)
+        }
+        assertEquals(1, fixture.applier.permissionFor(target).normalAttackCount)
+
+        fixture.applier.applyActivated(scheduled.activationChanges(), round = 2)
+        assertEquals(2, fixture.applier.permissionFor(target).normalAttackCount)
+        assertTrue(BattleStatus.DOUBLE_ATTACK in requireNotNull(fixture.state.view.state(target)).statuses)
+    }
+
+    @Test
+    fun `round hooks are idempotent and reject backward rounds`() {
+        val fixture = fixture()
+        fixture.applier.apply(
+            listOf(
+                ScheduledDamageEffectChange(
+                    spec(304, rounds = 2, potency = TypedBattlePotency.rate(100)),
+                    DamageSchool.STRATEGY,
+                    DamageOrigin.COMMAND,
+                    setOf(DamageTag.ONGOING),
+                    BattleStatus.PANIC,
+                    BattleCoefficientSource.NONE,
+                    0,
+                    emptyList(),
+                ),
+            ),
+            round = 0,
+        )
+
+        assertTrue(fixture.applier.onRoundStart(1).outputs.isNotEmpty())
+        assertTrue(fixture.applier.onRoundStart(1).outputs.isEmpty())
+        fixture.applier.onRoundEnd(1)
+        fixture.applier.onRoundEnd(1)
+        fixture.applier.onRoundStart(2)
+        assertFailsWith<IllegalArgumentException> { fixture.applier.onRoundStart(1) }
+        assertFailsWith<IllegalArgumentException> { fixture.applier.onRoundEnd(1) }
     }
 
     @Test

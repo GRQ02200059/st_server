@@ -1,6 +1,7 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleRandom
 import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleStats
@@ -67,6 +68,7 @@ data class SkillBattleHeroState(
     val attackRange: Int,
     val canReceiveEffectsWhenDefeated: Boolean = false,
     val woundedTroops: Int = 0,
+    val modifiers: List<BattleModifier>? = null,
 )
 
 data class SkillBattleHeroMetadata(
@@ -187,6 +189,7 @@ private fun com.stzb.server.game.battle.BattleHero.toSkillState() =
         statuses = activeStatuses,
         morale = morale,
         attackRange = stats.hitRange,
+        modifiers = modifiers,
     )
 
 enum class BattleTrigger {

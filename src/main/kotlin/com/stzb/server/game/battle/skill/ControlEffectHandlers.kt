@@ -424,5 +424,6 @@ private fun EffectInvocation.liveSourceHero(): BattleHero {
         maxTroops = state.maxTroops,
         activeStatuses = state.statuses,
         morale = state.morale,
+        modifiers = state.modifiers ?: entry.modifiers,
     )
 }
