@@ -1,6 +1,7 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleStatus
 import com.stzb.server.game.battle.Side
 import com.stzb.server.game.battle.opposite
 
@@ -69,6 +70,7 @@ class SkillTargetSelector {
             }
             .filter { target -> matchesPreconditionTarget(raw.precondition, context, target) }
             .filter { target -> matchesConditionTarget(raw.condition, context, target) }
+            .filter { target -> matchesCastConditionTarget(raw.castCondition, context, target) }
             .sortedWith(CLIENT_POSITION_ORDER)
 
         candidates = when (raw.selectType) {
@@ -285,6 +287,26 @@ class SkillTargetSelector {
         }
     }
 
+    private fun matchesCastConditionTarget(
+        castCondition: Int,
+        context: SkillBattleContext,
+        target: BattleHeroRef,
+    ): Boolean {
+        if (castCondition !in STATUS_TARGET_CONDITIONS) return true
+        val statuses = requireNotNull(context.battleView.state(target)) {
+            "Missing live state for $target"
+        }.statuses
+        return when (castCondition) {
+            500 -> BattleStatus.CONFUSION in statuses || BERSERK_EFFECT_IDS.any {
+                it in context.battleView.activeEffectIds(target)
+            }
+            4000 -> statuses.any(CONTROL_STATUSES::contains) ||
+                BERSERK_EFFECT_IDS.any { it in context.battleView.activeEffectIds(target) }
+            7001 -> statuses.any(ONGOING_DAMAGE_STATUSES::contains)
+            else -> error("Unsupported status target condition=$castCondition")
+        }
+    }
+
     private fun requireMetadata(
         targetType: Int,
         metadata: SkillBattleHeroMetadata?,
@@ -338,6 +360,19 @@ class SkillTargetSelector {
         const val FRONT_POSITION = 2
         val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
         val TROOP_RATIO_CONDITIONS = setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
+        val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 7001)
+        val CONTROL_STATUSES = setOf(
+            BattleStatus.CONFUSION,
+            BattleStatus.HESITATION,
+            BattleStatus.DISARM,
+        )
+        val ONGOING_DAMAGE_STATUSES = setOf(
+            BattleStatus.PANIC,
+            BattleStatus.SHAKE,
+            BattleStatus.BURN,
+            BattleStatus.HEX,
+        )
+        val BERSERK_EFFECT_IDS = setOf(503, 703, 903)
 
         const val TARGET_ARCHER_OR_INFANTRY = -30
         const val TARGET_CAVALRY_OR_INFANTRY = -10

@@ -5,6 +5,7 @@ import com.stzb.server.game.battle.BattleHeroId
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleRandom
 import com.stzb.server.game.battle.BattleStats
+import com.stzb.server.game.battle.BattleStatus
 import com.stzb.server.game.battle.FixedBattleRandom
 import com.stzb.server.game.battle.Side
 import com.stzb.server.game.battle.SkillDetailConfig
@@ -245,6 +246,29 @@ class SkillTargetSelectorTest {
         assertEquals(
             listOf(enemyFront),
             select(rule(selectType = 34, condition = 2060), context),
+        )
+    }
+
+    @Test
+    fun `cast status conditions filter control and ongoing damage targets`() {
+        val states = defaultStates().toMutableMap().apply {
+            put(enemyBase, state(statuses = setOf(BattleStatus.CONFUSION)))
+            put(enemyMiddle, state(statuses = setOf(BattleStatus.BURN)))
+            put(enemyFront, state(statuses = setOf(BattleStatus.HESITATION)))
+        }
+        val context = context(view(states = states, sourceRange = 5))
+
+        assertEquals(
+            listOf(enemyBase),
+            select(rule(selectType = 34, castCondition = 500), context),
+        )
+        assertEquals(
+            listOf(enemyFront, enemyBase),
+            select(rule(selectType = 34, castCondition = 4000), context),
+        )
+        assertEquals(
+            listOf(enemyMiddle),
+            select(rule(selectType = 34, castCondition = 7001), context),
         )
     }
 
@@ -667,11 +691,12 @@ class SkillTargetSelectorTest {
         morale: Int = 100,
         attackRange: Int = 2,
         canReceiveEffectsWhenDefeated: Boolean = false,
+        statuses: Set<BattleStatus> = emptySet(),
     ) = SkillBattleHeroState(
         stats = BattleStats(attack, defense, strategy, speed, siege = 0, hitRange = attackRange),
         troops = troops,
         maxTroops = 1_000,
-        statuses = emptySet(),
+        statuses = statuses,
         morale = morale,
         attackRange = attackRange,
         canReceiveEffectsWhenDefeated = canReceiveEffectsWhenDefeated,
@@ -697,6 +722,7 @@ class SkillTargetSelectorTest {
         effectBuffType: Int = 1,
         precondition: Int = 0,
         condition: Int = 0,
+        castCondition: Int = 0,
     ) = SkillEffectRule(
         detailId = detailId,
         effectId = 301,
@@ -719,6 +745,7 @@ class SkillTargetSelectorTest {
             selectFlag = selectFlag,
             precondition = precondition,
             condition = condition,
+            castCondition = castCondition,
         ),
         skillHitRange = skillHitRange,
         effectBuffType = effectBuffType,
@@ -764,5 +791,7 @@ class SkillTargetSelectorTest {
             source: BattleHeroRef,
             target: BattleHeroRef,
         ): Boolean = acceptedStateFilters[filter] == target
+
+        override fun activeEffectIds(ref: BattleHeroRef): Set<Int> = emptySet()
     }
 }

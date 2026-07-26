@@ -83,7 +83,9 @@ class SkillConditionInterpreterTest {
             code.field == SkillConditionField.CAST_CONDITION &&
             code.value in setOf(104, 203, 205, 207, 303) ||
             code.field == SkillConditionField.CONDITION &&
-            code.value in setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
+            code.value in setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060) ||
+            code.field == SkillConditionField.CAST_CONDITION &&
+            code.value in setOf(500, 4000, 7001)
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -212,6 +214,31 @@ class SkillConditionInterpreterTest {
                 60,
             ),
             interpreter.compile(graph.detail(20094404)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `verified status codes compile as target predicates`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_CONFUSION_OR_BERSERK,
+            ),
+            interpreter.compile(graph.detail(20000311)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_CONTROL_STATUS,
+            ),
+            interpreter.compile(graph.detail(20024303)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_ONGOING_DAMAGE_STATUS,
+            ),
+            interpreter.compile(graph.detail(20024305)).conditions.single(),
         )
     }
 
