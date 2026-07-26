@@ -139,7 +139,7 @@ class ClientBattleTextReplayAdapterTest {
         })
         assertTrue(actions.any {
             it.id == ClientBattleTextReplayProtocol.STATUS &&
-                it.params == listOf<Any>(1, 6, 0, 515)
+                it.params == listOf<Any>(1, 6, 0, 514)
         })
         assertTrue(actions.any {
             it.id == ClientBattleTextReplayProtocol.STATUS &&
@@ -154,7 +154,7 @@ class ClientBattleTextReplayAdapterTest {
         assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.RECOVERY })
         assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.ONGOING_DAMAGE })
         assertEquals(
-            listOf(listOf<Any>(1, 6, 0, 515)),
+            listOf(listOf<Any>(1, 6, 0, 514)),
             actions.filter { it.id == ClientBattleTextReplayProtocol.STATUS }.map { it.params },
         )
         assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.SKILL_CAST })

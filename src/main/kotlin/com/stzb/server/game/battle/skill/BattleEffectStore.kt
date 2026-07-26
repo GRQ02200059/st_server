@@ -119,9 +119,35 @@ class BattleEffectStore {
         effectId: Int? = null,
         source: BattleHeroRef? = null,
     ): EffectLifecycleResult =
-        clearMatching(target, effectId, source)
+        clearMatchingIdentity(target, effectId, source)
 
-    private fun clearMatching(
+    fun clearMatching(
+        target: BattleHeroRef,
+        predicate: (ActiveSkillEffect) -> Boolean,
+    ): EffectLifecycleResult {
+        val effects = active[target] ?: return lifecycle()
+        val directlyMatched = effects.filter { it.clearable && predicate(it) }
+        if (directlyMatched.isEmpty()) return lifecycle()
+
+        val boundKeys = directlyMatched
+            .filter { it.bindFlag != UNBOUND }
+            .map { BoundKey(it.source, it.bindFlag) }
+            .toSet()
+        val removed = effects.filter { effect ->
+            effect.clearable &&
+                predicate(effect) &&
+                (
+                    effect in directlyMatched ||
+                        effect.bindFlag != UNBOUND &&
+                        BoundKey(effect.source, effect.bindFlag) in boundKeys
+                    )
+        }
+        effects.removeAll(removed.toSet())
+        removeTargetIfEmpty(target)
+        return lifecycle(removed = removed)
+    }
+
+    private fun clearMatchingIdentity(
         target: BattleHeroRef,
         effectId: Int?,
         source: BattleHeroRef?,

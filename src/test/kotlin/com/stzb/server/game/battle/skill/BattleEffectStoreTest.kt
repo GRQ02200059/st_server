@@ -511,6 +511,43 @@ class BattleEffectStoreTest {
         }
     }
 
+    @Test
+    fun `clear matching keeps bound expansion inside the requested category`() {
+        val store = BattleEffectStore()
+        store.apply(
+            effect(
+                effectId = 501,
+                detailId = 1501,
+                category = EffectCategory.HARMFUL,
+                bindFlag = 7,
+            ),
+        )
+        store.apply(
+            effect(
+                effectId = 514,
+                detailId = 1514,
+                category = EffectCategory.BENEFICIAL,
+                conflict = 52,
+                bindFlag = 7,
+            ),
+        )
+        store.apply(
+            effect(
+                source = otherSource,
+                effectId = 502,
+                detailId = 1502,
+                category = EffectCategory.HARMFUL,
+                conflict = 53,
+                bindFlag = 7,
+            ),
+        )
+
+        val removed = store.clearMatching(target) { it.category == EffectCategory.HARMFUL }
+
+        assertEquals(setOf(501, 502), removed.removed.mapTo(mutableSetOf()) { it.effectId })
+        assertEquals(listOf(514), store.effectsFor(target).map { it.effectId })
+    }
+
     private fun effect(
         source: BattleHeroRef = this.source,
         target: BattleHeroRef = this.target,

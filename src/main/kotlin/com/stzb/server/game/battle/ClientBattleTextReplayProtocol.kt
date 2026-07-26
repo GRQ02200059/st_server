@@ -55,7 +55,7 @@ internal object ClientBattleTextReplayProtocol {
         BattleStatus.BURN -> 305
         BattleStatus.HEX -> 306
         BattleStatus.INSIGHT -> 771
-        BattleStatus.EVADE -> 515
+        BattleStatus.EVADE -> 514
         BattleStatus.IGNORE_EVADE -> 515
         BattleStatus.DOUBLE_ATTACK -> 506
         BattleStatus.FIRST_ACTION -> 761

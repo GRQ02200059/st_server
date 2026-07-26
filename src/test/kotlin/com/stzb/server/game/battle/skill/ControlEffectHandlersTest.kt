@@ -8,7 +8,9 @@ import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroId
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleRequest
+import com.stzb.server.game.battle.BattleRandom
 import com.stzb.server.game.battle.BattleStats
+import com.stzb.server.game.battle.BattleStatus
 import com.stzb.server.game.battle.BattleTeam
 import com.stzb.server.game.battle.ConfiguredBattleEffectValue
 import com.stzb.server.game.battle.EffectCategory
@@ -31,6 +33,7 @@ class ControlEffectHandlersTest {
 
     @Test
     fun `registry implements the exact configured control and action id set`() {
+        assertEquals(35, controlIds.size)
         assertEquals(controlIds, ControlEffectHandlers.effectIds)
         assertEquals(
             controlIds,
@@ -96,41 +99,56 @@ class ControlEffectHandlersTest {
     }
 
     @Test
-    fun `control application retains lifecycle and requests preparation cancellation`() {
-        val execution = execute(501, BattleEffectStore())
-        val applied = assertIs<ApplyBattleEffectChange>(execution.stateChanges[0])
-        assertEquals(501, applied.spec.effectId)
-        assertEquals(2, applied.spec.availableRounds)
-        assertEquals(EffectStartBoundary.IMMEDIATE, applied.spec.startBoundary)
-        assertEquals(
-            CancelPreparedSkillsChange(applied.spec),
-            execution.stateChanges[1],
-        )
-        assertTrue(execution.events.single() is BattleEvent.StatusApplied)
+    fun `only controls preventing action or active casting cancel target preparation`() {
+        val cancellationFamilies = setOf(501, 701, 901, 502, 702, 902)
+        val nonCancellationFamilies = setOf(503, 703, 903, 505, 552, 752, 952)
 
-        val prepared = execute(702, BattleEffectStore()).stateChanges
-        val preparedEffect = assertIs<ApplyBattleEffectChange>(prepared[0])
-        assertEquals(EffectStartBoundary.AFTER_DELAY, preparedEffect.spec.startBoundary)
-        assertIs<CancelPreparedSkillsChange>(prepared[1])
+        cancellationFamilies.forEach { effectId ->
+            val stateChanges = execute(effectId, BattleEffectStore()).stateChanges
+            val cancellation = stateChanges.filterIsInstance<CancelPreparedSkillsChange>().singleOrNull()
+                ?: stateChanges.filterIsInstance<ScheduledEffectActivationChange>()
+                    .single()
+                    .activationChanges()
+                    .filterIsInstance<CancelPreparedSkillsChange>()
+                    .single()
+            val runtime = SkillRuntimeState()
+            runtime.prepare(PreparedSkill(source, 98, readyRound = 3))
+            runtime.prepare(PreparedSkill(target, 99, readyRound = 3))
 
-        val runtime = SkillRuntimeState()
-        runtime.prepare(PreparedSkill(target, 99, readyRound = 3))
-        val cancellation = assertIs<CancelPreparedSkillsChange>(prepared[1])
-        assertEquals(preparedEffect.spec, cancellation.spec)
-        assertEquals(1, runtime.preparedSkills().size)
-        cancellation.apply(runtime)
-        assertEquals(emptyList(), runtime.preparedSkills())
+            cancellation.apply(runtime)
 
-        val immediatePreparedName = rule(702).copy(
-            raw = rule(702).raw.copy(delayRound = 0),
-        )
-        val immediate = BattleEffectRegistry.strict(graph(controlIds.map(::rule)))
-            .registerControlEffects(BattleEffectStore())
-            .execute(immediatePreparedName, context(target))
-            .stateChanges
-            .first()
-        assertIs<ApplyBattleEffectChange>(immediate)
-        assertEquals(EffectStartBoundary.IMMEDIATE, immediate.spec.startBoundary)
+            assertEquals(listOf(98), runtime.preparedSkills().map { it.skillId }, "effect=$effectId")
+            assertEquals(target, cancellation.spec.target, "effect=$effectId")
+        }
+        nonCancellationFamilies.forEach { effectId ->
+            assertTrue(
+                execute(effectId, BattleEffectStore()).stateChanges.none {
+                    it is CancelPreparedSkillsChange
+                },
+                "effect=$effectId",
+            )
+        }
+    }
+
+    @Test
+    fun `delayed 7xx effects schedule activation and emit status only when activated`() {
+        preparedIds.forEach { effectId ->
+            val execution = execute(effectId, BattleEffectStore())
+            val scheduled = execution.stateChanges.filterIsInstance<ScheduledEffectActivationChange>().single()
+            assertEquals(effectId, scheduled.spec.effectId)
+            assertEquals(EffectStartBoundary.AFTER_DELAY, scheduled.spec.startBoundary)
+            assertTrue(execution.events.none { it is BattleEvent.StatusApplied }, "effect=$effectId")
+            assertTrue(scheduled.activationChanges().isNotEmpty(), "effect=$effectId")
+            statusForTest(effectId)?.let { expected ->
+                assertEquals(
+                    expected,
+                    assertIs<BattleEvent.StatusApplied>(scheduled.activationEvent(3)).status,
+                )
+            }
+        }
+        listOf(501, 502, 511, 514, 515, 544, 552).forEach { effectId ->
+            assertTrue(execute(effectId, BattleEffectStore()).events.any { it is BattleEvent.StatusApplied })
+        }
     }
 
     @Test
@@ -160,10 +178,9 @@ class ControlEffectHandlersTest {
     }
 
     @Test
-    fun `confusion dominates other permissions and berserk exposes random allegiance`() {
+    fun `confusion dominates other permissions`() {
         val store = BattleEffectStore()
         store.apply(active(501, target = source))
-        store.apply(active(503, target = source))
         store.apply(active(544, target = source, category = EffectCategory.BENEFICIAL))
 
         assertEquals(
@@ -173,10 +190,28 @@ class ControlEffectHandlersTest {
                 canNormalAttack = false,
                 normalAttackCount = 0,
                 grantsPursuitOpportunityPerNormal = false,
-                randomAllegiance = true,
             ),
             CompleteSkillEngine(store).permissionFor(source),
         )
+    }
+
+    @Test
+    fun `berserk resolves allegiance once with injected random and stable candidates`() {
+        val store = BattleEffectStore()
+        store.apply(active(503, target = source))
+        val engine = CompleteSkillEngine(store)
+
+        val allied = engine.permissionFor(source, context(target, FixedBattleRandom(0)))
+        assertEquals(Side.ATTACKER, allied.resolvedAllegiance)
+        assertEquals(listOf(source, ally), allied.resolvedTargetPool)
+
+        val enemy = engine.permissionFor(source, context(target, FixedBattleRandom(1)))
+        assertEquals(Side.DEFENDER, enemy.resolvedAllegiance)
+        assertEquals(listOf(target), enemy.resolvedTargetPool)
+
+        val counting = CountingBattleRandom(1)
+        engine.permissionFor(source, context(target, counting))
+        assertEquals(1, counting.calls)
     }
 
     @Test
@@ -195,11 +230,11 @@ class ControlEffectHandlersTest {
     }
 
     @Test
-    fun `cleanse removes only harmful effects on the selected target`() {
+    fun `calm removes harmful and insight removal removes beneficial without crossing bound categories`() {
         val store = BattleEffectStore()
-        store.apply(active(501, target = target))
-        store.apply(active(552, target = target))
-        store.apply(active(514, target = target, category = EffectCategory.BENEFICIAL))
+        store.apply(active(501, target = target, bindFlag = 9))
+        store.apply(active(552, target = target, bindFlag = 9))
+        store.apply(active(514, target = target, category = EffectCategory.BENEFICIAL, bindFlag = 9))
         store.apply(active(501, target = ally))
 
         val execution = execute(513, store)
@@ -211,10 +246,33 @@ class ControlEffectHandlersTest {
         assertEquals(listOf(514), store.effectsFor(target).map { it.effectId })
         assertEquals(listOf(501), store.effectsFor(ally).map { it.effectId })
 
-        val preparedCleanse = assertIs<CleanseEffectsChange>(
-            execute(713, BattleEffectStore()).stateChanges.single(),
+        val dispelStore = BattleEffectStore()
+        dispelStore.apply(active(501, target = target, bindFlag = 11))
+        dispelStore.apply(active(514, target = target, category = EffectCategory.BENEFICIAL, bindFlag = 11))
+        val dispel = assertIs<CleanseEffectsChange>(execute(512, dispelStore).stateChanges.single())
+        assertEquals(EffectCategory.BENEFICIAL, dispel.category)
+        assertEquals(listOf(514), dispel.apply(dispelStore).removed.map { it.effectId })
+        assertEquals(listOf(501), dispelStore.effectsFor(target).map { it.effectId })
+    }
+
+    @Test
+    fun `effect 506 redirects damage for protected targets to the designated base bearer`() {
+        val selectedRule = rule(506).copy(
+            raw = rule(506).raw.copy(attackType = 21, attackMax = 2),
         )
-        assertEquals(EffectStartBoundary.AFTER_DELAY, preparedCleanse.spec.startBoundary)
+        val execution = BattleEffectRegistry.strict(graph(controlIds.map(::rule)))
+            .registerControlEffects(BattleEffectStore())
+            .execute(selectedRule, context(target, sourceRef = ally))
+
+        val redirection = assertIs<DamageRedirectionEffectChange>(execution.stateChanges.single())
+        assertEquals(ally, redirection.spec.source)
+        assertEquals(source, redirection.damageBearer)
+        assertEquals(listOf(source, ally), redirection.protectedTargets)
+        val store = BattleEffectStore()
+        store.apply(active(506, source = ally, target = source, category = EffectCategory.BENEFICIAL))
+        assertNull(CompleteSkillEngine(store).permissionFor(target, intendedTarget = source).redirectTarget)
+
+        assertIs<ActionEffectChange>(execute(504, BattleEffectStore()).stateChanges.single())
     }
 
     @Test
@@ -246,7 +304,12 @@ class ControlEffectHandlersTest {
         )
         expectedKinds.forEach { (effectId, kind) ->
             val execution = execute(effectId, BattleEffectStore())
-            val intent = assertIs<ActionEffectChange>(execution.stateChanges.single())
+            val intent = when (val change = execution.stateChanges.single()) {
+                is ActionEffectChange -> change
+                is ScheduledEffectActivationChange ->
+                    assertIs<ActionEffectChange>(change.activationChanges().single())
+                else -> error("Unexpected effect=$effectId change=$change")
+            }
             assertEquals(kind, intent.kind)
         }
     }
@@ -312,7 +375,11 @@ class ControlEffectHandlersTest {
         )
     }
 
-    private fun context(selectedTarget: BattleHeroRef): SkillBattleContext {
+    private fun context(
+        selectedTarget: BattleHeroRef,
+        random: BattleRandom = FixedBattleRandom(0),
+        sourceRef: BattleHeroRef = source,
+    ): SkillBattleContext {
         val request = BattleRequest(
             BattleTeam(listOf(hero(1, 0), hero(2, 1))),
             BattleTeam(listOf(hero(3, 0))),
@@ -320,9 +387,9 @@ class ControlEffectHandlersTest {
         return SkillBattleContext(
             request = request,
             runtime = SkillRuntimeState(),
-            random = FixedBattleRandom(0),
+            random = random,
             round = 2,
-            source = source,
+            source = sourceRef,
             rootSkillId = 1,
             currentSkillId = 1,
             trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
@@ -335,9 +402,10 @@ class ControlEffectHandlersTest {
         source: BattleHeroRef = this.source,
         target: BattleHeroRef,
         category: EffectCategory = EffectCategory.HARMFUL,
+        bindFlag: Int = 0,
     ) = ActiveSkillEffect(
         source, target, 1, 1, SkillKind.ACTIVE, 3, 10_000 + effectId, effectId,
-        category, 0, 100, 3, 0, 1, 1, 2, null, false,
+        category, 0, 100, 3, bindFlag, 1, 1, 2, null, false,
     )
 
     private fun hero(id: Int, position: Int) = BattleHero(
@@ -351,7 +419,25 @@ class ControlEffectHandlersTest {
         request: BattleRequest,
         private val selected: BattleHeroRef,
     ) : SkillBattleView by SkillBattleView.entrySnapshot(request) {
-        override fun heroes(): List<BattleHeroRef> = listOf(selected)
+        private val roster = buildList {
+            request.attacker.heroes.forEach {
+                add(BattleHeroRef(Side.ATTACKER, it.position, it.id))
+            }
+            request.defender.heroes.forEach {
+                add(BattleHeroRef(Side.DEFENDER, it.position, it.id))
+            }
+        }
+
+        override fun heroes(): List<BattleHeroRef> = roster
+    }
+
+    private class CountingBattleRandom(private val value: Int) : BattleRandom {
+        var calls: Int = 0
+
+        override fun nextInt(bound: Int): Int {
+            calls += 1
+            return value.coerceIn(0, bound - 1)
+        }
     }
 
     private companion object {
@@ -360,5 +446,17 @@ class ControlEffectHandlersTest {
                 listOf(551, 552, 571, 581, 594) + (701..703) + (711..714) +
                 listOf(744, 752, 761, 771) + (901..903) + listOf(952)
             ).toSet()
+        val preparedIds = setOf(701, 702, 703, 711, 712, 713, 714, 744, 752, 761, 771)
+
+        fun statusForTest(effectId: Int): BattleStatus? = when (effectId) {
+            701 -> BattleStatus.CONFUSION
+            702 -> BattleStatus.HESITATION
+            711 -> BattleStatus.INSIGHT
+            714 -> BattleStatus.EVADE
+            744 -> BattleStatus.DOUBLE_ATTACK
+            752 -> BattleStatus.DISARM
+            761 -> BattleStatus.FIRST_ACTION
+            else -> null
+        }
     }
 }

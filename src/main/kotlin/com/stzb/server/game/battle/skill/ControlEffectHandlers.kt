@@ -1,6 +1,5 @@
 package com.stzb.server.game.battle.skill
 
-import com.stzb.server.game.battle.ActiveSkillEffect
 import com.stzb.server.game.battle.ActionPermission
 import com.stzb.server.game.battle.BattleEvent
 import com.stzb.server.game.battle.BattleHero
@@ -8,6 +7,7 @@ import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleStatus
 import com.stzb.server.game.battle.EffectCategory
 import com.stzb.server.game.battle.SkillKind
+import com.stzb.server.game.battle.opposite
 
 enum class ActionEffectKind {
     GUARD,
@@ -39,32 +39,53 @@ data class CleanseEffectsChange(
     val spec: PersistentEffectSpec,
     val category: EffectCategory,
 ) : BattleStateChange {
-    fun apply(store: BattleEffectStore): EffectLifecycleResult {
-        val matched = store.effectsFor(spec.target).filter { it.category == category }
-        if (matched.isEmpty()) return EffectLifecycleResult()
-        val removed = linkedMapOf<EffectIdentity, ActiveSkillEffect>()
-        matched.forEach { effect ->
-            store.clear(spec.target, effect.effectId, effect.source).removed.forEach {
-                removed[EffectIdentity(it)] = it
+    fun apply(store: BattleEffectStore): EffectLifecycleResult =
+        store.clearMatching(spec.target) { it.category == category }
+}
+
+data class ScheduledEffectActivationChange(
+    val spec: PersistentEffectSpec,
+    val actionKind: ActionEffectKind? = null,
+    val cleanseCategory: EffectCategory? = null,
+    val status: BattleStatus? = null,
+) : BattleStateChange {
+    fun activationChanges(): List<BattleStateChange> {
+        val primary = when {
+            cleanseCategory != null -> CleanseEffectsChange(spec, cleanseCategory)
+            actionKind != null -> ActionEffectChange(spec, actionKind)
+            else -> ApplyBattleEffectChange(spec)
+        }
+        return buildList {
+            add(primary)
+            if (spec.effectId in PREPARATION_CANCELLING_IDS) {
+                add(CancelPreparedSkillsChange(spec))
             }
         }
-        return EffectLifecycleResult(removed = removed.values.toList())
     }
 
-    private data class EffectIdentity(
-        val source: BattleHeroRef,
-        val detailId: Int,
-        val effectId: Int,
-        val skillId: Int,
-    ) {
-        constructor(effect: ActiveSkillEffect) : this(
-            effect.source,
-            effect.detailId,
-            effect.effectId,
-            effect.skillId,
-        )
+    fun activationEvent(round: Int): BattleEvent? =
+        status?.let {
+            BattleEvent.StatusApplied(
+                round = round,
+                source = spec.source,
+                target = spec.target,
+                status = it,
+                durationRounds = spec.availableRounds,
+                power = spec.potency.value,
+                skillId = spec.skillId,
+            )
+        }
+
+    private companion object {
+        val PREPARATION_CANCELLING_IDS = setOf(701, 702)
     }
 }
+
+data class DamageRedirectionEffectChange(
+    val spec: PersistentEffectSpec,
+    val protectedTargets: List<BattleHeroRef>,
+    val damageBearer: BattleHeroRef,
+) : BattleStateChange
 
 class CompleteSkillEngine(
     private val effectStore: BattleEffectStore,
@@ -93,7 +114,6 @@ class CompleteSkillEngine(
                 else -> 1
             },
             grantsPursuitOpportunityPerNormal = !cannotAct && !cannotNormal,
-            randomAllegiance = effects.any { it.effectId in BERSERK_IDS },
             counterattack = effects.any { it.effectId == COUNTERATTACK_ID },
             secondaryAttack = effects.any { it.effectId == SECONDARY_ATTACK_ID },
             firstAction = effects.any { it.effectId == FIRST_ACTION_ID },
@@ -110,7 +130,16 @@ class CompleteSkillEngine(
             } else {
                 null
             }
-        return permissionFor(actor, intendedTarget)
+        val permission = permissionFor(actor, intendedTarget)
+        if (effectStore.effectsFor(actor).none { it.effectId in BERSERK_IDS }) return permission
+        val resolvedSide = if (context.random.nextInt(2) == 0) actor.side else actor.side.opposite()
+        val candidates = context.battleView.heroes()
+            .filter { it.side == resolvedSide }
+            .sortedWith(compareBy(BattleHeroRef::position, { it.heroId.value }))
+        return permission.copy(
+            resolvedAllegiance = resolvedSide,
+            resolvedTargetPool = candidates,
+        )
     }
 
     fun canEvade(
@@ -126,7 +155,7 @@ class CompleteSkillEngine(
         val CONFUSION_IDS = setOf(501, 701, 901)
         val HESITATION_IDS = setOf(502, 702, 902)
         val BERSERK_IDS = setOf(503, 703, 903)
-        val GUARD_IDS = setOf(504, 506)
+        val GUARD_IDS = setOf(504)
         const val TAUNT_ID = 505
         val EVADE_IDS = setOf(514, 714)
         const val IGNORE_EVADE_ID = 515
@@ -172,6 +201,23 @@ private class ControlEffectHandler(
             "Handler $ownedEffectId cannot execute effect=${invocation.rule.effectId}"
         }
         val targets = targetSelector.compile(invocation.rule).select(invocation.context)
+        if (ownedEffectId == DAMAGE_REDIRECTION_ID) {
+            if (targets.isEmpty()) return EffectExecution.EMPTY
+            val bearer = invocation.context.battleView.heroes()
+                .filter { it.side == invocation.context.source.side }
+                .minByOrNull { it.position }
+                ?: invocation.context.source
+            return EffectExecution(
+                stateChanges = listOf(
+                    DamageRedirectionEffectChange(
+                        spec = persistentSpec(invocation, targets.first()),
+                        protectedTargets = targets,
+                        damageBearer = bearer,
+                    ),
+                ),
+                events = emptyList(),
+            )
+        }
         val changes = mutableListOf<BattleStateChange>()
         val events = mutableListOf<BattleEvent>()
         targets.forEach { target ->
@@ -186,7 +232,12 @@ private class ControlEffectHandler(
                 )
                 return@forEach
             }
-            changes += changesForTarget(invocation, target)
+            val spec = persistentSpec(invocation, target)
+            if (spec.startBoundary == EffectStartBoundary.AFTER_DELAY) {
+                changes += scheduledChange(spec)
+                return@forEach
+            }
+            changes += immediateChanges(spec)
             statusFor(ownedEffectId)?.let { status ->
                 events += BattleEvent.StatusApplied(
                     round = invocation.context.round,
@@ -202,27 +253,34 @@ private class ControlEffectHandler(
         return EffectExecution(changes, events)
     }
 
-    private fun changesForTarget(
-        invocation: EffectInvocation,
-        target: BattleHeroRef,
-    ): List<BattleStateChange> {
+    private fun immediateChanges(spec: PersistentEffectSpec): List<BattleStateChange> {
         if (ownedEffectId in CLEANSE_IDS) {
-            return listOf(cleanse(persistentSpec(invocation, target), EffectCategory.HARMFUL))
+            return listOf(cleanse(spec, EffectCategory.HARMFUL))
         }
         if (ownedEffectId in DISPEL_IDS) {
-            return listOf(cleanse(persistentSpec(invocation, target), EffectCategory.BENEFICIAL))
+            return listOf(cleanse(spec, EffectCategory.BENEFICIAL))
         }
-        val spec = persistentSpec(invocation, target)
         val actionKind = actionKindFor(ownedEffectId)
         val primary: BattleStateChange =
             if (actionKind == null) ApplyBattleEffectChange(spec) else ActionEffectChange(spec, actionKind)
         return buildList {
             add(primary)
-            if (ownedEffectId in CONTROL_IDS) {
+            if (ownedEffectId in PREPARATION_CANCELLING_IDS) {
                 add(CancelPreparedSkillsChange(spec))
             }
         }
     }
+
+    private fun scheduledChange(spec: PersistentEffectSpec) = ScheduledEffectActivationChange(
+        spec = spec,
+        actionKind = actionKindFor(ownedEffectId),
+        cleanseCategory = when {
+            ownedEffectId in CLEANSE_IDS -> EffectCategory.HARMFUL
+            ownedEffectId in DISPEL_IDS -> EffectCategory.BENEFICIAL
+            else -> null
+        },
+        status = statusFor(ownedEffectId),
+    )
 
     private fun persistentSpec(
         invocation: EffectInvocation,
@@ -303,6 +361,8 @@ private class ControlEffectHandler(
         const val DISARM_IMMUNITY_ID = 594
         val CLEANSE_IDS = setOf(513, 713)
         val DISPEL_IDS = setOf(512, 712)
+        val PREPARATION_CANCELLING_IDS = setOf(501, 502, 901, 902)
+        const val DAMAGE_REDIRECTION_ID = 506
     }
 }
 
@@ -326,7 +386,7 @@ private fun requireSupportedSkillOrigin(invocation: EffectInvocation) {
 
 private fun actionKindFor(effectId: Int): ActionEffectKind? =
     when (effectId) {
-        504, 506 -> ActionEffectKind.GUARD
+        504 -> ActionEffectKind.GUARD
         515 -> ActionEffectKind.IGNORE_EVADE
         542 -> ActionEffectKind.STRATEGY_LIFE_STEAL
         544, 744 -> ActionEffectKind.DOUBLE_ATTACK

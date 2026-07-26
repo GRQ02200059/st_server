@@ -52,4 +52,10 @@ class ClientBattleTextReplayProtocolTest {
         assertEquals(5, ClientBattleTextReplayProtocol.position(Side.DEFENDER, 1))
         assertEquals(4, ClientBattleTextReplayProtocol.position(Side.DEFENDER, 2))
     }
+
+    @Test
+    fun `evade replay ids match the client protocol`() {
+        assertEquals(514, ClientBattleTextReplayProtocol.effectId(BattleStatus.EVADE))
+        assertEquals(515, ClientBattleTextReplayProtocol.effectId(BattleStatus.IGNORE_EVADE))
+    }
 }
