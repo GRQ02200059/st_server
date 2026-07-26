@@ -99,8 +99,12 @@ sealed interface SkillCondition {
 
 data class SpecialConditionRequirement(
     val code: SkillConditionCode,
-    val pluginId: String,
-) : SkillCondition.Unresolved
+    val owner: String,
+) : SkillCondition.Unresolved {
+    @Deprecated("Use owner; retained for source compatibility")
+    val pluginId: String
+        get() = owner
+}
 
 interface SpecialSkillPlugin {
     val id: String
@@ -214,7 +218,7 @@ class CompiledSkillCondition internal constructor(
         val code = requirement.code
         return UnsupportedPendingSkillConditionException(
             "Pending condition semantics: skill=${code.skillId} detail=$detailId " +
-                "trigger=$trigger plugin=${requirement.pluginId} " +
+                "trigger=$trigger owner=${requirement.owner} " +
                 "${code.field.configName}=${code.value}",
         )
     }
@@ -367,7 +371,7 @@ private fun conditionCodes(rule: SkillEffectRule): List<SkillConditionCode> {
     ).filter { it.value != 0 }
 }
 
-private object ScopedConditionCodeCatalog {
+internal object ScopedConditionCodeCatalog {
     private val ownersByFieldAndValue = mapOf(
         SkillConditionField.CAST_CONDITION to mapOf(
             104 to setOf(200885), 203 to setOf(210265), 205 to setOf(210265),
@@ -482,6 +486,13 @@ private object ScopedConditionCodeCatalog {
         ),
     )
 
+    val codes: Set<SkillConditionCode> =
+        ownersByFieldAndValue.flatMapTo(linkedSetOf()) { (field, values) ->
+            values.flatMap { (value, skillIds) ->
+                skillIds.map { skillId -> SkillConditionCode(skillId, field, value) }
+            }
+        }
+
     fun contains(code: SkillConditionCode): Boolean =
-        code.skillId in ownersByFieldAndValue[code.field]?.get(code.value).orEmpty()
+        code in codes
 }

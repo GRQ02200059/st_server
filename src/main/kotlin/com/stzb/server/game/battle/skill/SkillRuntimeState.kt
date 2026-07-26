@@ -31,19 +31,26 @@ class SkillRuntimeState {
     fun count(source: BattleHeroRef, trigger: BattleTrigger): Int =
         triggerCounts[TriggerKey(source, trigger)] ?: 0
 
-    fun recordTrigger(source: BattleHeroRef, trigger: BattleTrigger): Int {
+    fun recordBattleTriggerOccurrence(source: BattleHeroRef, trigger: BattleTrigger): Int {
         val key = TriggerKey(source, trigger)
         val updated = count(source, trigger) + 1
         triggerCounts[key] = updated
         return updated
     }
 
+    @Deprecated(
+        message = "Use recordBattleTriggerOccurrence to make explicit that callers record battle events",
+        replaceWith = ReplaceWith("recordBattleTriggerOccurrence(source, trigger)"),
+    )
+    fun recordTrigger(source: BattleHeroRef, trigger: BattleTrigger): Int =
+        recordBattleTriggerOccurrence(source, trigger)
+
     fun recordSuccessfulExecution(
         source: BattleHeroRef,
         trigger: BattleTrigger,
         skillId: Int,
     ): Int {
-        recordTrigger(source, trigger)
+        recordBattleTriggerOccurrence(source, trigger)
         return increment(source, trigger, skillId)
     }
 

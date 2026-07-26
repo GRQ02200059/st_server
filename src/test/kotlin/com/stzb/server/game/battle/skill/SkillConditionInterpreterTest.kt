@@ -50,14 +50,19 @@ class SkillConditionInterpreterTest {
         val interpreter = SkillConditionInterpreter(graph)
 
         val compiled = graph.details.map(interpreter::compile)
+        val requirements = compiled
+            .flatMap { it.conditions }
+            .map { it as SpecialConditionRequirement }
+        val expectedOwners = loadExpectedPluginOwners()
 
-        assertEquals(471, compiled.sumOf { it.conditions.size })
-        assertTrue(interpreter.unknownCodes().isEmpty())
-        assertTrue(
-            compiled.flatMap { it.conditions }.all {
-                it is SpecialConditionRequirement
-            },
+        assertEquals(281, expectedOwners.size)
+        assertEquals(
+            expectedOwners.mapTo(linkedSetOf(), SpecialConditionRequirement::code),
+            ScopedConditionCodeCatalog.codes,
         )
+        assertEquals(471, requirements.size)
+        assertEquals(expectedOwners, requirements.toSet())
+        assertTrue(interpreter.unknownCodes().isEmpty())
     }
 
     @Test
@@ -73,7 +78,7 @@ class SkillConditionInterpreterTest {
                         field = SkillConditionField.CAST_CONDITION,
                         value = 4013,
                     ),
-                    pluginId = "skill.200003",
+                    owner = "skill.200003",
                 ),
             ),
             interpreter.compile(graph.detail(20000301)).conditions,
@@ -307,9 +312,9 @@ class SkillConditionInterpreterTest {
         runtime.recordSuccessfulExecution(SOURCE, BattleTrigger.PURSUIT_ATTEMPT, 2)
         runtime.recordSuccessfulExecution(TARGET, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1)
         runtime.recordSuccessfulExecution(TARGET, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1)
-        runtime.recordTrigger(SOURCE, BattleTrigger.NORMAL_ATTACK_AFTER)
-        runtime.recordTrigger(SOURCE, BattleTrigger.NORMAL_ATTACK_AFTER)
-        runtime.recordTrigger(SOURCE, BattleTrigger.HURT_AFTER)
+        runtime.recordBattleTriggerOccurrence(SOURCE, BattleTrigger.NORMAL_ATTACK_AFTER)
+        runtime.recordBattleTriggerOccurrence(SOURCE, BattleTrigger.NORMAL_ATTACK_AFTER)
+        runtime.recordBattleTriggerOccurrence(SOURCE, BattleTrigger.HURT_AFTER)
         val conditions = listOf(
             9040 to SkillCondition.TriggerCount(
                 trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
@@ -471,7 +476,7 @@ class SkillConditionInterpreterTest {
                 context,
             )
         }
-        assertTrue(strictError.message.orEmpty().contains("plugin=skill.200003"))
+        assertTrue(strictError.message.orEmpty().contains("owner=skill.200003"))
 
         val safeContext = context(skillId = 200003)
         val safeResult = SkillRuleInterpreter.safe(
@@ -549,6 +554,26 @@ class SkillConditionInterpreterTest {
             SkillScopeCatalog.loadDefault(),
             BattleConfigRepository.loadDefault(),
         )
+
+    private fun loadExpectedPluginOwners(): Set<SpecialConditionRequirement> {
+        val resource = checkNotNull(
+            javaClass.getResourceAsStream("/skill-condition-plugin-owners.csv"),
+        ) { "Missing independent skill-condition-plugin-owners.csv fixture" }
+        return resource.bufferedReader().useLines { lines ->
+            lines.drop(1).filter(String::isNotBlank).map { line ->
+                val columns = line.split(',')
+                check(columns.size == 4) { "Invalid owner fixture row: $line" }
+                SpecialConditionRequirement(
+                    code = SkillConditionCode(
+                        skillId = columns[0].toInt(),
+                        field = SkillConditionField.valueOf(columns[1]),
+                        value = columns[2].toInt(),
+                    ),
+                    owner = columns[3],
+                )
+            }.toSet()
+        }
+    }
 
     private fun SkillRuleGraph.detail(detailId: Int): SkillEffectRule =
         details.single { it.detailId == detailId }

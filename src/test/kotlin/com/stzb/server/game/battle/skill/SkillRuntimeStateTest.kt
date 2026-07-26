@@ -54,6 +54,36 @@ class SkillRuntimeStateTest {
     }
 
     @Test
+    fun `Task 12 battle event counter interface records every required trigger independently`() {
+        val state = SkillRuntimeState()
+        val requiredTask12Events = listOf(
+            BattleTrigger.NORMAL_ATTACK_AFTER,
+            BattleTrigger.DAMAGE_AFTER,
+            BattleTrigger.HURT_AFTER,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            BattleTrigger.PURSUIT_ATTEMPT,
+        )
+
+        requiredTask12Events.forEach { trigger ->
+            assertEquals(1, state.recordBattleTriggerOccurrence(refA, trigger))
+        }
+
+        requiredTask12Events.forEach { trigger ->
+            assertEquals(1, state.count(refA, trigger), "trigger=$trigger")
+            assertEquals(0, state.count(refB, trigger), "trigger=$trigger")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun `recordTrigger remains a compatibility alias for the explicit battle occurrence contract`() {
+        val state = SkillRuntimeState()
+
+        assertEquals(1, state.recordTrigger(refA, BattleTrigger.DAMAGE_AFTER))
+        assertEquals(1, state.count(refA, BattleTrigger.DAMAGE_AFTER))
+    }
+
+    @Test
     fun `interrupt removes only matching hero preparations`() {
         val state = SkillRuntimeState()
         state.prepare(PreparedSkill(refA, 200031, readyRound = 2))
