@@ -76,6 +76,31 @@ object BattleReportCodec {
                 "skillId" to skillId,
                 "reason" to reason,
             )
+            is BattleEvent.StatusRemoved -> mapOf(
+                "type" to "StatusRemoved",
+                "round" to round,
+                "source" to source.toReportMap(),
+                "target" to target.toReportMap(),
+                "skillId" to skillId,
+                "effectId" to effectId,
+            )
+            is BattleEvent.EffectExpired -> mapOf(
+                "type" to "EffectExpired",
+                "round" to round,
+                "source" to source.toReportMap(),
+                "target" to target.toReportMap(),
+                "skillId" to skillId,
+                "effectId" to effectId,
+            )
+            is BattleEvent.EffectBlocked -> mapOf(
+                "type" to "EffectBlocked",
+                "round" to round,
+                "source" to source.toReportMap(),
+                "target" to target.toReportMap(),
+                "skillId" to skillId,
+                "effectId" to effectId,
+                "blockingEffectId" to blockingEffectId,
+            )
             is BattleEvent.RoundStart -> mapOf("type" to "RoundStart", "round" to round)
             is BattleEvent.HeroActionStart -> mapOf(
                 "type" to "HeroActionStart",

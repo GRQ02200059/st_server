@@ -18,7 +18,11 @@ internal object ClientBattleTextReplayProtocol {
     const val ROUND = 9
     const val HERO_ACTION_START = 10
     const val HERO_ACTION_END = 11
-    const val SKILL_PREPARATION_STARTED = 23
+    const val SKILL_TRIGGERED_ACTIVE = 22
+    const val SKILL_TRIGGERED_PASSIVE = 23
+    const val SKILL_TRIGGERED_PURSUIT = 24
+    const val SKILL_PREPARATION_STARTED = 25
+    const val SKILL_PREPARATION_CANCELLED = 27
     const val NORMAL_ATTACK = 119
     const val NORMAL_DAMAGE = 121
     const val SKILL_BEGIN = 213
@@ -30,6 +34,8 @@ internal object ClientBattleTextReplayProtocol {
     const val ONGOING_DAMAGE = 59
     const val RECOVERY = 63
     const val STATUS = 102
+    const val STATUS_REMOVED = 102
+    const val DAMAGE_EVADED = 110
     const val END = 13
     const val ATTACKER_WIN = 127
     const val DRAW = 206
@@ -84,5 +90,17 @@ internal object ClientBattleTextReplayProtocol {
         BattleStat.STRATEGY -> if (delta >= 0) 103 else 153
         BattleStat.SPEED -> if (delta >= 0) 104 else 154
         BattleStat.SIEGE, BattleStat.HIT_RANGE -> 0
+    }
+
+    fun statusAppliedAction(status: BattleStatus): Int = when (status) {
+        BattleStatus.CONFUSION -> 65
+        BattleStatus.HESITATION -> 66
+        BattleStatus.INSIGHT -> 70
+        BattleStatus.EVADE -> 73
+        BattleStatus.IGNORE_EVADE -> 74
+        BattleStatus.FIRST_ACTION -> 83
+        BattleStatus.DOUBLE_ATTACK -> 84
+        BattleStatus.DISARM -> 87
+        else -> 301
     }
 }

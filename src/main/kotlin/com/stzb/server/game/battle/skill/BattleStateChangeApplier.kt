@@ -24,6 +24,10 @@ class UnsupportedBattleStateChangeException(
 )
 
 sealed interface BattleStateOutput {
+    data class EffectRemoved(val effect: ActiveSkillEffect) : BattleStateOutput
+    data class EffectExpired(val effect: ActiveSkillEffect) : BattleStateOutput
+    data class EffectBlocked(val change: EffectBlockedChange) : BattleStateOutput
+
     data class DamageDealt(
         val source: BattleHeroRef,
         val target: BattleHeroRef,
@@ -426,9 +430,9 @@ class BattleStateChangeApplier(
         }
         if (round == lastEndedRound) return BattleStateApplyResult()
         lastEndedRound = round
-        synchronize(state.effectStore.tick(EffectTickBoundary.ROUND_END))
+        val lifecycle = synchronize(state.effectStore.tick(EffectTickBoundary.ROUND_END))
         recalculateStats()
-        return BattleStateApplyResult()
+        return BattleStateApplyResult(lifecycle)
     }
 
     fun permissionFor(actor: BattleHeroRef): BattleStatePermission {
@@ -576,7 +580,7 @@ class BattleStateChangeApplier(
             }
             is BattleStatChange -> {
                 val effect = statEffect(change)
-                val accepted = applyBehavior(effect) { key, _ ->
+                val accepted = applyBehavior(effect, outputs) { key, _ ->
                     statModifiers[key] = StatModifier(
                         change.kind,
                         change.potency.unit,
@@ -590,7 +594,7 @@ class BattleStateChangeApplier(
             }
             is DamageModifierChange -> {
                 val effect = modifierEffect(change)
-                applyBehavior(effect) { key, _ ->
+                applyBehavior(effect, outputs) { key, _ ->
                     damageModifiers[key] = DamageModifier(
                         change.direction,
                         change.school,
@@ -601,11 +605,11 @@ class BattleStateChangeApplier(
                     state.effectModifiers[key] = change.toBattleModifier()
                 }
             }
-            is ApplyBattleEffectChange -> applyEffect(change.spec) { key, _ ->
+            is ApplyBattleEffectChange -> applyEffect(change.spec, outputs) { key, _ ->
                 statusFor(change.spec.effectId)?.let { state.effectStatuses[key] = it }
             }
             is ScheduledDamageEffectChange -> {
-                applyEffect(change.spec) { key, _ ->
+                applyEffect(change.spec, outputs) { key, _ ->
                     ongoingDamage[key] = OngoingDamageBehavior(
                         change,
                         state.liveHero(change.source),
@@ -614,15 +618,15 @@ class BattleStateChangeApplier(
                 }
             }
             is ScheduledRecoveryEffectChange -> {
-                applyEffect(change.spec) { key, _ ->
+                applyEffect(change.spec, outputs) { key, _ ->
                     ongoingRecovery[key] = change
                 }
             }
-            is ActionEffectChange -> applyEffect(change.spec) { key, _ ->
+            is ActionEffectChange -> applyEffect(change.spec, outputs) { key, _ ->
                 statusFor(change.spec.effectId)?.let { state.effectStatuses[key] = it }
             }
             is DamageRedirectionEffectChange -> {
-                applyEffect(change.spec) { key, _ ->
+                applyEffect(change.spec, outputs) { key, _ ->
                     redirections[key] = Redirection(
                         change.protectedTargets.toList(),
                         change.damageBearer,
@@ -631,16 +635,16 @@ class BattleStateChangeApplier(
             }
             is CancelPreparedSkillsChange -> change.apply(state.runtime)
             is CleanseEffectsChange -> {
-                synchronize(change.apply(state.effectStore))
+                outputs += synchronize(change.apply(state.effectStore))
                 recalculateStats()
             }
-            is EffectBlockedChange -> Unit
+            is EffectBlockedChange -> outputs += BattleStateOutput.EffectBlocked(change)
             is ClearReferencedEffectChange -> {
-                synchronize(change.apply(state.effectStore))
+                outputs += synchronize(change.apply(state.effectStore))
                 recalculateStats(change.target)
             }
             is ReduceReferencedEffectUseChange -> {
-                synchronize(change.apply(state.effectStore))
+                outputs += synchronize(change.apply(state.effectStore))
                 recalculateStats(change.target)
             }
             else -> throw UnsupportedBattleStateChangeException(change)
@@ -686,7 +690,7 @@ class BattleStateChangeApplier(
             }
             .map { it.first }
             .forEach { key ->
-                synchronize(
+                outputs += synchronize(
                     state.effectStore.consumeHit(
                         target = key.target,
                         effectId = key.effectId,
@@ -719,17 +723,20 @@ class BattleStateChangeApplier(
 
     private fun applyEffect(
         spec: PersistentEffectSpec,
+        outputs: MutableList<BattleStateOutput>,
         onAccepted: (EffectKey, ActiveSkillEffect) -> Unit = { _, _ -> },
     ) {
-        spec.toActiveSkillEffectOrNull()?.let { applyBehavior(it, onAccepted) }
+        spec.toActiveSkillEffectOrNull()?.let { applyBehavior(it, outputs, onAccepted) }
     }
 
     private fun applyBehavior(
         effect: ActiveSkillEffect,
+        outputs: MutableList<BattleStateOutput>,
         onAccepted: (EffectKey, ActiveSkillEffect) -> Unit,
     ): Boolean {
         val result = state.effectStore.apply(effect)
         synchronizeRemoved(result.removed)
+        outputs += result.removed.map(BattleStateOutput::EffectRemoved)
         if (result.outcome == EffectApplyOutcome.REJECTED) return false
         val accepted = requireNotNull(result.effect)
         val key = accepted.key()
@@ -866,9 +873,11 @@ class BattleStateChangeApplier(
             )
         }
 
-    private fun synchronize(result: EffectLifecycleResult) {
+    private fun synchronize(result: EffectLifecycleResult): List<BattleStateOutput> {
         synchronizeRemoved(result.expired + result.removed)
         pruneInactiveBehaviors()
+        return result.expired.map(BattleStateOutput::EffectExpired) +
+            result.removed.map(BattleStateOutput::EffectRemoved)
     }
 
     private fun synchronizeRemoved(removed: List<ActiveSkillEffect>) {

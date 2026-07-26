@@ -265,9 +265,8 @@ class DefaultCompleteSkillEngine private constructor(
             base == null || requireNotNull(state.view.state(base)).troops <= 0
         }
 
-    fun finishRound(round: Int) {
-        applier.onRoundEnd(round)
-    }
+    fun finishRound(round: Int): List<BattleEvent> =
+        applier.onRoundEnd(round).toEvents(round)
 
     private fun executeBattleSkills(
         trigger: BattleTrigger,
@@ -702,6 +701,36 @@ class DefaultCompleteSkillEngine private constructor(
                         )
                     }
                 }
+                is BattleStateOutput.EffectRemoved -> listOf(
+                    BattleEvent.StatusRemoved(
+                        round,
+                        output.effect.source,
+                        output.effect.target,
+                        output.effect.skillId,
+                        output.effect.effectId,
+                    ),
+                )
+                is BattleStateOutput.EffectExpired -> listOf(
+                    BattleEvent.EffectExpired(
+                        round,
+                        output.effect.source,
+                        output.effect.target,
+                        output.effect.skillId,
+                        output.effect.effectId,
+                    ),
+                )
+                is BattleStateOutput.EffectBlocked -> listOf(
+                    output.change.let { change ->
+                        BattleEvent.EffectBlocked(
+                            round,
+                            change.source,
+                            change.target,
+                            change.skillId,
+                            change.effectId,
+                            change.blockingEffectId,
+                        )
+                    },
+                )
             }
         }
 

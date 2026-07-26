@@ -199,7 +199,7 @@ object BattleEngine {
                     context(round, source, BattleTrigger.ROUND_END),
                 )
             }
-            engine.finishRound(round)
+            events += engine.finishRound(round)
             events += BattleEvent.RoundEnd(round)
         }
         val resolved = outcome()

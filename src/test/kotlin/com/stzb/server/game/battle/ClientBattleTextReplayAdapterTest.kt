@@ -1,10 +1,127 @@
 package com.stzb.server.game.battle
 
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ClientBattleTextReplayAdapterTest {
+    @Test
+    fun `projects skill trigger using client action selected by skill kind`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.SkillTriggered(
+                    0,
+                    source,
+                    200001,
+                    200001,
+                    com.stzb.server.game.battle.skill.BattleTrigger.BATTLE_PASSIVE,
+                ),
+                BattleEvent.SkillTriggered(
+                    1,
+                    source,
+                    200002,
+                    200002,
+                    com.stzb.server.game.battle.skill.BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                ),
+                BattleEvent.SkillTriggered(
+                    1,
+                    source,
+                    200003,
+                    200003,
+                    com.stzb.server.game.battle.skill.BattleTrigger.PURSUIT_ATTEMPT,
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                ClientReportAction(ClientBattleTextReplayProtocol.SKILL_TRIGGERED_PASSIVE, listOf(1, 200001)),
+                ClientReportAction(ClientBattleTextReplayProtocol.SKILL_TRIGGERED_ACTIVE, listOf(1, 200002)),
+                ClientReportAction(ClientBattleTextReplayProtocol.SKILL_TRIGGERED_PURSUIT, listOf(1, 200003)),
+            ),
+            ClientBattleTextReplayAdapter.adapt(result).filter {
+                it.id in setOf(
+                    ClientBattleTextReplayProtocol.SKILL_TRIGGERED_ACTIVE,
+                    ClientBattleTextReplayProtocol.SKILL_TRIGGERED_PASSIVE,
+                    ClientBattleTextReplayProtocol.SKILL_TRIGGERED_PURSUIT,
+                )
+            },
+        )
+    }
+
+    @Test
+    fun `projects preparation lifecycle in engine event order without inventing action ids`() {
+        val source = BattleHeroRef(Side.ATTACKER, 1, BattleHeroId(1))
+        val trigger = com.stzb.server.game.battle.skill.BattleTrigger.ACTIVE_SKILL_ATTEMPT
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.SkillPreparationStarted(1, source, 200031, readyRound = 2),
+                BattleEvent.SkillPreparationCompleted(2, source, 200031, 200031, 1, 2, trigger),
+                BattleEvent.SkillTriggered(2, source, 200031, 200031, trigger),
+                BattleEvent.SkillPreparationStarted(2, source, 200032, readyRound = 3),
+                BattleEvent.SkillPreparationCancelled(2, source, 200032, 200032, "CONFUSION"),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                ClientReportAction(ClientBattleTextReplayProtocol.SKILL_PREPARATION_STARTED, listOf(2, 200031)),
+                ClientReportAction(ClientBattleTextReplayProtocol.SKILL_TRIGGERED_ACTIVE, listOf(2, 200031)),
+                ClientReportAction(ClientBattleTextReplayProtocol.SKILL_PREPARATION_STARTED, listOf(2, 200032)),
+                ClientReportAction(ClientBattleTextReplayProtocol.SKILL_PREPARATION_CANCELLED, listOf(2, 200032)),
+            ),
+            ClientBattleTextReplayAdapter.adapt(result).filter {
+                it.id in setOf(
+                    ClientBattleTextReplayProtocol.SKILL_PREPARATION_STARTED,
+                    ClientBattleTextReplayProtocol.SKILL_PREPARATION_CANCELLED,
+                    ClientBattleTextReplayProtocol.SKILL_TRIGGERED_ACTIVE,
+                )
+            },
+        )
+    }
+
+    @Test
+    fun `projects removed and expired effects through verified client status removal action`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val target = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.StatusRemoved(1, source, target, 200014, 522),
+                BattleEvent.EffectExpired(2, source, target, 200014, 524),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                listOf<Any>(6, 1, 200014, 522),
+                listOf<Any>(6, 1, 200014, 524),
+            ),
+            ClientBattleTextReplayAdapter.adapt(result)
+                .filter { it.id == ClientBattleTextReplayProtocol.STATUS_REMOVED }
+                .map(ClientReportAction::params),
+        )
+    }
+
+    @Test
+    fun `safe projection diagnoses unsupported effect blocks while strict projection fails`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val target = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
+        val result = twoRoundResult().copy(
+            events = listOf(BattleEvent.EffectBlocked(1, source, target, 200014, 401, 999)),
+        )
+        val diagnostics = mutableListOf<String>()
+
+        val safeActions = ClientBattleTextReplayAdapter.adapt(result, diagnostics::add)
+
+        assertTrue(safeActions.none { it.id == 999 })
+        assertTrue(diagnostics.single().contains("EffectBlocked"))
+        assertFailsWith<UnsupportedBattleReportProjectionException> {
+            ClientBattleTextReplayAdapter.adaptStrict(result)
+        }
+    }
+
     @Test
     fun `creates one preparation stage and one client round per engine round`() {
         val actions = ClientBattleTextReplayAdapter.adapt(twoRoundResult())
@@ -126,8 +243,8 @@ class ClientBattleTextReplayAdapterTest {
         val actions = ClientBattleTextReplayAdapter.adapt(stateResult())
 
         val statusIndex = actions.indexOfFirst {
-            it.id == ClientBattleTextReplayProtocol.STATUS &&
-                it.params == listOf<Any>(1, 6, 200002, 305)
+            it.id == ClientBattleTextReplayProtocol.SKILL_CAST &&
+                it.params == listOf<Any>(6, 1, 200002)
         }
         assertTrue(statusIndex > 1)
         assertEquals(ClientBattleTextReplayProtocol.SKILL_BEGIN, actions[statusIndex - 2].id)
@@ -138,12 +255,12 @@ class ClientBattleTextReplayAdapterTest {
                 it.params == listOf<Any>(1, 200002, 6, 60, 640, 305)
         })
         assertTrue(actions.any {
-            it.id == ClientBattleTextReplayProtocol.STATUS &&
-                it.params == listOf<Any>(1, 6, 0, 514)
+            it.id == ClientBattleTextReplayProtocol.DAMAGE_EVADED &&
+                it.params == listOf<Any>(6)
         })
         assertTrue(actions.any {
-            it.id == ClientBattleTextReplayProtocol.STATUS &&
-                it.params == listOf<Any>(1, 1, 200036, 101)
+            it.id == ClientBattleTextReplayProtocol.SKILL_CAST &&
+                it.params == listOf<Any>(1, 1, 200036)
         })
     }
 
@@ -154,14 +271,14 @@ class ClientBattleTextReplayAdapterTest {
         assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.RECOVERY })
         assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.ONGOING_DAMAGE })
         assertEquals(
-            listOf(listOf<Any>(1, 6, 0, 514)),
-            actions.filter { it.id == ClientBattleTextReplayProtocol.STATUS }.map { it.params },
+            listOf(listOf<Any>(6)),
+            actions.filter { it.id == ClientBattleTextReplayProtocol.DAMAGE_EVADED }.map { it.params },
         )
         assertTrue(actions.none { it.id == ClientBattleTextReplayProtocol.SKILL_CAST })
     }
 
     @Test
-    fun `retains unsupported skill effects and still projects the skill activation`() {
+    fun `safe projection ignores unsupported skill effects and strict projection fails`() {
         val baseResult = twoRoundResult()
         val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
         val resultWithUnsupportedEffect = baseResult.copy(
@@ -178,12 +295,16 @@ class ClientBattleTextReplayAdapterTest {
 
         assertTrue(json.contains("UnsupportedSkillEffect"))
         assertTrue(json.contains("\"skillId\":200999"))
-        val actions = ClientBattleTextReplayAdapter.adapt(resultWithUnsupportedEffect)
-        assertTrue(actions.any {
+        val diagnostics = mutableListOf<String>()
+        val actions = ClientBattleTextReplayAdapter.adapt(resultWithUnsupportedEffect, diagnostics::add)
+        assertTrue(actions.none {
             it.id == ClientBattleTextReplayProtocol.SKILL_CAST &&
                 it.params == listOf<Any>(1, 1, 200999)
         })
-        assertTrue(ClientReportTextEncoder.encode(resultWithUnsupportedEffect).contains("8d1,1,200999"))
+        assertTrue(diagnostics.single().contains("skill=200999"))
+        assertFailsWith<UnsupportedBattleReportProjectionException> {
+            ClientBattleTextReplayAdapter.adaptStrict(resultWithUnsupportedEffect)
+        }
     }
 
     @Test

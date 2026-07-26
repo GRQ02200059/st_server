@@ -207,6 +207,28 @@ sealed interface BattleEvent {
         val skillId: Int,
         val reason: String,
     ) : BattleEvent
+    data class StatusRemoved(
+        val round: Int,
+        val source: BattleHeroRef,
+        val target: BattleHeroRef,
+        val skillId: Int,
+        val effectId: Int,
+    ) : BattleEvent
+    data class EffectExpired(
+        val round: Int,
+        val source: BattleHeroRef,
+        val target: BattleHeroRef,
+        val skillId: Int,
+        val effectId: Int,
+    ) : BattleEvent
+    data class EffectBlocked(
+        val round: Int,
+        val source: BattleHeroRef,
+        val target: BattleHeroRef,
+        val skillId: Int,
+        val effectId: Int,
+        val blockingEffectId: Int,
+    ) : BattleEvent
     data class RoundStart(val round: Int) : BattleEvent
     data class HeroActionStart(val round: Int, val source: BattleHeroRef) : BattleEvent
     data class NormalAttack(

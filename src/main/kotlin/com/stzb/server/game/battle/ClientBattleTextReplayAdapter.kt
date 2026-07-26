@@ -1,9 +1,28 @@
 package com.stzb.server.game.battle
 
+import com.stzb.server.game.battle.skill.BattleTrigger
+import java.util.logging.Logger
+
+internal class UnsupportedBattleReportProjectionException(message: String) :
+    IllegalArgumentException(message)
+
 internal object ClientBattleTextReplayAdapter {
-    fun adapt(result: BattleResult): List<ClientReportAction> {
+    private val logger = Logger.getLogger(ClientBattleTextReplayAdapter::class.java.name)
+
+    fun adapt(
+        result: BattleResult,
+        diagnostic: (String) -> Unit = logger::warning,
+    ): List<ClientReportAction> = adapt(result, strict = false, diagnostic)
+
+    fun adaptStrict(result: BattleResult): List<ClientReportAction> =
+        adapt(result, strict = true) { throw UnsupportedBattleReportProjectionException(it) }
+
+    private fun adapt(
+        result: BattleResult,
+        strict: Boolean,
+        diagnostic: (String) -> Unit,
+    ): List<ClientReportAction> {
         val actions = mutableListOf<ClientReportAction>()
-        val projectedUnsupportedSkills = mutableSetOf<Triple<Int, BattleHeroRef, Int>>()
         val heroes = (
             result.attacker.heroes.map { Side.ATTACKER to it } +
                 result.defender.heroes.map { Side.DEFENDER to it }
@@ -41,6 +60,43 @@ internal object ClientBattleTextReplayAdapter {
                         event.skillId,
                     ),
                 )
+                is BattleEvent.SkillPreparationCancelled -> actions += ClientReportAction(
+                    ClientBattleTextReplayProtocol.SKILL_PREPARATION_CANCELLED,
+                    listOf(
+                        ClientBattleTextReplayProtocol.position(event.source),
+                        event.skillId,
+                    ),
+                )
+                is BattleEvent.SkillTriggered -> actions += ClientReportAction(
+                    event.trigger.clientSkillAction(),
+                    listOf(
+                        ClientBattleTextReplayProtocol.position(event.source),
+                        event.skillId,
+                    ),
+                )
+                is BattleEvent.StatusRemoved -> actions += removedStatus(event)
+                is BattleEvent.EffectExpired -> actions += ClientReportAction(
+                    ClientBattleTextReplayProtocol.STATUS_REMOVED,
+                    listOf(
+                        ClientBattleTextReplayProtocol.position(event.target),
+                        ClientBattleTextReplayProtocol.position(event.source),
+                        event.skillId,
+                        event.effectId,
+                    ),
+                )
+                is BattleEvent.EffectBlocked -> {
+                    val action = blockedEffect(event)
+                    if (action != null) {
+                        actions += action
+                    } else {
+                        unsupported(
+                            "Unsupported EffectBlocked projection: skill=${event.skillId} " +
+                                "effect=${event.effectId} blocker=${event.blockingEffectId}",
+                            strict,
+                            diagnostic,
+                        )
+                    }
+                }
                 is BattleEvent.NormalAttack -> actions += listOf(
                     ClientReportAction(
                         ClientBattleTextReplayProtocol.NORMAL_ATTACK,
@@ -100,12 +156,7 @@ internal object ClientBattleTextReplayAdapter {
                 }
                 is BattleEvent.StatusApplied -> {
                     if (event.skillId > 0) {
-                        actions += statusActions(
-                            source = event.source,
-                            target = event.target,
-                            skillId = event.skillId,
-                            effectId = ClientBattleTextReplayProtocol.effectId(event.status),
-                        )
+                        actions += appliedStatusActions(event)
                     }
                 }
                 is BattleEvent.OngoingDamage -> {
@@ -123,35 +174,91 @@ internal object ClientBattleTextReplayAdapter {
                         )
                     }
                 }
-                is BattleEvent.Evaded -> actions += statusActions(
-                    source = event.source,
-                    target = event.target,
-                    skillId = 0,
-                    effectId = ClientBattleTextReplayProtocol.effectId(BattleStatus.EVADE),
+                is BattleEvent.Evaded -> actions += ClientReportAction(
+                    ClientBattleTextReplayProtocol.DAMAGE_EVADED,
+                    listOf(ClientBattleTextReplayProtocol.position(event.target)),
                 )
                 is BattleEvent.StatChanged -> {
                     val effectId = ClientBattleTextReplayProtocol.effectId(event.stat, event.delta)
                     if (event.skillId > 0 && effectId != 0) {
-                        actions += statusActions(event.source, event.target, event.skillId, effectId)
+                        actions += skillCast(event.target, event.skillId)
                     }
                 }
                 is BattleEvent.UnsupportedSkillEffect -> {
-                    val key = Triple(event.round, event.source, event.skillId)
-                    if (event.skillId > 0 && projectedUnsupportedSkills.add(key)) {
-                        actions += skillSegment(event.source, event.skillId, emptyList())
-                    }
+                    unsupported(
+                        "Unsupported skill effect projection: skill=${event.skillId} " +
+                            "effect=${event.effectId}",
+                        strict,
+                        diagnostic,
+                    )
                 }
-                is BattleEvent.UnsupportedEquipmentEffect -> Unit
-                is BattleEvent.SkillTriggered,
+                is BattleEvent.UnsupportedEquipmentEffect -> unsupported(
+                    "Unsupported equipment effect projection: equipment=${event.equipmentId}",
+                    strict,
+                    diagnostic,
+                )
+                BattleEvent.BattleStart,
                 is BattleEvent.TriggerPoint,
                 is BattleEvent.SkillPreparationCompleted,
-                is BattleEvent.SkillPreparationCancelled,
+                is BattleEvent.RoundEnd,
+                is BattleEvent.BattleEnd,
                 -> Unit
-                else -> Unit
             }
         }
         appendFinalization(actions, result)
         return actions
+    }
+
+    private fun BattleTrigger.clientSkillAction(): Int = when (this) {
+        BattleTrigger.BATTLE_PASSIVE,
+        BattleTrigger.BATTLE_COMMAND,
+        -> ClientBattleTextReplayProtocol.SKILL_TRIGGERED_PASSIVE
+        BattleTrigger.ACTIVE_SKILL_ATTEMPT ->
+            ClientBattleTextReplayProtocol.SKILL_TRIGGERED_ACTIVE
+        BattleTrigger.PURSUIT_ATTEMPT ->
+            ClientBattleTextReplayProtocol.SKILL_TRIGGERED_PURSUIT
+        else -> throw UnsupportedBattleReportProjectionException(
+            "SkillTriggered cannot use trigger=$this",
+        )
+    }
+
+    private fun removedStatus(event: BattleEvent.StatusRemoved) = ClientReportAction(
+        ClientBattleTextReplayProtocol.STATUS_REMOVED,
+        listOf(
+            ClientBattleTextReplayProtocol.position(event.target),
+            ClientBattleTextReplayProtocol.position(event.source),
+            event.skillId,
+            event.effectId,
+        ),
+    )
+
+    private fun blockedEffect(event: BattleEvent.EffectBlocked): ClientReportAction? {
+        val actionId = when {
+            event.blockingEffectId == ClientBattleTextReplayProtocol.effectId(BattleStatus.EVADE) ->
+                ClientBattleTextReplayProtocol.DAMAGE_EVADED
+            event.effectId in setOf(501, 701, 901) -> 337
+            event.effectId in setOf(503, 703, 903) -> 338
+            event.effectId in setOf(502, 702, 902) -> 339
+            event.effectId in setOf(552, 752, 952) -> 340
+            else -> return null
+        }
+        return ClientReportAction(
+            actionId,
+            if (actionId == ClientBattleTextReplayProtocol.DAMAGE_EVADED) {
+                listOf(ClientBattleTextReplayProtocol.position(event.target))
+            } else {
+                listOf(ClientBattleTextReplayProtocol.position(event.target), event.effectId)
+            },
+        )
+    }
+
+    private fun unsupported(
+        message: String,
+        strict: Boolean,
+        diagnostic: (String) -> Unit,
+    ) {
+        if (strict) throw UnsupportedBattleReportProjectionException(message)
+        diagnostic(message)
     }
 
     /**
@@ -213,30 +320,28 @@ internal object ClientBattleTextReplayAdapter {
             emptyList()
         }
 
-    private fun statusActions(
-        source: BattleHeroRef,
-        target: BattleHeroRef,
-        skillId: Int,
-        effectId: Int,
-    ): List<ClientReportAction> {
-        val status = ClientReportAction(
-            ClientBattleTextReplayProtocol.STATUS,
-            listOf(
-                ClientBattleTextReplayProtocol.position(source),
-                ClientBattleTextReplayProtocol.position(target),
-                skillId,
-                effectId,
-            ),
-        )
-        return if (skillId > 0) {
-            skillSegment(
-                source = source,
-                skillId = skillId,
-                effects = listOf(status),
+    private fun appliedStatusActions(event: BattleEvent.StatusApplied): List<ClientReportAction> {
+        val actionId = ClientBattleTextReplayProtocol.statusAppliedAction(event.status)
+        val action = if (actionId == ClientBattleTextReplayProtocol.SKILL_CAST) {
+            ClientReportAction(
+                actionId,
+                listOf(
+                    ClientBattleTextReplayProtocol.position(event.target),
+                    ClientBattleTextReplayProtocol.position(event.source),
+                    event.skillId,
+                ),
             )
         } else {
-            listOf(status)
+            ClientReportAction(
+                actionId,
+                listOf(
+                    ClientBattleTextReplayProtocol.position(event.source),
+                    event.skillId,
+                    ClientBattleTextReplayProtocol.position(event.target),
+                ),
+            )
         }
+        return skillSegment(event.source, event.skillId, listOf(action))
     }
 
     private fun appendFinalization(
