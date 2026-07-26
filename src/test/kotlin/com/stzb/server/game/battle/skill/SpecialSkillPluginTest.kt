@@ -75,9 +75,10 @@ class SpecialSkillPluginTest {
                 ) ||
                 it.field == SkillConditionField.CAST_CONDITION &&
                 (
-                    it.value.toString().startsWith("127") ||
+                        it.value.toString().startsWith("127") ||
                         it.value.toString().startsWith("227") ||
                         it.value in setOf(
+                            130001912, 230001912,
                             130005101, 230005101, 130005205, 130005301, 230005301,
                         )
                     )

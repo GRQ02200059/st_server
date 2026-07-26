@@ -89,9 +89,10 @@ class SkillConditionInterpreterTest {
             ) ||
             code.field == SkillConditionField.CAST_CONDITION &&
             (
-                code.value.toString().startsWith("127") ||
+                    code.value.toString().startsWith("127") ||
                     code.value.toString().startsWith("227") ||
                     code.value in setOf(
+                        130001912, 230001912,
                         130005101, 230005101, 130005205, 130005301, 230005301,
                     )
                 ) ||
@@ -513,6 +514,14 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.ConfigBranch(enabled = true),
             interpreter.compile(graph.detail(21064301)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = true),
+            interpreter.compile(graph.detail(20071912)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = false),
+            interpreter.compile(graph.detail(20071922)).conditions.single(),
         )
     }
 
