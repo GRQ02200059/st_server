@@ -3,6 +3,15 @@ package com.stzb.server.game.battle.skill
 import java.util.Collections
 
 data class SkillCoverageReport(
+    val mainSkills: Int,
+    val executionNodes: Int,
+    val effectIds: Int,
+    val detailRules: Int,
+    val unsupportedEffects: Set<Int>,
+    val unknownConditions: Set<SkillConditionCode>,
+    val unknownSelectors: Set<Int>,
+    val brokenDependencies: Set<SkillDiagnostic>,
+    val noBehaviorSkills: Set<Int>,
     val missingPluginSkillIds: Set<Int>,
     val duplicateExecutionSkillIds: Set<Int>,
     val pendingConditionCodes: Set<SkillConditionCode>,
@@ -26,7 +35,36 @@ data class SkillCoverageReport(
                 .filter(SkillExecutionPlugin::replacesConfiguredExecution)
                 .flatMapTo(linkedSetOf(), SkillExecutionPlugin::skillIds)
             val requiredIds = ownershipCatalog.requiredNonDeclarativeSkillIds
+            val effectRegistry = BattleEffectRegistry.strict(graph)
+                .registerCoreEffects(BattleEffectStore())
+                .registerControlEffects(BattleEffectStore())
+                .registerMetaEffects()
+            val unsupportedEffects = graph.effectIds - effectRegistry.implementedEffectIds()
+            val selector = SkillTargetSelector()
+            val unknownSelectors = graph.details.mapNotNullTo(linkedSetOf()) { detail ->
+                runCatching { selector.compile(detail) }
+                    .exceptionOrNull()
+                    ?.let { detail.detailId }
+            }
+            val brokenDependencies = graph.validate().toSet()
+            val noBehaviorSkills = graph.rootSkillIds.filterTo(linkedSetOf()) { rootSkillId ->
+                !hasImplementedBehavior(
+                    skillId = rootSkillId,
+                    graph = graph,
+                    implementedEffectIds = effectRegistry.implementedEffectIds(),
+                    visited = linkedSetOf(),
+                )
+            }
             return SkillCoverageReport(
+                mainSkills = graph.rootSkillIds.size,
+                executionNodes = graph.executionNodeIds.size,
+                effectIds = graph.effectIds.size,
+                detailRules = graph.details.size,
+                unsupportedEffects = immutableSet(unsupportedEffects),
+                unknownConditions = immutableSet(pending),
+                unknownSelectors = immutableSet(unknownSelectors),
+                brokenDependencies = immutableSet(brokenDependencies),
+                noBehaviorSkills = immutableSet(noBehaviorSkills),
                 missingPluginSkillIds = immutableSet(
                     requiredIds - replacingExecutionIds,
                 ),
@@ -40,6 +78,32 @@ data class SkillCoverageReport(
                 unresolvedConditionOwnerSkillIds = immutableSet(pending.map { it.skillId }),
                 executionPluginSkillIds = immutableSet(executionIds),
             )
+        }
+
+        fun generateDefault(): SkillCoverageReport {
+            val config = com.stzb.server.game.battle.BattleConfigRepository.loadDefault()
+            val graph = SkillRuleCatalog.build(SkillScopeCatalog.loadDefault(), config)
+            return generate(
+                graph = graph,
+                conditionInterpreter = SkillConditionInterpreter(graph),
+                executionPlugins = ConfiguredSpecialSkillPlugins.registry(config),
+            )
+        }
+
+        private fun hasImplementedBehavior(
+            skillId: Int,
+            graph: SkillRuleGraph,
+            implementedEffectIds: Set<Int>,
+            visited: MutableSet<Int>,
+        ): Boolean {
+            if (!visited.add(skillId)) return false
+            val rule = graph.rule(skillId) ?: return false
+            return rule.details.any { detail ->
+                detail.effectId in implementedEffectIds ||
+                    detail.childSkillIds.any { childSkillId ->
+                        hasImplementedBehavior(childSkillId, graph, implementedEffectIds, visited)
+                    }
+            }
         }
 
         private fun <T> immutableSet(values: Collection<T>): Set<T> =

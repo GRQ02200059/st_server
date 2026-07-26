@@ -81,7 +81,7 @@ class SkillRuleGraph(
             )
         },
     )
-    private val rootSkillIds: Set<Int> = immutableSet(rootSkillIds)
+    val rootSkillIds: Set<Int> = immutableSet(rootSkillIds)
 
     val executionNodeIds: Set<Int> = immutableSet(this.rules.keys)
     val effectIds: Set<Int> = immutableSet(effectIds)
