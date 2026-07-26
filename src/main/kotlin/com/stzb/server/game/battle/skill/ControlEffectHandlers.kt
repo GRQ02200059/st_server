@@ -1,0 +1,371 @@
+package com.stzb.server.game.battle.skill
+
+import com.stzb.server.game.battle.ActiveSkillEffect
+import com.stzb.server.game.battle.ActionPermission
+import com.stzb.server.game.battle.BattleEvent
+import com.stzb.server.game.battle.BattleHero
+import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleStatus
+import com.stzb.server.game.battle.EffectCategory
+import com.stzb.server.game.battle.SkillKind
+
+enum class ActionEffectKind {
+    GUARD,
+    IGNORE_EVADE,
+    STRATEGY_LIFE_STEAL,
+    DOUBLE_ATTACK,
+    SECONDARY_ATTACK,
+    EXECUTION_ATTACK,
+    COUNTERATTACK,
+    IGNORE_TROOP_COUNTER,
+    REDUCE_INHERENT_PREPARATION,
+    FIRST_ACTION,
+}
+
+data class ActionEffectChange(
+    val spec: PersistentEffectSpec,
+    val kind: ActionEffectKind,
+) : BattleStateChange
+
+data class CancelPreparedSkillsChange(
+    val spec: PersistentEffectSpec,
+) : BattleStateChange {
+    fun apply(runtime: SkillRuntimeState) {
+        runtime.interruptPreparations(spec.target)
+    }
+}
+
+data class CleanseEffectsChange(
+    val spec: PersistentEffectSpec,
+    val category: EffectCategory,
+) : BattleStateChange {
+    fun apply(store: BattleEffectStore): EffectLifecycleResult {
+        val matched = store.effectsFor(spec.target).filter { it.category == category }
+        if (matched.isEmpty()) return EffectLifecycleResult()
+        val removed = linkedMapOf<EffectIdentity, ActiveSkillEffect>()
+        matched.forEach { effect ->
+            store.clear(spec.target, effect.effectId, effect.source).removed.forEach {
+                removed[EffectIdentity(it)] = it
+            }
+        }
+        return EffectLifecycleResult(removed = removed.values.toList())
+    }
+
+    private data class EffectIdentity(
+        val source: BattleHeroRef,
+        val detailId: Int,
+        val effectId: Int,
+        val skillId: Int,
+    ) {
+        constructor(effect: ActiveSkillEffect) : this(
+            effect.source,
+            effect.detailId,
+            effect.effectId,
+            effect.skillId,
+        )
+    }
+}
+
+class CompleteSkillEngine(
+    private val effectStore: BattleEffectStore,
+) {
+    fun permissionFor(
+        actor: BattleHeroRef,
+        intendedTarget: BattleHeroRef? = null,
+    ): ActionPermission {
+        val effects = effectStore.effectsFor(actor)
+        val cannotAct = effects.any { it.effectId in CONFUSION_IDS }
+        val cannotCast = cannotAct || effects.any { it.effectId in HESITATION_IDS }
+        val cannotNormal = cannotAct || effects.any { it.effectId in DISARM_IDS }
+        val doubleAttack = effects.any { it.effectId in DOUBLE_ATTACK_IDS }
+        val guard = intendedTarget?.let { guarded ->
+            effectStore.effectsFor(guarded).lastOrNull { it.effectId in GUARD_IDS }?.source
+        }
+        val taunt = effects.lastOrNull { it.effectId == TAUNT_ID }?.source
+        return ActionPermission(
+            canAct = !cannotAct,
+            canCastActive = !cannotCast,
+            canNormalAttack = !cannotNormal,
+            redirectTarget = taunt ?: guard,
+            normalAttackCount = when {
+                cannotAct || cannotNormal -> 0
+                doubleAttack -> 2
+                else -> 1
+            },
+            grantsPursuitOpportunityPerNormal = !cannotAct && !cannotNormal,
+            randomAllegiance = effects.any { it.effectId in BERSERK_IDS },
+            counterattack = effects.any { it.effectId == COUNTERATTACK_ID },
+            secondaryAttack = effects.any { it.effectId == SECONDARY_ATTACK_ID },
+            firstAction = effects.any { it.effectId == FIRST_ACTION_ID },
+        )
+    }
+
+    fun permissionFor(
+        actor: BattleHeroRef,
+        context: SkillBattleContext,
+    ): ActionPermission {
+        val intendedTarget =
+            if (SkillBattleViewCapability.TARGET_HISTORY in context.battleView.capabilities) {
+                context.battleView.currentTarget(actor)
+            } else {
+                null
+            }
+        return permissionFor(actor, intendedTarget)
+    }
+
+    fun canEvade(
+        target: BattleHeroRef,
+        attacker: BattleHeroRef? = null,
+    ): Boolean =
+        effectStore.effectsFor(target).any { it.effectId in EVADE_IDS } &&
+            attacker?.let { source ->
+                effectStore.effectsFor(source).none { it.effectId == IGNORE_EVADE_ID }
+            } != false
+
+    private companion object {
+        val CONFUSION_IDS = setOf(501, 701, 901)
+        val HESITATION_IDS = setOf(502, 702, 902)
+        val BERSERK_IDS = setOf(503, 703, 903)
+        val GUARD_IDS = setOf(504, 506)
+        const val TAUNT_ID = 505
+        val EVADE_IDS = setOf(514, 714)
+        const val IGNORE_EVADE_ID = 515
+        val DOUBLE_ATTACK_IDS = setOf(544, 744)
+        val DISARM_IDS = setOf(552, 752, 952)
+        const val SECONDARY_ATTACK_ID = 545
+        const val COUNTERATTACK_ID = 551
+        const val FIRST_ACTION_ID = 761
+    }
+}
+
+object ControlEffectHandlers {
+    val effectIds: Set<Int> =
+        (
+            (501..506) + (511..515) + listOf(542) + (544..546) +
+                listOf(551, 552, 571, 581, 594) + (701..703) + (711..714) +
+                listOf(744, 752, 761, 771) + (901..903) + listOf(952)
+            ).toSet()
+
+    fun registrations(
+        effectStore: BattleEffectStore,
+        calculator: BattleValueCalculator = DefaultBattleValueCalculator(),
+        targetSelector: SkillTargetSelector = SkillTargetSelector(),
+    ): Array<EffectHandlerRegistration> =
+        effectIds.sorted().map { effectId ->
+            EffectHandlerRegistration.implemented(
+                effectId,
+                ControlEffectHandler(effectId, effectStore, calculator, targetSelector),
+            )
+        }.toTypedArray()
+}
+
+private class ControlEffectHandler(
+    private val ownedEffectId: Int,
+    private val effectStore: BattleEffectStore,
+    private val calculator: BattleValueCalculator,
+    private val targetSelector: SkillTargetSelector,
+) : ImplementedBattleEffectHandler {
+    override val semanticId: String = "control.action.effect.$ownedEffectId"
+
+    override fun execute(invocation: EffectInvocation): EffectExecution {
+        check(invocation.rule.effectId == ownedEffectId) {
+            "Handler $ownedEffectId cannot execute effect=${invocation.rule.effectId}"
+        }
+        val targets = targetSelector.compile(invocation.rule).select(invocation.context)
+        val changes = mutableListOf<BattleStateChange>()
+        val events = mutableListOf<BattleEvent>()
+        targets.forEach { target ->
+            val blocker = blockingEffect(target)
+            if (blocker != null) {
+                changes += EffectBlockedChange(
+                    invocation.context.source,
+                    target,
+                    invocation.context.currentSkillId,
+                    ownedEffectId,
+                    blocker,
+                )
+                return@forEach
+            }
+            changes += changesForTarget(invocation, target)
+            statusFor(ownedEffectId)?.let { status ->
+                events += BattleEvent.StatusApplied(
+                    round = invocation.context.round,
+                    source = invocation.context.source,
+                    target = target,
+                    status = status,
+                    durationRounds = invocation.rule.raw.availableRounds,
+                    power = invocation.rule.raw.constantParam,
+                    skillId = invocation.context.currentSkillId,
+                )
+            }
+        }
+        return EffectExecution(changes, events)
+    }
+
+    private fun changesForTarget(
+        invocation: EffectInvocation,
+        target: BattleHeroRef,
+    ): List<BattleStateChange> {
+        if (ownedEffectId in CLEANSE_IDS) {
+            return listOf(cleanse(persistentSpec(invocation, target), EffectCategory.HARMFUL))
+        }
+        if (ownedEffectId in DISPEL_IDS) {
+            return listOf(cleanse(persistentSpec(invocation, target), EffectCategory.BENEFICIAL))
+        }
+        val spec = persistentSpec(invocation, target)
+        val actionKind = actionKindFor(ownedEffectId)
+        val primary: BattleStateChange =
+            if (actionKind == null) ApplyBattleEffectChange(spec) else ActionEffectChange(spec, actionKind)
+        return buildList {
+            add(primary)
+            if (ownedEffectId in CONTROL_IDS) {
+                add(CancelPreparedSkillsChange(spec))
+            }
+        }
+    }
+
+    private fun persistentSpec(
+        invocation: EffectInvocation,
+        target: BattleHeroRef,
+    ): PersistentEffectSpec {
+        requireSupportedSkillOrigin(invocation)
+        val raw = invocation.rule.raw
+        val potency = when (val value = calculator.effectValue(
+            invocation.rule,
+            invocation.liveSourceHero(),
+        )) {
+            is TypedBattlePotency.Resolved -> value
+            is TypedBattlePotency.Deferred -> throw UnsupportedConfiguredBattleValueException(
+                BattleEffectDiagnostic(
+                    EffectFailureCode.UNSUPPORTED_CONFIGURED_VALUE,
+                    invocation.context.currentSkillId,
+                    invocation.rule.detailId,
+                    invocation.rule.effectId,
+                    invocation.context.trigger,
+                    invocation.callPath,
+                    value.diagnostic,
+                ),
+            )
+        }
+        return PersistentEffectSpec(
+            source = invocation.context.source,
+            target = target,
+            rootSkillId = invocation.context.rootSkillId,
+            skillId = invocation.context.currentSkillId,
+            skillKind = invocation.rule.skillKind,
+            rawSkillType = invocation.rule.rawSkillType,
+            detailId = invocation.rule.detailId,
+            effectId = ownedEffectId,
+            category = EffectCategory.fromClientBuffType(invocation.rule.effectBuffType),
+            conflict = raw.hideConflict,
+            replaceType = invocation.rule.effectReplaceType,
+            bindFlag = raw.bindFlag,
+            maxStacks = raw.addCountMax + 1,
+            delayRound = raw.delayRound,
+            delayHit = raw.delayHit,
+            availableRounds = raw.availableRounds,
+            availableHit = raw.availableHit,
+            clearPerHit = raw.clearPerHit,
+            startBoundary =
+                if (raw.delayRound > 0 || raw.delayHit > 0) {
+                    EffectStartBoundary.AFTER_DELAY
+                } else {
+                    EffectStartBoundary.IMMEDIATE
+                },
+            potency = potency,
+        )
+    }
+
+    private fun cleanse(
+        spec: PersistentEffectSpec,
+        category: EffectCategory,
+    ) = CleanseEffectsChange(
+        spec = spec,
+        category = category,
+    )
+
+    private fun blockingEffect(target: BattleHeroRef): Int? {
+        if (ownedEffectId !in INSIGHT_BLOCKED_IDS) return null
+        val activeIds = effectStore.effectsFor(target).mapTo(mutableSetOf()) { it.effectId }
+        return when {
+            activeIds.any { it in INSIGHT_IDS } -> activeIds.first { it in INSIGHT_IDS }
+            ownedEffectId in DISARM_IDS && DISARM_IMMUNITY_ID in activeIds -> DISARM_IMMUNITY_ID
+            else -> null
+        }
+    }
+
+    private companion object {
+        val CONTROL_IDS =
+            setOf(501, 502, 503, 505, 552, 701, 702, 703, 752, 901, 902, 903, 952)
+        val INSIGHT_IDS = setOf(511, 711)
+        val DISARM_IDS = setOf(552, 752, 952)
+        val INSIGHT_BLOCKED_IDS = CONTROL_IDS
+        const val DISARM_IMMUNITY_ID = 594
+        val CLEANSE_IDS = setOf(513, 713)
+        val DISPEL_IDS = setOf(512, 712)
+    }
+}
+
+private fun requireSupportedSkillOrigin(invocation: EffectInvocation) {
+    val expectedKind = SkillKind.fromRawType(invocation.rule.rawSkillType)
+    if (expectedKind == SkillKind.UNKNOWN || expectedKind != invocation.rule.skillKind) {
+        throw UnsupportedConfiguredBattleValueException(
+            BattleEffectDiagnostic(
+                code = EffectFailureCode.UNSUPPORTED_CONFIGURED_VALUE,
+                skillId = invocation.context.currentSkillId,
+                detailId = invocation.rule.detailId,
+                effectId = invocation.rule.effectId,
+                trigger = invocation.context.trigger,
+                callPath = invocation.callPath,
+                reason = "Unsupported action origin: skillKind=${invocation.rule.skillKind} " +
+                    "rawSkillType=${invocation.rule.rawSkillType}",
+            ),
+        )
+    }
+}
+
+private fun actionKindFor(effectId: Int): ActionEffectKind? =
+    when (effectId) {
+        504, 506 -> ActionEffectKind.GUARD
+        515 -> ActionEffectKind.IGNORE_EVADE
+        542 -> ActionEffectKind.STRATEGY_LIFE_STEAL
+        544, 744 -> ActionEffectKind.DOUBLE_ATTACK
+        545 -> ActionEffectKind.SECONDARY_ATTACK
+        546 -> ActionEffectKind.EXECUTION_ATTACK
+        551 -> ActionEffectKind.COUNTERATTACK
+        571, 771 -> ActionEffectKind.IGNORE_TROOP_COUNTER
+        581 -> ActionEffectKind.REDUCE_INHERENT_PREPARATION
+        761 -> ActionEffectKind.FIRST_ACTION
+        else -> null
+    }
+
+private fun statusFor(effectId: Int): BattleStatus? =
+    when (effectId) {
+        501, 701, 901 -> BattleStatus.CONFUSION
+        502, 702, 902 -> BattleStatus.HESITATION
+        511, 711 -> BattleStatus.INSIGHT
+        514, 714 -> BattleStatus.EVADE
+        515 -> BattleStatus.IGNORE_EVADE
+        544, 744 -> BattleStatus.DOUBLE_ATTACK
+        552, 752, 952 -> BattleStatus.DISARM
+        761 -> BattleStatus.FIRST_ACTION
+        else -> null
+    }
+
+private fun EffectInvocation.liveSourceHero(): BattleHero {
+    val ref = context.source
+    val entry = (if (ref.side == com.stzb.server.game.battle.Side.ATTACKER) {
+        context.request.attacker
+    } else {
+        context.request.defender
+    }).heroes.single { it.position == ref.position && it.id == ref.heroId }
+    if (SkillBattleViewCapability.LIVE_STATE !in context.battleView.capabilities) return entry
+    val state = requireNotNull(context.battleView.state(ref)) { "Missing live hero state for $ref" }
+    return entry.copy(
+        stats = state.stats,
+        troops = state.troops,
+        maxTroops = state.maxTroops,
+        activeStatuses = state.statuses,
+        morale = state.morale,
+    )
+}

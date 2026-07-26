@@ -24,6 +24,7 @@ enum class BattleStatus {
     DISARM,
     INSIGHT,
     EVADE,
+    IGNORE_EVADE,
     DOUBLE_ATTACK,
     FIRST_ACTION,
     EMERGENCY_RECOVERY,
@@ -160,6 +161,19 @@ data class BattleHeroRef(
     val side: Side,
     val position: Int,
     val heroId: BattleHeroId,
+)
+
+data class ActionPermission(
+    val canAct: Boolean = true,
+    val canCastActive: Boolean = true,
+    val canNormalAttack: Boolean = true,
+    val redirectTarget: BattleHeroRef? = null,
+    val normalAttackCount: Int = 1,
+    val grantsPursuitOpportunityPerNormal: Boolean = true,
+    val randomAllegiance: Boolean = false,
+    val counterattack: Boolean = false,
+    val secondaryAttack: Boolean = false,
+    val firstAction: Boolean = false,
 )
 
 sealed interface BattleEvent {
