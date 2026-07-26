@@ -66,6 +66,7 @@ sealed interface SkillCondition {
             HAS_CONFUSION_OR_BERSERK,
             HAS_CONTROL_STATUS,
             HAS_ONGOING_DAMAGE_STATUS,
+            MORALE_BELOW,
         }
     }
 
@@ -289,6 +290,9 @@ class SkillConditionInterpreter(
         builtInStatusTargetConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInMoraleTargetConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -360,6 +364,41 @@ class SkillConditionInterpreter(
         val precondition: Int,
         val condition: Int,
     )
+}
+
+private class BuiltInMoraleTargetConditionPlugin(
+    override val id: String,
+    ownedConditions: Set<SkillConditionCode>,
+) : SpecialSkillPlugin {
+    override val ownedConditions: Set<SkillConditionCode> =
+        Collections.unmodifiableSet(LinkedHashSet(ownedConditions))
+
+    override fun compile(
+        code: SkillConditionCode,
+        rule: SkillEffectRule,
+    ): List<SkillCondition> =
+        listOf(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.MORALE_BELOW,
+                code.value % 10_000,
+            ),
+        )
+}
+
+private fun builtInMoraleTargetConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter { it.field == SkillConditionField.CONDITION && it.value in MORALE_TARGET_CONDITIONS }
+        .filterNot(overridden::contains)
+        .toSet()
+    return if (codes.isEmpty()) {
+        emptyList()
+    } else {
+        listOf(BuiltInMoraleTargetConditionPlugin("builtin.target-morale", codes))
+    }
 }
 
 private class BuiltInStatusTargetConditionPlugin(
@@ -559,6 +598,7 @@ private val POSITION_PRECONDITIONS = setOf(-14, 14, 16)
 private val ROUND_CONDITIONS = setOf(104, 203, 205, 207, 303)
 private val TROOP_RATIO_CONDITIONS = setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
 private val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 7001)
+private val MORALE_TARGET_CONDITIONS = setOf(20160)
 
 private fun defaultPendingPlugins(
     graph: SkillRuleGraph,

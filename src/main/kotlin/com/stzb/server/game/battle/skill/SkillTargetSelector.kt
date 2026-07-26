@@ -70,6 +70,7 @@ class SkillTargetSelector {
             }
             .filter { target -> matchesPreconditionTarget(raw.precondition, context, target) }
             .filter { target -> matchesConditionTarget(raw.condition, context, target) }
+            .filter { target -> matchesMoraleConditionTarget(raw.condition, context, target) }
             .filter { target -> matchesCastConditionTarget(raw.castCondition, context, target) }
             .sortedWith(CLIENT_POSITION_ORDER)
 
@@ -286,6 +287,16 @@ class SkillTargetSelector {
             else -> error("Unsupported troop-ratio condition=$condition")
         }
     }
+
+    private fun matchesMoraleConditionTarget(
+        condition: Int,
+        context: SkillBattleContext,
+        target: BattleHeroRef,
+    ): Boolean =
+        when (condition) {
+            20160 -> morale(target, context) < 160
+            else -> true
+        }
 
     private fun matchesCastConditionTarget(
         castCondition: Int,

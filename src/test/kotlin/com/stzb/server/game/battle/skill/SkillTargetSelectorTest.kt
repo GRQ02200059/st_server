@@ -273,6 +273,22 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `condition 20160 retains targets below 160 morale`() {
+        val states = defaultStates().toMutableMap().apply {
+            put(allyBase, state(morale = 159))
+            put(allyMiddle, state(morale = 160))
+        }
+
+        assertEquals(
+            listOf(allyBase),
+            select(
+                rule(attackType = 13, selectType = 34, condition = 20160),
+                context(view(states = states, sourceRange = 5)),
+            ),
+        )
+    }
+
+    @Test
     fun `minimum and maximum selectors use live troops and four combat stats`() {
         val states = defaultStates().toMutableMap().apply {
             put(enemyBase, state(troops = 300, attack = 80, defense = 10, strategy = 70, speed = 40))

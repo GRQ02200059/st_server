@@ -85,7 +85,9 @@ class SkillConditionInterpreterTest {
             code.field == SkillConditionField.CONDITION &&
             code.value in setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060) ||
             code.field == SkillConditionField.CAST_CONDITION &&
-            code.value in setOf(500, 4000, 7001)
+            code.value in setOf(500, 4000, 7001) ||
+            code.field == SkillConditionField.CONDITION &&
+            code.value == 20160
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -239,6 +241,20 @@ class SkillConditionInterpreterTest {
                 SkillCondition.TargetPredicate.Kind.HAS_ONGOING_DAMAGE_STATUS,
             ),
             interpreter.compile(graph.detail(20024305)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `verified morale threshold compiles as target predicate`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.MORALE_BELOW,
+                160,
+            ),
+            interpreter.compile(graph.detail(20024101)).conditions.single(),
         )
     }
 
