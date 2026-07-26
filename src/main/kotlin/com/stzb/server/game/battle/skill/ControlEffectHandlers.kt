@@ -22,6 +22,8 @@ enum class ActionEffectKind {
     FIRST_ACTION,
 }
 
+private val PREPARATION_CANCELLING_IDS = setOf(501, 502, 701, 702, 901, 902)
+
 data class ActionEffectChange(
     val spec: PersistentEffectSpec,
     val kind: ActionEffectKind,
@@ -75,10 +77,6 @@ data class ScheduledEffectActivationChange(
                 skillId = spec.skillId,
             )
         }
-
-    private companion object {
-        val PREPARATION_CANCELLING_IDS = setOf(701, 702)
-    }
 }
 
 data class DamageRedirectionEffectChange(
@@ -361,7 +359,6 @@ private class ControlEffectHandler(
         const val DISARM_IMMUNITY_ID = 594
         val CLEANSE_IDS = setOf(513, 713)
         val DISPEL_IDS = setOf(512, 712)
-        val PREPARATION_CANCELLING_IDS = setOf(501, 502, 901, 902)
         const val DAMAGE_REDIRECTION_ID = 506
     }
 }

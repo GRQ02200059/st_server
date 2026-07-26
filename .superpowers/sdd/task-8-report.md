@@ -91,3 +91,33 @@ Result: `BUILD SUCCESSFUL`; 122 tests passed with zero failures.
 - Existing unrelated response/protocol worktree edits were left untouched and
   unstaged.
 - `git diff --check` passes.
+
+## Final delayed-control correction
+
+The final review found that delayed `901`/`902` used the immediate cancellation
+set while scheduled activation used a separate `701`/`702` set. A regression
+was added first and failed because delayed `901`/`902` cancelled while casting
+and emitted no scheduled activation.
+
+Both paths now share the single semantic set
+`501, 502, 701, 702, 901, 902`. Delay alone decides whether cancellation is
+emitted immediately or by `ScheduledEffectActivationChange.activationChanges`.
+The test rule helper accepts an explicit delay and its default mirrors the real
+row semantics, so synthetic delayed and explicit zero-delay cases cannot mask
+one another. Delayed `901`/`902` cancel exactly once at activation; zero-delay
+`901`/`902` cancel exactly once immediately.
+
+Focused and regression verification used:
+
+```bash
+./gradlew test --rerun-tasks \
+  --tests com.stzb.server.game.battle.skill.ControlEffectHandlersTest \
+  --tests com.stzb.server.game.battle.skill.BattleEffectStoreTest \
+  --tests com.stzb.server.game.battle.BattleSkillRuntimeTest \
+  --no-daemon \
+  -Dkotlin.compiler.execution.strategy=in-process \
+  -Pkotlin.incremental=false \
+  --no-build-cache --no-configuration-cache
+```
+
+Result: `BUILD SUCCESSFUL`; 59 tests passed with zero failures.

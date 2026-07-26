@@ -131,6 +131,59 @@ class ControlEffectHandlersTest {
     }
 
     @Test
+    fun `delayed 901 and 902 cancel preparation exactly once at activation`() {
+        setOf(901, 902).forEach { effectId ->
+            val realExecution = execute(effectId, BattleEffectStore())
+            assertEquals(
+                emptyList(),
+                realExecution.stateChanges.filterIsInstance<CancelPreparedSkillsChange>(),
+                "real effect=$effectId must not cancel while cast",
+            )
+            val realActivation = realExecution.stateChanges
+                .filterIsInstance<ScheduledEffectActivationChange>()
+                .single()
+                .activationChanges()
+            assertEquals(
+                1,
+                realActivation.filterIsInstance<CancelPreparedSkillsChange>().size,
+                "real effect=$effectId",
+            )
+
+            val syntheticRule = rule(effectId, delayRound = 2)
+            val syntheticExecution = registry(listOf(syntheticRule), BattleEffectStore())
+                .execute(syntheticRule, context(target))
+            assertEquals(
+                emptyList(),
+                syntheticExecution.stateChanges.filterIsInstance<CancelPreparedSkillsChange>(),
+                "synthetic effect=$effectId must not cancel while cast",
+            )
+            assertEquals(
+                1,
+                syntheticExecution.stateChanges
+                    .filterIsInstance<ScheduledEffectActivationChange>()
+                    .single()
+                    .activationChanges()
+                    .filterIsInstance<CancelPreparedSkillsChange>()
+                    .size,
+                "synthetic effect=$effectId",
+            )
+        }
+    }
+
+    @Test
+    fun `901 and 902 without delay cancel preparation immediately exactly once`() {
+        setOf(901, 902).forEach { effectId ->
+            val immediateRule = rule(effectId, delayRound = 0)
+            val changes = registry(listOf(immediateRule), BattleEffectStore())
+                .execute(immediateRule, context(target))
+                .stateChanges
+
+            assertEquals(1, changes.filterIsInstance<CancelPreparedSkillsChange>().size, "effect=$effectId")
+            assertTrue(changes.none { it is ScheduledEffectActivationChange }, "effect=$effectId")
+        }
+    }
+
+    @Test
     fun `delayed 7xx effects schedule activation and emit status only when activated`() {
         preparedIds.forEach { effectId ->
             val execution = execute(effectId, BattleEffectStore())
@@ -339,8 +392,10 @@ class ControlEffectHandlersTest {
         effectIds = rules.mapTo(mutableSetOf()) { it.effectId },
     )
 
-    private fun rule(effectId: Int): SkillEffectRule {
-        val prepared = effectId in setOf(701, 702, 703, 711, 712, 713, 714, 744, 752, 761, 771)
+    private fun rule(
+        effectId: Int,
+        delayRound: Int = realDelayRound(effectId),
+    ): SkillEffectRule {
         val beneficial = effectId in setOf(
             504, 506, 511, 513, 514, 515, 542, 544, 545, 546, 551, 571, 581, 594,
             711, 713, 714, 744, 761, 771,
@@ -361,7 +416,7 @@ class ControlEffectHandlersTest {
                 probabilityMax = 100,
                 attackMax = 1,
                 availableRounds = 2,
-                delayRound = if (prepared) 1 else 0,
+                delayRound = delayRound,
                 buffType = if (beneficial) 2 else 1,
                 effectName = "ignored",
             ),
@@ -447,6 +502,9 @@ class ControlEffectHandlersTest {
                 listOf(744, 752, 761, 771) + (901..903) + listOf(952)
             ).toSet()
         val preparedIds = setOf(701, 702, 703, 711, 712, 713, 714, 744, 752, 761, 771)
+
+        fun realDelayRound(effectId: Int): Int =
+            if (effectId in preparedIds || effectId in setOf(901, 902)) 1 else 0
 
         fun statusForTest(effectId: Int): BattleStatus? = when (effectId) {
             701 -> BattleStatus.CONFUSION
