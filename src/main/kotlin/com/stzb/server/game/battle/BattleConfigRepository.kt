@@ -36,6 +36,9 @@ data class HeroBattleConfig(
     val growth: BattleStats,
     val initialSkillId: Int,
     val qualityName: String,
+    val country: Int,
+    val sex: Int,
+    val heroType: Int,
 )
 
 data class SkillBattleConfig(
@@ -281,6 +284,9 @@ class BattleConfigRepository private constructor(
                         ),
                         initialSkillId = row.int("skill_init"),
                         qualityName = row["quality_name"].orEmpty(),
+                        country = row.int("country"),
+                        sex = row.int("sex"),
+                        heroType = row.int("hero_type"),
                     )
                 }
             val cfgRoot = projectRoot.resolve("server/assent/cfg")

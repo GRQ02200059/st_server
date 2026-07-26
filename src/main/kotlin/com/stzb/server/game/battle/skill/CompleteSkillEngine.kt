@@ -764,6 +764,24 @@ class DefaultCompleteSkillEngine private constructor(
             val state = SkillBattleState(
                 request,
                 runtime,
+                metadataProvider = { ref ->
+                    config.hero(ref.heroId.value)?.let { hero ->
+                        SkillBattleHeroMetadata(
+                            gender = when (hero.sex) {
+                                0 -> SkillHeroGender.MALE
+                                1 -> SkillHeroGender.FEMALE
+                                else -> SkillHeroGender.UNKNOWN
+                            },
+                            troopType = when (hero.heroType) {
+                                1 -> SkillTroopType.CAVALRY
+                                2 -> SkillTroopType.ARCHER
+                                3 -> SkillTroopType.INFANTRY
+                                else -> SkillTroopType.UNKNOWN
+                            },
+                            country = hero.country,
+                        )
+                    }
+                },
                 historyAdapter = history,
                 stateFilterMatcher = { _, _, _ -> true },
             )

@@ -20,6 +20,32 @@ class CompleteSkillEngineIntegrationTest {
     private val config = BattleConfigRepository.loadDefault()
 
     @Test
+    fun `production engine exposes client hero metadata to skill conditions`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100582, 100, listOf(200828), position = 2)),
+            ),
+            defender = BattleTeam(
+                listOf(hero(100003, 100, position = 2)),
+            ),
+            maxRounds = 1,
+        )
+
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+
+        assertTrue(SkillBattleViewCapability.HERO_METADATA in engine.state.view.capabilities)
+        assertEquals(
+            SkillBattleHeroMetadata(
+                gender = SkillHeroGender.MALE,
+                troopType = SkillTroopType.INFANTRY,
+                country = 3,
+            ),
+            engine.state.view.metadata(source),
+        )
+    }
+
+    @Test
     fun `safe production engine executes known conditions instead of suppressing every conditional detail`() {
         val request = BattleRequest(
             attacker = BattleTeam(
