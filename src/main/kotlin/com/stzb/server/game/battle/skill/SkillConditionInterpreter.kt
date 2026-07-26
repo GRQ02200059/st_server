@@ -138,6 +138,10 @@ sealed interface SkillCondition {
         val right: StatRef,
     ) : SkillCondition
 
+    data class ConfigBranch(
+        val enabled: Boolean,
+    ) : SkillCondition
+
     data class HasEffect(
         val subject: Subject,
         val effectId: Int,
@@ -208,6 +212,7 @@ class CompiledSkillCondition internal constructor(
                 is SkillCondition.AttackRange -> matchesAttackRange(condition, context)
                 is SkillCondition.FormationRoster -> matchesFormationRoster(condition, context)
                 is SkillCondition.StatComparison -> matchesStatComparison(condition, context)
+                is SkillCondition.ConfigBranch -> condition.enabled
                 is SkillCondition.HasEffect -> matchesEffect(condition, context)
                 is SkillCondition.HasStatus -> matchesStatus(condition, context)
                 is SkillCondition.TriggerCount -> matchesTriggerCount(condition, context)
@@ -431,6 +436,9 @@ class SkillConditionInterpreter(
         builtInAttributeConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInClientBranchConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -502,6 +510,50 @@ class SkillConditionInterpreter(
         val precondition: Int,
         val condition: Int,
     )
+}
+
+private class BuiltInClientBranchConditionPlugin(
+    override val id: String,
+    ownedConditions: Set<SkillConditionCode>,
+) : SpecialSkillPlugin {
+    override val ownedConditions: Set<SkillConditionCode> =
+        Collections.unmodifiableSet(LinkedHashSet(ownedConditions))
+
+    override fun compile(
+        code: SkillConditionCode,
+        rule: SkillEffectRule,
+    ): List<SkillCondition> =
+        listOf(
+            SkillCondition.ConfigBranch(
+                enabled = when {
+                    code.value.toString().startsWith(CURRENT_CLIENT_BRANCH_PREFIX) -> true
+                    code.value.toString().startsWith(LEGACY_CLIENT_BRANCH_PREFIX) -> false
+                    else -> error("Unsupported client branch condition $code")
+                },
+            ),
+        )
+}
+
+private fun builtInClientBranchConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter {
+            it.field == SkillConditionField.CAST_CONDITION &&
+                (
+                    it.value.toString().startsWith(CURRENT_CLIENT_BRANCH_PREFIX) ||
+                        it.value.toString().startsWith(LEGACY_CLIENT_BRANCH_PREFIX)
+                    )
+        }
+        .filterNot(overridden::contains)
+        .toSet()
+    return if (codes.isEmpty()) {
+        emptyList()
+    } else {
+        listOf(BuiltInClientBranchConditionPlugin("builtin.client-balance-branch", codes))
+    }
 }
 
 private class BuiltInAttributeConditionPlugin(
@@ -955,6 +1007,8 @@ private val ATTRIBUTE_CAST_CONDITIONS =
         6207, 6306, 11079, 11099, 12080, 12100, 14100,
     )
 private const val FORMATION_HERO_COUNT = 3
+private const val CURRENT_CLIENT_BRANCH_PREFIX = "127"
+private const val LEGACY_CLIENT_BRANCH_PREFIX = "227"
 
 private fun defaultPendingPlugins(
     graph: SkillRuleGraph,

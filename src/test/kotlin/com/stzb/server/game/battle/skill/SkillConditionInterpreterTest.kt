@@ -87,6 +87,11 @@ class SkillConditionInterpreterTest {
                 1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013,
                 6207, 6306, 11079, 11099, 12080, 12100, 14100,
             ) ||
+            code.field == SkillConditionField.CAST_CONDITION &&
+            (
+                code.value.toString().startsWith("127") ||
+                    code.value.toString().startsWith("227")
+                ) ||
             code.field == SkillConditionField.CONDITION &&
             code.value in setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060) ||
             code.field == SkillConditionField.CAST_CONDITION &&
@@ -438,6 +443,39 @@ class SkillConditionInterpreterTest {
         expected.forEach { (detailId, predicate) ->
             assertTrue(predicate in interpreter.compile(graph.detail(detailId)).conditions)
         }
+    }
+
+    @Test
+    fun `client balance branch conditions enable current 127 and disable legacy 227`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = true),
+            interpreter.compile(graph.detail(20000511)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = false),
+            interpreter.compile(graph.detail(20000501)).conditions.single(),
+        )
+        assertTrue(
+            interpreter.matches(
+                graph.detail(20000511),
+                trigger(),
+                context(),
+            ),
+        )
+        assertFalse(
+            interpreter.matches(
+                graph.detail(20000501),
+                trigger(),
+                context(),
+            ),
+        )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = true),
+            interpreter.compile(graph.detail(21267701)).conditions.single(),
+        )
     }
 
     @Test
