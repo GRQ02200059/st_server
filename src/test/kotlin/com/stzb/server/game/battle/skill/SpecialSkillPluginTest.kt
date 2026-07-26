@@ -74,7 +74,13 @@ class SpecialSkillPluginTest {
                     6207, 6306, 11079, 11099, 12080, 12100, 14100,
                 ) ||
                 it.field == SkillConditionField.CAST_CONDITION &&
-                (it.value.toString().startsWith("127") || it.value.toString().startsWith("227"))
+                (
+                    it.value.toString().startsWith("127") ||
+                        it.value.toString().startsWith("227") ||
+                        it.value in setOf(
+                            130005101, 230005101, 130005205, 130005301, 230005301,
+                        )
+                    )
         }
         assertEquals(
             (ScopedConditionCodeCatalog.codes - resolvedTargetCodes)

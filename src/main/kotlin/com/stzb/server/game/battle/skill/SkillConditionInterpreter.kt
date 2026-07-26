@@ -528,6 +528,8 @@ private class BuiltInClientBranchConditionPlugin(
                 enabled = when {
                     code.value.toString().startsWith(CURRENT_CLIENT_BRANCH_PREFIX) -> true
                     code.value.toString().startsWith(LEGACY_CLIENT_BRANCH_PREFIX) -> false
+                    code.value in CURRENT_PARAMETER_BRANCHES -> true
+                    code.value in LEGACY_PARAMETER_BRANCHES -> false
                     else -> error("Unsupported client branch condition $code")
                 },
             ),
@@ -544,7 +546,9 @@ private fun builtInClientBranchConditionPlugins(
             it.field == SkillConditionField.CAST_CONDITION &&
                 (
                     it.value.toString().startsWith(CURRENT_CLIENT_BRANCH_PREFIX) ||
-                        it.value.toString().startsWith(LEGACY_CLIENT_BRANCH_PREFIX)
+                        it.value.toString().startsWith(LEGACY_CLIENT_BRANCH_PREFIX) ||
+                        it.value in CURRENT_PARAMETER_BRANCHES ||
+                        it.value in LEGACY_PARAMETER_BRANCHES
                     )
         }
         .filterNot(overridden::contains)
@@ -1009,6 +1013,8 @@ private val ATTRIBUTE_CAST_CONDITIONS =
 private const val FORMATION_HERO_COUNT = 3
 private const val CURRENT_CLIENT_BRANCH_PREFIX = "127"
 private const val LEGACY_CLIENT_BRANCH_PREFIX = "227"
+private val CURRENT_PARAMETER_BRANCHES = setOf(230005101, 130005205, 230005301)
+private val LEGACY_PARAMETER_BRANCHES = setOf(130005101, 130005301)
 
 private fun defaultPendingPlugins(
     graph: SkillRuleGraph,

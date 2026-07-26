@@ -90,7 +90,10 @@ class SkillConditionInterpreterTest {
             code.field == SkillConditionField.CAST_CONDITION &&
             (
                 code.value.toString().startsWith("127") ||
-                    code.value.toString().startsWith("227")
+                    code.value.toString().startsWith("227") ||
+                    code.value in setOf(
+                        130005101, 230005101, 130005205, 130005301, 230005301,
+                    )
                 ) ||
             code.field == SkillConditionField.CONDITION &&
             code.value in setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060) ||
@@ -475,6 +478,37 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.ConfigBranch(enabled = true),
             interpreter.compile(graph.detail(21267701)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `current parameter branches enable 230 and recurring 130205 only`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = true),
+            interpreter.compile(graph.detail(20018401)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = false),
+            interpreter.compile(graph.detail(20018405)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = true),
+            interpreter.compile(graph.detail(20019401)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = false),
+            interpreter.compile(graph.detail(20019403)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = true),
+            interpreter.compile(graph.detail(20064303)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = true),
+            interpreter.compile(graph.detail(21064301)).conditions.single(),
         )
     }
 
