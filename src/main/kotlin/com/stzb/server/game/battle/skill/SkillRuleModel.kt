@@ -7,6 +7,7 @@ import java.util.Collections
 data class SkillRule(
     val skillId: Int,
     val kind: SkillKind,
+    val rawSkillType: Int,
     val probability: Int,
     val prepareRounds: Int,
     val hitRange: Int?,

@@ -27,6 +27,20 @@ class SkillRuleCatalogTest {
     }
 
     @Test
+    fun `rule identity preserves raw skill type without collapsing unknown values`() {
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200012, 270012),
+                learnableSaSkillIds = emptySet(),
+            ),
+            com.stzb.server.game.battle.BattleConfigRepository.loadDefault(),
+        )
+
+        assertEquals(3, graph.rule(200012)?.rawSkillType)
+        assertEquals(14, graph.rule(270012)?.rawSkillType)
+    }
+
+    @Test
     fun `recursive child skill path reports exact cycle`() {
         val graph = fakeGraph(1 to listOf(2), 2 to listOf(1))
 
@@ -182,6 +196,7 @@ class SkillRuleCatalogTest {
     private fun rule(skillId: Int, details: List<SkillEffectRule>) = SkillRule(
         skillId = skillId,
         kind = SkillKind.ACTIVE,
+        rawSkillType = 3,
         probability = 100,
         prepareRounds = 0,
         hitRange = null,

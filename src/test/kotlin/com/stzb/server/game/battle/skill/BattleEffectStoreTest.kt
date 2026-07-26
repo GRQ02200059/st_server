@@ -67,6 +67,7 @@ class BattleEffectStoreTest {
             store.apply(effect(replaceType = 0, maxStacks = 2, remainingRounds = 2)).outcome,
         )
         assertEquals(2, store.effectsFor(target).single().stacks)
+        assertEquals(20, store.effectsFor(target).single().effectiveStrength)
         assertEquals(
             EffectApplyOutcome.REFRESHED,
             store.apply(effect(replaceType = 0, maxStacks = 2, remainingRounds = 4)).outcome,
@@ -76,7 +77,7 @@ class BattleEffectStoreTest {
     }
 
     @Test
-    fun `reject and unconditional refresh policies are explicit`() {
+    fun `raw non stacking policies reject rather than replace`() {
         val rejectStore = BattleEffectStore()
         rejectStore.apply(effect(replaceType = 1, strength = 10))
         assertEquals(
@@ -84,14 +85,192 @@ class BattleEffectStoreTest {
             rejectStore.apply(effect(replaceType = 1, effectId = 522, strength = 30)).outcome,
         )
 
-        val refreshStore = BattleEffectStore()
-        refreshStore.apply(effect(replaceType = 3, strength = 30))
-        val refreshed = refreshStore.apply(
+        val anyTypeStore = BattleEffectStore()
+        anyTypeStore.apply(effect(replaceType = 3, strength = 30))
+        val rejected = anyTypeStore.apply(
             effect(replaceType = 3, effectId = 522, strength = 10, remainingRounds = 4),
         )
-        assertEquals(EffectApplyOutcome.REPLACED, refreshed.outcome)
-        assertEquals(10, refreshStore.effectsFor(target).single().strength)
-        assertEquals(4, refreshStore.effectsFor(target).single().remainingRounds)
+        assertEquals(EffectApplyOutcome.REJECTED, rejected.outcome)
+        assertEquals(30, anyTypeStore.effectsFor(target).single().strength)
+        assertEquals(2, anyTypeStore.effectsFor(target).single().remainingRounds)
+    }
+
+    @Test
+    fun `same type non stacking policy rejects stronger equal and weaker effects from every origin`() {
+        listOf(source, otherSource).forEach { incomingSource ->
+            listOf(9, 10, 11).forEach { incomingStrength ->
+                val store = BattleEffectStore()
+                store.apply(effect(replaceType = 1, strength = 10))
+
+                assertEquals(
+                    EffectApplyOutcome.REJECTED,
+                    store.apply(
+                        effect(
+                            source = incomingSource,
+                            replaceType = 1,
+                            strength = incomingStrength,
+                        ),
+                    ).outcome,
+                )
+                assertEquals(source, store.effectsFor(target).single().source)
+                assertEquals(10, store.effectsFor(target).single().strength)
+            }
+        }
+    }
+
+    @Test
+    fun `any type non stacking policy rejects stronger equal and weaker effects across raw skill types`() {
+        listOf(source, otherSource).forEach { incomingSource ->
+            listOf(9, 10, 11).forEach { incomingStrength ->
+                val store = BattleEffectStore()
+                store.apply(effect(replaceType = 3, strength = 10, sourceSkillType = 3))
+
+                assertEquals(
+                    EffectApplyOutcome.REJECTED,
+                    store.apply(
+                        effect(
+                            source = incomingSource,
+                            replaceType = 3,
+                            strength = incomingStrength,
+                            sourceSkillType = 14,
+                        ),
+                    ).outcome,
+                )
+                assertEquals(3, store.effectsFor(target).single().sourceSkillType)
+                assertEquals(10, store.effectsFor(target).single().strength)
+            }
+        }
+    }
+
+    @Test
+    fun `stacking requires the exact hero and root and current skill origin`() {
+        val store = BattleEffectStore()
+        store.apply(effect(replaceType = 0, maxStacks = 4))
+
+        assertEquals(
+            EffectApplyOutcome.STACKED,
+            store.apply(effect(replaceType = 0, maxStacks = 4)).outcome,
+        )
+        assertEquals(
+            EffectApplyOutcome.REJECTED,
+            store.apply(effect(source = otherSource, replaceType = 0, maxStacks = 4)).outcome,
+        )
+        assertEquals(
+            EffectApplyOutcome.REJECTED,
+            store.apply(effect(skillId = 101, replaceType = 0, maxStacks = 4)).outcome,
+        )
+        assertEquals(2, store.effectsFor(target).single().stacks)
+    }
+
+    @Test
+    fun `stacking aggregates unequal layer strengths`() {
+        val store = BattleEffectStore()
+        store.apply(effect(replaceType = 0, maxStacks = 3, strength = 10))
+
+        store.apply(effect(replaceType = 0, maxStacks = 3, strength = 15))
+
+        assertEquals(25, store.effectsFor(target).single().effectiveStrength)
+    }
+
+    @Test
+    fun `stacking accepts weaker equal and stronger layers only from the exact origin`() {
+        val store = BattleEffectStore()
+        store.apply(effect(replaceType = 0, maxStacks = 4, strength = 10))
+
+        listOf(9, 10, 11).forEach { layerStrength ->
+            assertEquals(
+                EffectApplyOutcome.STACKED,
+                store.apply(
+                    effect(replaceType = 0, maxStacks = 4, strength = layerStrength),
+                ).outcome,
+            )
+        }
+        assertEquals(40, store.effectsFor(target).single().effectiveStrength)
+
+        listOf(9, 10, 11).forEach { layerStrength ->
+            assertEquals(
+                EffectApplyOutcome.REJECTED,
+                store.apply(
+                    effect(
+                        source = otherSource,
+                        replaceType = 0,
+                        maxStacks = 4,
+                        strength = layerStrength,
+                    ),
+                ).outcome,
+            )
+        }
+    }
+
+    @Test
+    fun `equal strongest effect refreshes only for the exact origin`() {
+        val sameOrigin = BattleEffectStore()
+        sameOrigin.apply(effect(strength = 20, remainingRounds = 1))
+        assertEquals(
+            EffectApplyOutcome.REFRESHED,
+            sameOrigin.apply(effect(strength = 20, remainingRounds = 3)).outcome,
+        )
+
+        val otherHero = BattleEffectStore()
+        otherHero.apply(effect(strength = 20, remainingRounds = 1))
+        assertEquals(
+            EffectApplyOutcome.REJECTED,
+            otherHero.apply(effect(source = otherSource, strength = 20, remainingRounds = 3)).outcome,
+        )
+
+        val otherSkill = BattleEffectStore()
+        otherSkill.apply(effect(strength = 20, remainingRounds = 1))
+        assertEquals(
+            EffectApplyOutcome.REJECTED,
+            otherSkill.apply(effect(skillId = 101, strength = 20, remainingRounds = 3)).outcome,
+        )
+        assertEquals(source, otherHero.effectsFor(target).single().source)
+        assertEquals(100, otherSkill.effectsFor(target).single().skillId)
+    }
+
+    @Test
+    fun `strongest policy handles stronger equal and weaker effects across sources without hybrid attribution`() {
+        val store = BattleEffectStore()
+        store.apply(effect(strength = 20, remainingRounds = 1))
+
+        assertEquals(
+            EffectApplyOutcome.REJECTED,
+            store.apply(effect(source = otherSource, strength = 19, remainingRounds = 5)).outcome,
+        )
+        assertEquals(
+            EffectApplyOutcome.REJECTED,
+            store.apply(effect(source = otherSource, strength = 20, remainingRounds = 5)).outcome,
+        )
+        assertEquals(
+            EffectApplyOutcome.REPLACED,
+            store.apply(effect(source = otherSource, strength = 21, remainingRounds = 5)).outcome,
+        )
+        val active = store.effectsFor(target).single()
+        assertEquals(otherSource, active.source)
+        assertEquals(21, active.strength)
+        assertEquals(5, active.remainingRounds)
+        assertTrue(store.clear(target, 511, source).removed.isEmpty())
+        assertEquals(listOf(511), store.clear(target, 511, otherSource).removed.map { it.effectId })
+    }
+
+    @Test
+    fun `hit consumption remains source qualified after strongest replacement`() {
+        val store = BattleEffectStore()
+        store.apply(effect(strength = 10, remainingRounds = null, remainingHits = 1))
+        store.apply(
+            effect(
+                source = otherSource,
+                strength = 20,
+                remainingRounds = null,
+                remainingHits = 1,
+            ),
+        )
+
+        assertTrue(store.consumeHit(target, 511, source).expired.isEmpty())
+        assertEquals(
+            listOf(otherSource),
+            store.consumeHit(target, 511, otherSource).expired.map { it.source },
+        )
     }
 
     @Test
@@ -100,11 +279,37 @@ class BattleEffectStoreTest {
         store.apply(effect())
         store.apply(effect(effectId = 521, conflict = 52))
         store.apply(effect(effectId = 531, category = EffectCategory.BENEFICIAL))
-        store.apply(effect(effectId = 532, skillKind = SkillKind.COMMAND))
+        store.apply(effect(effectId = 532, skillKind = SkillKind.COMMAND, sourceSkillType = 2))
         store.apply(effect(effectId = 533, target = otherTarget))
 
         assertEquals(4, store.effectsFor(target).size)
         assertEquals(1, store.effectsFor(otherTarget).size)
+    }
+
+    @Test
+    fun `raw source skill types never collapse through the UNKNOWN enum bucket`() {
+        val store = BattleEffectStore()
+        store.apply(effect(sourceSkillType = 3))
+        store.apply(effect(effectId = 512, sourceSkillType = 14))
+
+        assertEquals(setOf(3, 14), store.effectsFor(target).map { it.sourceSkillType }.toSet())
+    }
+
+    @Test
+    fun `unknown source skill kind fails before insertion`() {
+        assertFailsWith<IllegalArgumentException> {
+            effect(skillKind = SkillKind.UNKNOWN, sourceSkillType = 14)
+        }
+    }
+
+    @Test
+    fun `zero conflict group uses effect detail and origin identity instead of becoming global`() {
+        val store = BattleEffectStore()
+        store.apply(effect(conflict = 0, effectId = 511, detailId = 1001))
+        store.apply(effect(conflict = 0, effectId = 512, detailId = 1002))
+        store.apply(effect(conflict = 0, effectId = 511, detailId = 1001, source = otherSource))
+
+        assertEquals(3, store.effectsFor(target).size)
     }
 
     @Test
@@ -199,6 +404,8 @@ class BattleEffectStoreTest {
     fun `invalid negative or zero lifecycle values fail fast`() {
         assertFailsWith<IllegalArgumentException> { effect(remainingRounds = -1) }
         assertFailsWith<IllegalArgumentException> { effect(remainingHits = -1) }
+        assertFailsWith<IllegalArgumentException> { effect(remainingRounds = 0) }
+        assertFailsWith<IllegalArgumentException> { effect(remainingHits = 0) }
         assertFailsWith<IllegalArgumentException> { effect(maxStacks = 0) }
         assertFailsWith<IllegalArgumentException> { effect(stacks = 0) }
         assertFailsWith<IllegalArgumentException> { effect(stacks = 2, maxStacks = 1) }
@@ -234,6 +441,7 @@ class BattleEffectStoreTest {
         rootSkillId: Int = 100,
         skillId: Int = 100,
         skillKind: SkillKind = SkillKind.ACTIVE,
+        sourceSkillType: Int = 3,
         detailId: Int = 1001,
         effectId: Int = 511,
         category: EffectCategory = EffectCategory.HARMFUL,
@@ -253,6 +461,7 @@ class BattleEffectStoreTest {
         rootSkillId = rootSkillId,
         skillId = skillId,
         skillKind = skillKind,
+        sourceSkillType = sourceSkillType,
         detailId = detailId,
         effectId = effectId,
         category = category,

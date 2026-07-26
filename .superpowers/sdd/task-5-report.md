@@ -116,3 +116,98 @@ incoming lifecycle dimensions exactly.
 - The store intentionally remains independent of the engine. A later task
   must decide precisely when engine events call round ticking, hit
   consumption, and clearing.
+
+## Review fixes
+
+### Raw evidence
+
+- `stzbBattleSimulator-main/src/battle/battleHero.js` around lines 976-1028
+  defines state conflict limits as `1 = same-type non-stacking`,
+  `2 = strongest value wins`, and `3 = any-type non-stacking`. Its stack
+  branch requires the exact source skill object and exact source hero, then
+  adds the incoming value.
+- The client `skill_effect_table.csv` contains every raw `replace_type` from
+  0 through 3. Type 3 is now rejection/non-stacking rather than unconditional
+  replacement.
+- `skill_table.csv` contains raw `skill_type=14` and the scoped graph reaches
+  it. `rawSkillType` is now preserved by `SkillBattleConfig`, `SkillRule`, and
+  `ActiveSkillEffect`; `SkillKind.UNKNOWN` cannot be inserted into the effect
+  store.
+- Every one of the 12,694 rows in `skill_detail_table.csv` has
+  `buff_type=0`. Zero is therefore treated as unset: its fallback conflict
+  identity includes exact detail/effect and origin rather than forming one
+  global conflict group.
+
+### Review TDD RED
+
+Lifecycle command:
+
+```bash
+./gradlew test --rerun-tasks \
+  --tests 'com.stzb.server.game.battle.skill.BattleEffectStoreTest.invalid negative or zero lifecycle values fail fast' \
+  --no-daemon \
+  -Dkotlin.compiler.execution.strategy=in-process \
+  -Pkotlin.incremental=false
+```
+
+Result: expected assertion failure because zero rounds/hits were accepted by
+model construction.
+
+Store regression command:
+
+```bash
+./gradlew test --rerun-tasks \
+  --tests com.stzb.server.game.battle.skill.BattleEffectStoreTest \
+  --no-daemon \
+  -Dkotlin.compiler.execution.strategy=in-process \
+  -Pkotlin.incremental=false
+```
+
+Result: expected compile failure for missing `sourceSkillType` and
+`effectiveStrength`.
+
+Raw type command:
+
+```bash
+./gradlew test --rerun-tasks \
+  --tests com.stzb.server.game.battle.BattleConfigRepositoryTest \
+  --tests com.stzb.server.game.battle.skill.SkillRuleCatalogTest \
+  --no-daemon \
+  -Dkotlin.compiler.execution.strategy=in-process \
+  -Pkotlin.incremental=false
+```
+
+Result: expected compile failure for missing `rawSkillType` on config and
+rule models.
+
+### Review GREEN
+
+Command:
+
+```bash
+./gradlew test --rerun-tasks \
+  --tests com.stzb.server.game.battle.skill.BattleEffectStoreTest \
+  --tests com.stzb.server.game.battle.BattleEffectStateTest \
+  --tests com.stzb.server.game.battle.skill.SkillRuleCatalogTest \
+  --tests com.stzb.server.game.battle.BattleConfigRepositoryTest \
+  --no-daemon \
+  -Dkotlin.compiler.execution.strategy=in-process \
+  -Pkotlin.incremental=false
+```
+
+Result: `BUILD SUCCESSFUL`; 45 tests passed with zero failures:
+
+- `BattleEffectStoreTest`: 25
+- `BattleEffectStateTest`: 3
+- `SkillRuleCatalogTest`: 8
+- `BattleConfigRepositoryTest`: 9
+
+The review regressions cover the full stronger/equal/weaker policy matrix,
+same versus different hero/skill/type origins, aggregate stack strength,
+source-qualified clear and hit consumption after replacement, non-global
+zero conflict groups, lossless raw types, `UNKNOWN` rejection, and
+construction-time rejection of zero lifecycle values.
+
+## Updated status
+
+DONE

@@ -31,6 +31,7 @@ class BattleConfigRepositoryTest {
         assertNotNull(skill)
         assertEquals("辕门射戟", skill.name)
         assertEquals(SkillKind.ACTIVE, skill.kind)
+        assertEquals(3, skill.rawSkillType)
         assertEquals(35, skill.probabilityMax)
         assertEquals(5, skill.hitRange)
         assertEquals(20001212, skill.mainDetailId)
@@ -38,6 +39,15 @@ class BattleConfigRepositoryTest {
         assertEquals(3, skill.mainDetail?.attackMax)
         assertEquals(301, skill.mainEffect?.effectId)
         assertEquals("攻击伤害", skill.mainEffect?.name)
+    }
+
+    @Test
+    fun `preserves raw skill type outside the four battle categories`() {
+        val copiedSkill = repo.skill(270012)
+
+        assertNotNull(copiedSkill)
+        assertEquals(14, copiedSkill.rawSkillType)
+        assertEquals(SkillKind.UNKNOWN, copiedSkill.kind)
     }
 
     @Test

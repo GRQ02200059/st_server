@@ -30,6 +30,7 @@ data class SkillBattleConfig(
     val id: Int,
     val name: String,
     val kind: SkillKind,
+    val rawSkillType: Int,
     val hitRange: Int?,
     val prepareRounds: Int,
     val probabilityInit: Int,
@@ -177,12 +178,14 @@ class BattleConfigRepository private constructor(
             val skills = Csv.read(projectRoot.resolve("skill_table.csv"))
                 .associate { row ->
                     val skillId = row.int("skill_id")
+                    val rawSkillType = row.int("skill_type")
                     val mainDetail = row.int("main_detail")
                     val detail = details[mainDetail]
                     skillId to SkillBattleConfig(
                         id = skillId,
                         name = row["name"].orEmpty(),
-                        kind = parseSkillKind(row.int("skill_type"), row["name"].orEmpty()),
+                        kind = parseSkillKind(rawSkillType, row["name"].orEmpty()),
+                        rawSkillType = rawSkillType,
                         hitRange = row.intOrNull("hit_range")?.takeIf { it > 0 },
                         prepareRounds = row.int("prepare"),
                         probabilityInit = row.int("probability_init"),

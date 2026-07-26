@@ -34,10 +34,6 @@ class BattleEffectStore {
 
     fun apply(effect: ActiveSkillEffect): EffectApplyResult {
         val incoming = effect.snapshot()
-        if (incoming.isAlreadyExpired()) {
-            return applyResult(EffectApplyOutcome.REJECTED, null)
-        }
-
         val effects = active.getOrPut(incoming.target) { mutableListOf() }
         val conflict = effects.firstOrNull { it.conflictsWith(incoming) }
         if (conflict == null) {
@@ -46,10 +42,16 @@ class BattleEffectStore {
         }
 
         return when (incoming.replaceType) {
-            STACK -> stackOrRefresh(conflict, incoming)
+            STACK -> {
+                if (conflict.sameOrigin(incoming)) {
+                    stackOrRefresh(conflict, incoming)
+                } else {
+                    applyResult(EffectApplyOutcome.REJECTED, conflict)
+                }
+            }
             KEEP_EXISTING -> applyResult(EffectApplyOutcome.REJECTED, conflict)
             REPLACE_BY_STRENGTH -> replaceByStrength(effects, conflict, incoming)
-            REPLACE_ALWAYS -> replace(effects, conflict, incoming)
+            KEEP_EXISTING_ACROSS_SKILL_TYPES -> applyResult(EffectApplyOutcome.REJECTED, conflict)
             else -> error("ActiveSkillEffect validates replaceType")
         }
     }
@@ -77,11 +79,11 @@ class BattleEffectStore {
                     effects.remove(effect)
                     expired += effect
                 } else {
-                    effect.remainingHits?.let { effect.remainingHits = it - 1 }
-                    if (effect.remainingHits == 0) {
+                    if (effect.remainingHits == 1) {
                         effects.remove(effect)
                         expired += effect
                     } else {
+                        effect.remainingHits?.let { effect.remainingHits = it - 1 }
                         updated += effect
                     }
                 }
@@ -99,11 +101,11 @@ class BattleEffectStore {
         val expired = mutableListOf<ActiveSkillEffect>()
         active.values.forEach { effects ->
             effects.toList().forEach { effect ->
-                effect.remainingRounds?.let { effect.remainingRounds = it - 1 }
-                if (effect.remainingRounds == 0) {
+                if (effect.remainingRounds == 1) {
                     effects.remove(effect)
                     expired += effect
                 } else if (effect.remainingRounds != null) {
+                    effect.remainingRounds = effect.remainingRounds!! - 1
                     updated += effect
                 }
             }
@@ -152,7 +154,10 @@ class BattleEffectStore {
         incoming: ActiveSkillEffect,
     ): EffectApplyResult {
         val stacked = existing.stacks < existing.maxStacks
-        if (stacked) existing.stacks++
+        if (stacked) {
+            existing.stacks++
+            existing.aggregateStrength += incoming.strength
+        }
         refreshLifecycle(existing, incoming)
         return applyResult(
             if (stacked) EffectApplyOutcome.STACKED else EffectApplyOutcome.REFRESHED,
@@ -166,10 +171,14 @@ class BattleEffectStore {
         incoming: ActiveSkillEffect,
     ): EffectApplyResult =
         when {
-            incoming.strength > existing.strength -> replace(effects, existing, incoming)
-            incoming.strength == existing.strength -> {
-                refreshLifecycle(existing, incoming)
-                applyResult(EffectApplyOutcome.REFRESHED, existing)
+            incoming.effectiveStrength > existing.effectiveStrength -> replace(effects, existing, incoming)
+            incoming.effectiveStrength == existing.effectiveStrength -> {
+                if (existing.sameOrigin(incoming)) {
+                    refreshLifecycle(existing, incoming)
+                    applyResult(EffectApplyOutcome.REFRESHED, existing)
+                } else {
+                    applyResult(EffectApplyOutcome.REJECTED, existing)
+                }
             }
             else -> applyResult(EffectApplyOutcome.REJECTED, existing)
         }
@@ -199,11 +208,26 @@ class BattleEffectStore {
     private fun ActiveSkillEffect.conflictsWith(other: ActiveSkillEffect): Boolean =
         target == other.target &&
             category == other.category &&
-            conflict == other.conflict &&
-            skillKind == other.skillKind
+            sameConflictIdentity(other) &&
+            (replaceType == KEEP_EXISTING_ACROSS_SKILL_TYPES ||
+                other.replaceType == KEEP_EXISTING_ACROSS_SKILL_TYPES ||
+                sourceSkillType == other.sourceSkillType)
 
-    private fun ActiveSkillEffect.isAlreadyExpired(): Boolean =
-        remainingRounds == 0 || remainingHits == 0
+    private fun ActiveSkillEffect.sameConflictIdentity(other: ActiveSkillEffect): Boolean =
+        when {
+            conflict != 0 || other.conflict != 0 -> conflict == other.conflict
+            else -> detailId == other.detailId &&
+                effectId == other.effectId &&
+                sameOrigin(other)
+        }
+
+    private fun ActiveSkillEffect.sameOrigin(other: ActiveSkillEffect): Boolean =
+        source == other.source &&
+            rootSkillId == other.rootSkillId &&
+            skillId == other.skillId &&
+            sourceSkillType == other.sourceSkillType &&
+            detailId == other.detailId &&
+            effectId == other.effectId
 
     private fun removeTargetIfEmpty(target: BattleHeroRef) {
         if (active[target].isNullOrEmpty()) active.remove(target)
@@ -248,7 +272,7 @@ class BattleEffectStore {
         const val STACK = 0
         const val KEEP_EXISTING = 1
         const val REPLACE_BY_STRENGTH = 2
-        const val REPLACE_ALWAYS = 3
+        const val KEEP_EXISTING_ACROSS_SKILL_TYPES = 3
         const val UNBOUND = 0
     }
 }

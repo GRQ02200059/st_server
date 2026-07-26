@@ -261,6 +261,7 @@ data class ActiveSkillEffect(
     val rootSkillId: Int,
     val skillId: Int,
     val skillKind: SkillKind,
+    val sourceSkillType: Int,
     val detailId: Int,
     val effectId: Int,
     val category: EffectCategory,
@@ -274,19 +275,25 @@ data class ActiveSkillEffect(
     var remainingHits: Int?,
     val clearPerHit: Boolean,
     val clearable: Boolean = true,
+    var aggregateStrength: Int = strength * stacks,
 ) {
+    val effectiveStrength: Int
+        get() = aggregateStrength
+
     init {
+        require(skillKind != SkillKind.UNKNOWN) { "UNKNOWN skill kind cannot produce an active effect" }
+        require(sourceSkillType > 0) { "sourceSkillType must preserve a positive raw skill_type" }
         require(replaceType in 0..3) { "Unsupported replace_type=$replaceType" }
         require(bindFlag >= 0) { "bindFlag must not be negative: $bindFlag" }
         require(maxStacks > 0) { "maxStacks must be positive: $maxStacks" }
         require(stacks in 1..maxStacks) {
             "stacks must be within 1..maxStacks: stacks=$stacks maxStacks=$maxStacks"
         }
-        require(remainingRounds == null || remainingRounds!! >= 0) {
-            "remainingRounds must not be negative: $remainingRounds"
+        require(remainingRounds == null || remainingRounds!! > 0) {
+            "remainingRounds must be positive when present: $remainingRounds"
         }
-        require(remainingHits == null || remainingHits!! >= 0) {
-            "remainingHits must not be negative: $remainingHits"
+        require(remainingHits == null || remainingHits!! > 0) {
+            "remainingHits must be positive when present: $remainingHits"
         }
     }
 }

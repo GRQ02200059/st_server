@@ -22,6 +22,7 @@ object SkillRuleCatalog {
             rules[skillId] = SkillRule(
                 skillId = skill.id,
                 kind = skill.kind,
+                rawSkillType = skill.rawSkillType,
                 probability = skill.probabilityMax,
                 prepareRounds = skill.prepareRounds,
                 hitRange = skill.hitRange,
