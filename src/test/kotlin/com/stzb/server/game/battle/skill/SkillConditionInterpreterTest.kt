@@ -87,7 +87,7 @@ class SkillConditionInterpreterTest {
             code.field == SkillConditionField.CAST_CONDITION &&
             code.value in setOf(500, 4000, 7001) ||
             code.field == SkillConditionField.CONDITION &&
-            code.value == 20160
+            code.value in setOf(20160, 32002, 32011, 18306)
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -255,6 +255,25 @@ class SkillConditionInterpreterTest {
                 160,
             ),
             interpreter.compile(graph.detail(20024101)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `verified attack range and hex conditions compile to typed semantics`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.AttackRange(Comparison.GREATER_THAN, 1),
+            interpreter.compile(graph.detail(20025801)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.AttackRange(Comparison.LESS_THAN_OR_EQUAL, 1),
+            interpreter.compile(graph.detail(20025803)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(SkillCondition.TargetPredicate.Kind.HAS_HEX),
+            interpreter.compile(graph.detail(20079534)).conditions.single(),
         )
     }
 

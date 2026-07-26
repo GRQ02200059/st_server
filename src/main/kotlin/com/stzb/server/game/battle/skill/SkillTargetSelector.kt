@@ -71,7 +71,9 @@ class SkillTargetSelector {
             .filter { target -> matchesPreconditionTarget(raw.precondition, context, target) }
             .filter { target -> matchesConditionTarget(raw.condition, context, target) }
             .filter { target -> matchesMoraleConditionTarget(raw.condition, context, target) }
-            .filter { target -> matchesCastConditionTarget(raw.castCondition, context, target) }
+            .filter { target ->
+                matchesStatusConditionTarget(raw.castCondition, raw.condition, context, target)
+            }
             .sortedWith(CLIENT_POSITION_ORDER)
 
         candidates = when (raw.selectType) {
@@ -298,23 +300,29 @@ class SkillTargetSelector {
             else -> true
         }
 
-    private fun matchesCastConditionTarget(
+    private fun matchesStatusConditionTarget(
         castCondition: Int,
+        condition: Int,
         context: SkillBattleContext,
         target: BattleHeroRef,
     ): Boolean {
-        if (castCondition !in STATUS_TARGET_CONDITIONS) return true
+        val statusCondition = when {
+            castCondition in STATUS_TARGET_CONDITIONS -> castCondition
+            condition in STATUS_TARGET_CONDITIONS -> condition
+            else -> return true
+        }
         val statuses = requireNotNull(context.battleView.state(target)) {
             "Missing live state for $target"
         }.statuses
-        return when (castCondition) {
+        return when (statusCondition) {
             500 -> BattleStatus.CONFUSION in statuses || BERSERK_EFFECT_IDS.any {
                 it in context.battleView.activeEffectIds(target)
             }
             4000 -> statuses.any(CONTROL_STATUSES::contains) ||
                 BERSERK_EFFECT_IDS.any { it in context.battleView.activeEffectIds(target) }
             7001 -> statuses.any(ONGOING_DAMAGE_STATUSES::contains)
-            else -> error("Unsupported status target condition=$castCondition")
+            18306 -> BattleStatus.HEX in statuses
+            else -> error("Unsupported status target condition=$statusCondition")
         }
     }
 
@@ -371,7 +379,7 @@ class SkillTargetSelector {
         const val FRONT_POSITION = 2
         val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
         val TROOP_RATIO_CONDITIONS = setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
-        val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 7001)
+        val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 7001, 18306)
         val CONTROL_STATUSES = setOf(
             BattleStatus.CONFUSION,
             BattleStatus.HESITATION,

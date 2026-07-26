@@ -253,7 +253,7 @@ class SkillTargetSelectorTest {
     fun `cast status conditions filter control and ongoing damage targets`() {
         val states = defaultStates().toMutableMap().apply {
             put(enemyBase, state(statuses = setOf(BattleStatus.CONFUSION)))
-            put(enemyMiddle, state(statuses = setOf(BattleStatus.BURN)))
+            put(enemyMiddle, state(statuses = setOf(BattleStatus.BURN, BattleStatus.HEX)))
             put(enemyFront, state(statuses = setOf(BattleStatus.HESITATION)))
         }
         val context = context(view(states = states, sourceRange = 5))
@@ -269,6 +269,10 @@ class SkillTargetSelectorTest {
         assertEquals(
             listOf(enemyMiddle),
             select(rule(selectType = 34, castCondition = 7001), context),
+        )
+        assertEquals(
+            listOf(enemyMiddle),
+            select(rule(selectType = 34, condition = 18306), context),
         )
     }
 

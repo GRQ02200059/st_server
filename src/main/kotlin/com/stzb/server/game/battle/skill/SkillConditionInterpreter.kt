@@ -67,6 +67,7 @@ sealed interface SkillCondition {
             HAS_CONTROL_STATUS,
             HAS_ONGOING_DAMAGE_STATUS,
             MORALE_BELOW,
+            HAS_HEX,
         }
     }
 
@@ -90,6 +91,11 @@ sealed interface SkillCondition {
             require(percent >= 0) { "Troop ratio must be non-negative: $percent" }
         }
     }
+
+    data class AttackRange(
+        val comparison: Comparison,
+        val value: Int,
+    ) : SkillCondition
 
     data class HasEffect(
         val subject: Subject,
@@ -158,6 +164,7 @@ class CompiledSkillCondition internal constructor(
             when (condition) {
                 is SkillCondition.RoundRange -> context.round in condition.first..condition.last
                 is SkillCondition.TroopRatio -> matchesTroopRatio(condition, context)
+                is SkillCondition.AttackRange -> matchesAttackRange(condition, context)
                 is SkillCondition.HasEffect -> matchesEffect(condition, context)
                 is SkillCondition.HasStatus -> matchesStatus(condition, context)
                 is SkillCondition.TriggerCount -> matchesTriggerCount(condition, context)
@@ -179,6 +186,17 @@ class CompiledSkillCondition internal constructor(
             state.troops.toLong() * 100,
             state.maxTroops.toLong() * condition.percent,
         )
+    }
+
+    private fun matchesAttackRange(
+        condition: SkillCondition.AttackRange,
+        context: SkillBattleContext,
+    ): Boolean {
+        if (SkillBattleViewCapability.NORMAL_ATTACK_RANGE !in context.battleView.capabilities) {
+            return false
+        }
+        val range = context.battleView.currentAttackRange(context.source) ?: return false
+        return condition.comparison.matches(range.toLong(), condition.value.toLong())
     }
 
     private fun matchesEffect(
@@ -293,6 +311,9 @@ class SkillConditionInterpreter(
         builtInMoraleTargetConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInAttackRangeConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -366,6 +387,42 @@ class SkillConditionInterpreter(
     )
 }
 
+private class BuiltInAttackRangeConditionPlugin(
+    override val id: String,
+    ownedConditions: Set<SkillConditionCode>,
+) : SpecialSkillPlugin {
+    override val ownedConditions: Set<SkillConditionCode> =
+        Collections.unmodifiableSet(LinkedHashSet(ownedConditions))
+
+    override fun compile(
+        code: SkillConditionCode,
+        rule: SkillEffectRule,
+    ): List<SkillCondition> =
+        listOf(
+            when (code.value) {
+                32002 -> SkillCondition.AttackRange(Comparison.LESS_THAN_OR_EQUAL, 1)
+                32011 -> SkillCondition.AttackRange(Comparison.GREATER_THAN, 1)
+                else -> error("Unsupported attack-range condition $code")
+            },
+        )
+}
+
+private fun builtInAttackRangeConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter { it.field == SkillConditionField.CONDITION && it.value in ATTACK_RANGE_CONDITIONS }
+        .filterNot(overridden::contains)
+        .toSet()
+    return if (codes.isEmpty()) {
+        emptyList()
+    } else {
+        listOf(BuiltInAttackRangeConditionPlugin("builtin.attack-range", codes))
+    }
+}
+
 private class BuiltInMoraleTargetConditionPlugin(
     override val id: String,
     ownedConditions: Set<SkillConditionCode>,
@@ -418,6 +475,7 @@ private class BuiltInStatusTargetConditionPlugin(
                     500 -> SkillCondition.TargetPredicate.Kind.HAS_CONFUSION_OR_BERSERK
                     4000 -> SkillCondition.TargetPredicate.Kind.HAS_CONTROL_STATUS
                     7001 -> SkillCondition.TargetPredicate.Kind.HAS_ONGOING_DAMAGE_STATUS
+                    18306 -> SkillCondition.TargetPredicate.Kind.HAS_HEX
                     else -> error("Unsupported status target condition $code")
                 },
             ),
@@ -430,7 +488,13 @@ private fun builtInStatusTargetConditionPlugins(
 ): List<SpecialSkillPlugin> {
     val codes = graph.details
         .flatMap(::conditionCodes)
-        .filter { it.field == SkillConditionField.CAST_CONDITION && it.value in STATUS_TARGET_CONDITIONS }
+        .filter {
+            it.value in STATUS_TARGET_CONDITIONS &&
+                it.field in setOf(
+                    SkillConditionField.CAST_CONDITION,
+                    SkillConditionField.CONDITION,
+                )
+        }
         .filterNot(overridden::contains)
         .toSet()
     return if (codes.isEmpty()) {
@@ -597,8 +661,9 @@ private val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
 private val POSITION_PRECONDITIONS = setOf(-14, 14, 16)
 private val ROUND_CONDITIONS = setOf(104, 203, 205, 207, 303)
 private val TROOP_RATIO_CONDITIONS = setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
-private val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 7001)
+private val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 7001, 18306)
 private val MORALE_TARGET_CONDITIONS = setOf(20160)
+private val ATTACK_RANGE_CONDITIONS = setOf(32002, 32011)
 
 private fun defaultPendingPlugins(
     graph: SkillRuleGraph,
