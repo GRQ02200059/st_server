@@ -21,6 +21,8 @@ object SkillRuleCatalog {
                     configuredValue = effect?.let { config.configuredValue(detail) },
                     effectBuffType = effect?.buffType ?: detail.buffType,
                     effectReplaceType = effect?.replaceType ?: 0,
+                    skillKind = skill.kind,
+                    rawSkillType = skill.rawSkillType,
                 )
             }
             rules[skillId] = SkillRule(

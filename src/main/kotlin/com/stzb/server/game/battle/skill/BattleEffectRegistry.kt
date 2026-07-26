@@ -95,6 +95,7 @@ data class EffectDeclaration(
 enum class EffectFailureCode {
     UNKNOWN_EFFECT,
     UNIMPLEMENTED_EFFECT,
+    UNSUPPORTED_CONFIGURED_VALUE,
 }
 
 data class BattleEffectDiagnostic(
@@ -104,13 +105,19 @@ data class BattleEffectDiagnostic(
     val effectId: Int,
     val trigger: BattleTrigger,
     val callPath: List<Int>,
+    val reason: String? = null,
 ) {
     fun message(): String =
         "$code: skill=$skillId detail=$detailId effect=$effectId " +
-            "trigger=$trigger callPath=${callPath.joinToString(" -> ")}"
+            "trigger=$trigger callPath=${callPath.joinToString(" -> ")}" +
+            reason?.let { " reason=$it" }.orEmpty()
 }
 
 class UnsupportedSkillRuleException(
+    val diagnostic: BattleEffectDiagnostic,
+) : IllegalStateException(diagnostic.message())
+
+class UnsupportedConfiguredBattleValueException(
     val diagnostic: BattleEffectDiagnostic,
 ) : IllegalStateException(diagnostic.message())
 
@@ -181,7 +188,17 @@ class BattleEffectRegistry private constructor(
         )
         val handler = registrations[rule.effectId]?.handler
         if (handler != null) {
-            return handler.execute(invocation).immutableCopy()
+            return try {
+                handler.execute(invocation).immutableCopy()
+            } catch (error: UnsupportedConfiguredBattleValueException) {
+                when (failureMode) {
+                    FailureMode.STRICT -> throw error
+                    FailureMode.SAFE -> {
+                        logSafely(error.diagnostic)
+                        EffectExecution.EMPTY
+                    }
+                }
+            }
         }
 
         val diagnostic = BattleEffectDiagnostic(
@@ -199,13 +216,17 @@ class BattleEffectRegistry private constructor(
         return when (failureMode) {
             FailureMode.STRICT -> throw UnsupportedSkillRuleException(diagnostic)
             FailureMode.SAFE -> {
-                try {
-                    logger(diagnostic)
-                } catch (_: Exception) {
-                    // Diagnostics must not replace safe-mode execution semantics.
-                }
+                logSafely(diagnostic)
                 EffectExecution.EMPTY
             }
+        }
+    }
+
+    private fun logSafely(diagnostic: BattleEffectDiagnostic) {
+        try {
+            logger(diagnostic)
+        } catch (_: Exception) {
+            // Diagnostics must not replace safe-mode execution semantics.
         }
     }
 

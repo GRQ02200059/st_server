@@ -4,6 +4,8 @@ import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroId
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleDamageCalculator
+import com.stzb.server.game.battle.BattleConfigRepository
+import com.stzb.server.game.battle.BattleEffectValueUnit
 import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleStats
@@ -13,11 +15,13 @@ import com.stzb.server.game.battle.FixedBattleRandom
 import com.stzb.server.game.battle.Side
 import com.stzb.server.game.battle.SkillDetailConfig
 import com.stzb.server.game.battle.SkillKind
+import com.stzb.server.game.battle.EffectCategory
 import com.stzb.server.game.battle.DamageOrigin
 import com.stzb.server.game.battle.DamageSchool
 import com.stzb.server.game.battle.DamageTag
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -57,7 +61,14 @@ class CoreEffectHandlersTest {
             assertIs<BattleStatChange>(change)
             assertEquals(targetRef, change.target)
             assertEquals(expectedChange.first, change.kind)
-            assertEquals(expectedChange.second, change.amount)
+            assertEquals(
+                if (effectId % 100 == 6) {
+                    TypedBattlePotency.flat(expectedChange.second)
+                } else {
+                    TypedBattlePotency.percent(expectedChange.second)
+                },
+                change.potency,
+            )
             assertEquals(2, change.durationRounds)
         }
     }
@@ -136,10 +147,10 @@ class CoreEffectHandlersTest {
             context(targetTroops = 950, targetMaxTroops = 1_000, woundedTroops = 80),
         )
 
-        val recovery = result.stateChanges.filterIsInstance<TroopRecoveryChange>().single()
-        val wounded = result.stateChanges.filterIsInstance<WoundedPoolChange>().single()
+        val recovery = result.stateChanges.filterIsInstance<RecoverTroopsChange>().single()
+        val wounded = result.stateChanges.filterIsInstance<ConsumeWoundedTroopsChange>().single()
         assertEquals(50, recovery.amount)
-        assertEquals(-50, wounded.delta)
+        assertEquals(50, wounded.amount)
         assertEquals(1_000, recovery.troopsAfter)
     }
 
@@ -319,18 +330,272 @@ class CoreEffectHandlersTest {
             calculationTypes = listOf(1, 1, 2, 3),
         )
 
-        assertEquals(11, calculator.effectValue(fixed, source))
-        assertEquals(22, calculator.effectValue(calculated, source))
+        assertEquals(TypedBattlePotency.percent(11), calculator.effectValue(fixed, source))
+        assertEquals(TypedBattlePotency.percent(22), calculator.effectValue(calculated, source))
+    }
+
+    @Test
+    fun `real configured values preserve rate percent and unsupported raw encodings without magnitude guesses`() {
+        val config = BattleConfigRepository.loadDefault()
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200957, 200023, 295001, 200007),
+                learnableSaSkillIds = emptySet(),
+            ),
+            config,
+        )
+        val calculator = DefaultBattleValueCalculator()
+        val source = hero(id = 1, position = 2, defense = 100, strategy = 80)
+
         assertEquals(
-            calculator.effectValue(calculated, source),
-            calculator.effectValue(calculated, source),
+            TypedBattlePotency.rate(300),
+            calculator.effectValue(graph.detail(20095701), source),
+        )
+        assertEquals(
+            TypedBattlePotency.rate(36),
+            calculator.effectValue(graph.detail(20000712), source),
+        )
+        listOf(20002301 to 11_400_000, 29500101 to 500_000).forEach { (detailId, raw) ->
+            val deferred = calculator.effectValue(graph.detail(detailId), source)
+            assertIs<TypedBattlePotency.Deferred>(deferred)
+            assertEquals(BattleEffectValueUnit.PERCENT, deferred.unit)
+            assertEquals(raw, deferred.configuredValue.rawConstant)
+            assertTrue(deferred.diagnostic.contains("detail=$detailId"))
+            assertTrue(deferred.diagnostic.contains("rawConstant=$raw"))
+            assertTrue(deferred.diagnostic.contains("unit=PERCENT"))
+            assertTrue(deferred.diagnostic.contains("rawCalcPosition=0"))
+        }
+    }
+
+    @Test
+    fun `strict execution fails deferred configured values while safe execution logs and skips`() {
+        val config = BattleConfigRepository.loadDefault()
+        val sourceGraph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(295001),
+                learnableSaSkillIds = emptySet(),
+            ),
+            config,
+        )
+        val realRule = sourceGraph.detail(29500101)
+        val rule = rule(effectId = 101, constant = 500_000, rawCalcPosition = 0).copy(
+            configuredValue = realRule.configuredValue,
+        )
+        val graph = SkillRuleGraph(
+            rules = mapOf(
+                295001 to SkillRule(
+                    skillId = 295001,
+                    kind = SkillKind.ACTIVE,
+                    rawSkillType = 3,
+                    probability = 100,
+                    prepareRounds = 0,
+                    hitRange = 5,
+                    details = listOf(rule),
+                ),
+            ),
+            effectIds = coreEffectIds,
+        )
+        val context = context().copy(rootSkillId = 295001, currentSkillId = 295001)
+
+        val strictError = assertFailsWith<UnsupportedConfiguredBattleValueException> {
+            BattleEffectRegistry.strict(graph)
+                .registerCoreEffects(BattleEffectStore())
+                .execute(rule, context)
+        }
+        assertEquals(EffectFailureCode.UNSUPPORTED_CONFIGURED_VALUE, strictError.diagnostic.code)
+        assertTrue(strictError.diagnostic.message().contains("rawConstant=500000"))
+
+        val diagnostics = mutableListOf<BattleEffectDiagnostic>()
+        val safe = BattleEffectRegistry.safe(graph, diagnostics::add)
+            .registerCoreEffects(BattleEffectStore())
+            .execute(rule, context)
+        assertEquals(EffectExecution.EMPTY, safe)
+        assertEquals(EffectFailureCode.UNSUPPORTED_CONFIGURED_VALUE, diagnostics.single().code)
+    }
+
+    @Test
+    fun `stat changes retain percent potency instead of flattening it into an amount`() {
+        val rule = rule(effectId = 201, constant = 1_500)
+
+        val change = registry(BattleEffectStore(), rule)
+            .execute(rule, context())
+            .stateChanges.single()
+
+        assertIs<BattleStatChange>(change)
+        assertEquals(TypedBattlePotency.percent(-15), change.potency)
+    }
+
+    @Test
+    fun `persistent spec snapshots exact identity lifecycle and converts without repository access`() {
+        val rule = rule(
+            effectId = 207,
+            constant = 100,
+            availableRounds = 3,
+            availableHit = 2,
+            delayRound = 1,
+            delayHit = 4,
+            clearPerHit = true,
+            bindFlag = 7,
+            addCountMax = 2,
+            hideConflict = 51,
+            effectBuffType = 1,
+            effectReplaceType = 2,
+        )
+        val context = context().copy(rootSkillId = 99, currentSkillId = 1)
+        val change = registry(BattleEffectStore(), rule).execute(rule, context).stateChanges.single()
+
+        assertIs<ApplyBattleEffectChange>(change)
+        assertEquals(
+            PersistentEffectSpec(
+                source = sourceRef,
+                target = targetRef,
+                rootSkillId = 99,
+                skillId = 1,
+                skillKind = SkillKind.ACTIVE,
+                rawSkillType = 3,
+                detailId = 10_207,
+                effectId = 207,
+                category = EffectCategory.HARMFUL,
+                conflict = 51,
+                replaceType = 2,
+                bindFlag = 7,
+                maxStacks = 3,
+                delayRound = 1,
+                delayHit = 4,
+                availableRounds = 3,
+                availableHit = 2,
+                clearPerHit = true,
+                startBoundary = EffectStartBoundary.AFTER_DELAY,
+                potency = TypedBattlePotency.flat(100),
+            ),
+            change.spec,
+        )
+
+        val active = change.toActiveSkillEffect()
+        assertEquals(sourceRef, active.source)
+        assertEquals(targetRef, active.target)
+        assertEquals(99, active.rootSkillId)
+        assertEquals(1, active.skillId)
+        assertEquals(SkillKind.ACTIVE, active.skillKind)
+        assertEquals(3, active.sourceSkillType)
+        assertEquals(10_207, active.detailId)
+        assertEquals(207, active.effectId)
+        assertEquals(EffectCategory.HARMFUL, active.category)
+        assertEquals(51, active.conflict)
+        assertEquals(100, active.strength)
+        assertEquals(2, active.replaceType)
+        assertEquals(7, active.bindFlag)
+        assertEquals(3, active.maxStacks)
+        assertEquals(3, active.remainingRounds)
+        assertEquals(2, active.remainingHits)
+        assertEquals(true, active.clearPerHit)
+    }
+
+    @Test
+    fun `zero configured duration remains an explicit no duration persistent spec`() {
+        val rule = rule(effectId = 207, constant = 100, availableRounds = 0)
+
+        val change = registry(BattleEffectStore(), rule).execute(rule, context()).stateChanges.single()
+
+        assertIs<ApplyBattleEffectChange>(change)
+        assertEquals(0, change.spec.availableRounds)
+        assertEquals(null, change.toActiveSkillEffectOrNull())
+    }
+
+    @Test
+    fun `scheduled recovery caps uncapped potency against live state on every tick without double consumption`() {
+        val effectStore = BattleEffectStore()
+        val rule = rule(effectId = 402, constant = 100, availableRounds = 2)
+        val scheduled = registry(effectStore, rule).execute(
+            rule,
+            context(targetTroops = 950, targetMaxTroops = 1_000, woundedTroops = 80),
+        ).stateChanges.single()
+
+        assertIs<ScheduledRecoveryEffectChange>(scheduled)
+        assertEquals(TypedBattlePotency.flat(67), scheduled.potency)
+
+        val first = scheduled.tick(
+            liveState = SkillBattleHeroState(
+                stats = BattleStats.ZERO,
+                troops = 950,
+                maxTroops = 1_000,
+                statuses = emptySet(),
+                morale = 100,
+                attackRange = 1,
+                woundedTroops = 80,
+            ),
+            effectStore = effectStore,
+        )
+        assertEquals(
+            listOf(
+                RecoverTroopsChange(
+                    source = sourceRef,
+                    target = targetRef,
+                    amount = 50,
+                    troopsAfter = 1_000,
+                    skillId = 1,
+                    effectId = 402,
+                ),
+                ConsumeWoundedTroopsChange(
+                    target = targetRef,
+                    amount = 50,
+                    woundedAfter = 30,
+                    skillId = 1,
+                    effectId = 402,
+                ),
+            ),
+            first,
+        )
+        val second = scheduled.tick(
+            liveState = SkillBattleHeroState(
+                stats = BattleStats.ZERO,
+                troops = 900,
+                maxTroops = 1_000,
+                statuses = emptySet(),
+                morale = 100,
+                attackRange = 1,
+                woundedTroops = 30,
+            ),
+            effectStore = effectStore,
+        )
+        assertEquals(30, second.filterIsInstance<RecoverTroopsChange>().single().amount)
+        assertEquals(30, second.filterIsInstance<ConsumeWoundedTroopsChange>().single().amount)
+
+        effectStore.apply(activeEffect(effectId = 207))
+        assertEquals(
+            listOf(
+                EffectBlockedChange(
+                    source = sourceRef,
+                    target = targetRef,
+                    skillId = 1,
+                    effectId = 402,
+                    blockingEffectId = 207,
+                ),
+            ),
+            scheduled.tick(
+                liveState = SkillBattleHeroState(
+                    stats = BattleStats.ZERO,
+                    troops = 900,
+                    maxTroops = 1_000,
+                    statuses = emptySet(),
+                    morale = 100,
+                    attackRange = 1,
+                    woundedTroops = 30,
+                ),
+                effectStore = effectStore,
+            ),
         )
     }
 
-    private fun registry(effectStore: BattleEffectStore = BattleEffectStore()): BattleEffectRegistry =
-        BattleEffectRegistry.strict(graph()).registerCoreEffects(effectStore)
+    private fun registry(
+        effectStore: BattleEffectStore = BattleEffectStore(),
+        vararg rules: SkillEffectRule,
+    ): BattleEffectRegistry =
+        BattleEffectRegistry.strict(
+            graph(if (rules.isEmpty()) coreEffectIds.map(::rule) else rules.toList()),
+        ).registerCoreEffects(effectStore)
 
-    private fun graph(): SkillRuleGraph =
+    private fun graph(rules: List<SkillEffectRule> = coreEffectIds.map(::rule)): SkillRuleGraph =
         SkillRuleGraph(
             rules = mapOf(
                 1 to SkillRule(
@@ -340,7 +605,7 @@ class CoreEffectHandlersTest {
                     probability = 100,
                     prepareRounds = 0,
                     hitRange = 5,
-                    details = coreEffectIds.map(::rule),
+                    details = rules,
                 ),
             ),
             effectIds = coreEffectIds,
@@ -355,6 +620,17 @@ class CoreEffectHandlersTest {
         },
         intel: Int = 0,
         calculationTypes: List<Int> = emptyList(),
+        availableRounds: Int = 2,
+        availableHit: Int = 0,
+        delayRound: Int = 0,
+        delayHit: Int = 0,
+        clearPerHit: Boolean = false,
+        bindFlag: Int = 0,
+        addCountMax: Int = 0,
+        hideConflict: Int = 0,
+        effectBuffType: Int = if (effectId in 101..106) 2 else 1,
+        effectReplaceType: Int = 0,
+        rawCalcPosition: Int = if (effectId in 101..105 || effectId in 201..205) 311 else 0,
     ): SkillEffectRule =
         SkillEffectRule(
             detailId = 10_000 + effectId,
@@ -363,20 +639,52 @@ class CoreEffectHandlersTest {
             raw = SkillDetailConfig(
                 detailId = 10_000 + effectId,
                 effectId = effectId,
+                calcPos = rawCalcPosition,
                 attackType = 41,
                 targetType = 0,
                 selectType = 0,
+                availableHit = availableHit,
                 intelParam = intel,
                 constantParam = constant,
                 probabilityInit = 100,
                 probabilityMax = 100,
                 attackMax = 1,
-                availableRounds = 2,
+                bindFlag = bindFlag,
+                addCountMax = addCountMax,
+                delayRound = delayRound,
+                delayHit = delayHit,
+                availableRounds = availableRounds,
+                clearPerHit = clearPerHit,
+                hideConflict = hideConflict,
                 calculationTypes = calculationTypes,
                 effectName = "ignored fixture description",
             ),
             skillHitRange = 5,
+            configuredValue = com.stzb.server.game.battle.ConfiguredBattleEffectValue(
+                unit = when (effectId) {
+                    in 101..105, in 201..205 -> BattleEffectValueUnit.PERCENT
+                    in 301..307, in 321..355, 401, 402, in 521..534 -> BattleEffectValueUnit.RATE
+                    else -> BattleEffectValueUnit.FLAT
+                },
+                rawValueType = when (effectId) {
+                    in 101..105, in 201..205 -> 2
+                    in 301..307, in 321..355, 401, 402, in 521..534 -> 1
+                    else -> 0
+                },
+                rawConstant = constant,
+                rawCoefficient = intel,
+                rawAttributeType = 0,
+                rawCalcPosition = rawCalcPosition,
+                rawCalcParameter = 0,
+            ),
+            effectBuffType = effectBuffType,
+            effectReplaceType = effectReplaceType,
+            skillKind = SkillKind.ACTIVE,
+            rawSkillType = 3,
         )
+
+    private fun SkillRuleGraph.detail(detailId: Int): SkillEffectRule =
+        details.single { it.detailId == detailId }
 
     private fun context(
         targetTroops: Int = 700,

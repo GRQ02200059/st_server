@@ -24,6 +24,8 @@ data class SkillEffectRule(
     val configuredValue: ConfiguredBattleEffectValue? = null,
     val effectBuffType: Int = raw.buffType,
     val effectReplaceType: Int = 0,
+    val skillKind: SkillKind = SkillKind.UNKNOWN,
+    val rawSkillType: Int = 0,
 )
 
 enum class BattleCoefficientSource {

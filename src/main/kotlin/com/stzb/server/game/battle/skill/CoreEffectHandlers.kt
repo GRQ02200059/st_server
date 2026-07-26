@@ -1,19 +1,45 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleDamageCalculator
+import com.stzb.server.game.battle.BattleEffectValueUnit
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleStatus
+import com.stzb.server.game.battle.ConfiguredBattleEffectValue
 import com.stzb.server.game.battle.DamageOrigin
 import com.stzb.server.game.battle.DamageSchool
 import com.stzb.server.game.battle.DamageTag
+import com.stzb.server.game.battle.EffectCategory
+import com.stzb.server.game.battle.ActiveSkillEffect
+import com.stzb.server.game.battle.SkillKind
 import kotlin.math.roundToInt
+
+sealed interface TypedBattlePotency {
+    val unit: BattleEffectValueUnit
+
+    data class Resolved(
+        override val unit: BattleEffectValueUnit,
+        val value: Int,
+    ) : TypedBattlePotency
+
+    data class Deferred(
+        override val unit: BattleEffectValueUnit,
+        val configuredValue: ConfiguredBattleEffectValue,
+        val diagnostic: String,
+    ) : TypedBattlePotency
+
+    companion object {
+        fun flat(value: Int): Resolved = Resolved(BattleEffectValueUnit.FLAT, value)
+        fun percent(value: Int): Resolved = Resolved(BattleEffectValueUnit.PERCENT, value)
+        fun rate(value: Int): Resolved = Resolved(BattleEffectValueUnit.RATE, value)
+    }
+}
 
 data class BattleStatChange(
     val source: BattleHeroRef,
     val target: BattleHeroRef,
     val kind: Kind,
-    val amount: Int,
+    val potency: TypedBattlePotency.Resolved,
     val durationRounds: Int,
     val skillId: Int,
     val effectId: Int,
@@ -27,6 +53,23 @@ data class BattleStatChange(
         ATTACK_RANGE,
     }
 }
+
+data class RecoverTroopsChange(
+    val source: BattleHeroRef,
+    val target: BattleHeroRef,
+    val amount: Int,
+    val troopsAfter: Int,
+    val skillId: Int,
+    val effectId: Int,
+) : BattleStateChange
+
+data class ConsumeWoundedTroopsChange(
+    val target: BattleHeroRef,
+    val amount: Int,
+    val woundedAfter: Int,
+    val skillId: Int,
+    val effectId: Int,
+) : BattleStateChange
 
 data class TroopDamageChange(
     val source: BattleHeroRef,
@@ -55,15 +98,69 @@ data class WoundedPoolChange(
     val woundedAfter: Int,
 ) : BattleStateChange
 
-data class ApplyBattleEffectChange(
+enum class EffectStartBoundary {
+    IMMEDIATE,
+    AFTER_DELAY,
+}
+
+data class PersistentEffectSpec(
     val source: BattleHeroRef,
     val target: BattleHeroRef,
+    val rootSkillId: Int,
     val skillId: Int,
+    val skillKind: SkillKind,
+    val rawSkillType: Int,
     val detailId: Int,
     val effectId: Int,
-    val strength: Int,
-    val durationRounds: Int,
-) : BattleStateChange
+    val category: EffectCategory,
+    val conflict: Int,
+    val replaceType: Int,
+    val bindFlag: Int,
+    val maxStacks: Int,
+    val delayRound: Int,
+    val delayHit: Int,
+    val availableRounds: Int,
+    val availableHit: Int,
+    val clearPerHit: Boolean,
+    val startBoundary: EffectStartBoundary,
+    val potency: TypedBattlePotency.Resolved,
+) {
+    fun toActiveSkillEffectOrNull(): ActiveSkillEffect? {
+        if (availableRounds == 0 && availableHit == 0 && !clearPerHit) return null
+        return ActiveSkillEffect(
+            source = source,
+            target = target,
+            rootSkillId = rootSkillId,
+            skillId = skillId,
+            skillKind = skillKind,
+            sourceSkillType = rawSkillType,
+            detailId = detailId,
+            effectId = effectId,
+            category = category,
+            conflict = conflict,
+            strength = kotlin.math.abs(potency.value),
+            replaceType = replaceType,
+            bindFlag = bindFlag,
+            maxStacks = maxStacks,
+            stacks = 1,
+            remainingRounds = availableRounds.takeIf { it > 0 },
+            remainingHits = availableHit.takeIf { it > 0 },
+            clearPerHit = clearPerHit,
+        )
+    }
+
+    fun toActiveSkillEffect(): ActiveSkillEffect =
+        requireNotNull(toActiveSkillEffectOrNull()) {
+            "Effect detail=$detailId has explicit zero duration and no hit lifecycle"
+        }
+}
+
+data class ApplyBattleEffectChange(
+    val spec: PersistentEffectSpec,
+) : BattleStateChange {
+    fun toActiveSkillEffectOrNull(): ActiveSkillEffect? = spec.toActiveSkillEffectOrNull()
+    fun toActiveSkillEffect(): ActiveSkillEffect = spec.toActiveSkillEffect()
+}
 
 data class ScheduledDamageEffectChange(
     val source: BattleHeroRef,
@@ -78,14 +175,65 @@ data class ScheduledDamageEffectChange(
     val effectId: Int,
 ) : BattleStateChange
 
+val ScheduledRecoveryEffectChange.source: BattleHeroRef
+    get() = spec.source
+val ScheduledRecoveryEffectChange.target: BattleHeroRef
+    get() = spec.target
+val ScheduledRecoveryEffectChange.durationRounds: Int
+    get() = spec.availableRounds
+val ScheduledRecoveryEffectChange.skillId: Int
+    get() = spec.skillId
+val ScheduledRecoveryEffectChange.effectId: Int
+    get() = spec.effectId
+
 data class ScheduledRecoveryEffectChange(
-    val source: BattleHeroRef,
-    val target: BattleHeroRef,
-    val amountPerTick: Int,
-    val durationRounds: Int,
-    val skillId: Int,
-    val effectId: Int,
-) : BattleStateChange
+    val spec: PersistentEffectSpec,
+    val potency: TypedBattlePotency.Resolved,
+) : BattleStateChange {
+    fun tick(
+        liveState: SkillBattleHeroState,
+        effectStore: BattleEffectStore,
+    ): List<BattleStateChange> {
+        if (effectStore.effectsFor(spec.target).any { it.effectId == UNRECOVERABLE_EFFECT_ID }) {
+            return listOf(
+                EffectBlockedChange(
+                    source = spec.source,
+                    target = spec.target,
+                    skillId = spec.skillId,
+                    effectId = spec.effectId,
+                    blockingEffectId = UNRECOVERABLE_EFFECT_ID,
+                ),
+            )
+        }
+        val amount = minOf(
+            potency.value.coerceAtLeast(0),
+            liveState.woundedTroops,
+            (liveState.maxTroops - liveState.troops).coerceAtLeast(0),
+        )
+        if (amount == 0) return emptyList()
+        return listOf(
+            RecoverTroopsChange(
+                source = spec.source,
+                target = spec.target,
+                amount = amount,
+                troopsAfter = liveState.troops + amount,
+                skillId = spec.skillId,
+                effectId = spec.effectId,
+            ),
+            ConsumeWoundedTroopsChange(
+                target = spec.target,
+                amount = amount,
+                woundedAfter = liveState.woundedTroops - amount,
+                skillId = spec.skillId,
+                effectId = spec.effectId,
+            ),
+        )
+    }
+
+    companion object {
+        private const val UNRECOVERABLE_EFFECT_ID = 207
+    }
+}
 
 data class DamageModifierChange(
     val source: BattleHeroRef,
@@ -114,7 +262,7 @@ data class EffectBlockedChange(
 ) : BattleStateChange
 
 interface BattleValueCalculator {
-    fun effectValue(rule: SkillEffectRule, source: BattleHero): Int
+    fun effectValue(rule: SkillEffectRule, source: BattleHero): TypedBattlePotency
     fun physicalDamage(invocation: EffectInvocation): Int
     fun strategyDamage(invocation: EffectInvocation, ongoing: Boolean): Int
     fun recovery(invocation: EffectInvocation): Int
@@ -132,24 +280,62 @@ interface BattleValueCalculator {
 class DefaultBattleValueCalculator(
     private val targetSelector: SkillTargetSelector = SkillTargetSelector(),
 ) : BattleValueCalculator {
-    override fun effectValue(rule: SkillEffectRule, source: BattleHero): Int {
-        val raw = rule.raw
-        val encodedScale = when (rule.effectId) {
-            in 101..105, in 201..205 ->
-                if (raw.constantParam.absoluteValueLong() >= 1_000_000L) 1_000_000.0 else 100.0
-            else -> 1.0
+    override fun effectValue(rule: SkillEffectRule, source: BattleHero): TypedBattlePotency {
+        val configured = rule.configuredValue ?: ConfiguredBattleEffectValue(
+            unit = BattleEffectValueUnit.FLAT,
+            rawValueType = BattleEffectValueUnit.FLAT.rawValueType,
+            rawConstant = rule.raw.constantParam,
+            rawCoefficient = rule.raw.intelParam,
+            rawAttributeType = rule.raw.attributeType,
+            rawCalcPosition = rule.raw.calcPos,
+            rawCalcParameter = rule.raw.calcParam,
+        )
+        val scale = when (configured.unit) {
+            BattleEffectValueUnit.FLAT -> 1.0
+            BattleEffectValueUnit.RATE -> 1.0
+            BattleEffectValueUnit.PERCENT ->
+                when (configured.rawCalcPosition) {
+                    31, 311, 31111, 31112 -> 100.0
+                    else -> return deferred(rule, configured)
+                }
         }
-        val constant = raw.constantParam / encodedScale
-        val intelligence = raw.intelParam / encodedScale
+        val constant = configured.rawConstant / scale
+        val coefficient = configured.rawCoefficient / scale
+        val attribute = when (rule.coefficientSource) {
+            BattleCoefficientSource.ATTACK -> source.stats.attack
+            BattleCoefficientSource.DEFENSE -> source.stats.defense
+            BattleCoefficientSource.STRATEGY -> source.stats.strategy
+            BattleCoefficientSource.SPEED -> source.stats.speed
+            BattleCoefficientSource.NONE -> BASE_STRATEGY.toInt()
+        }
         val intelligenceScaled =
-            constant + (source.stats.strategy - BASE_STRATEGY) * intelligence / 1_000.0
-        val calculationMultiplier = if (raw.calculationTypes.isEmpty()) {
+            constant + (attribute - BASE_STRATEGY) * coefficient / 1_000.0
+        val calculationMultiplier = if (rule.raw.calculationTypes.isEmpty()) {
             1
         } else {
-            raw.calculationTypes[source.advanceLevel.coerceIn(0, raw.calculationTypes.lastIndex)]
+            rule.raw.calculationTypes[
+                source.advanceLevel.coerceIn(0, rule.raw.calculationTypes.lastIndex)
+            ]
         }
-        return (intelligenceScaled * calculationMultiplier).roundToInt()
+        val value = (intelligenceScaled * calculationMultiplier).roundToInt()
+        return TypedBattlePotency.Resolved(configured.unit, value)
     }
+
+    private fun deferred(
+        rule: SkillEffectRule,
+        configured: ConfiguredBattleEffectValue,
+    ): TypedBattlePotency.Deferred =
+        TypedBattlePotency.Deferred(
+            unit = configured.unit,
+            configuredValue = configured,
+            diagnostic = "Unsupported configured battle value: detail=${rule.detailId} " +
+                "effect=${rule.effectId} unit=${configured.unit} " +
+                "rawValueType=${configured.rawValueType} rawConstant=${configured.rawConstant} " +
+                "rawCoefficient=${configured.rawCoefficient} " +
+                "rawAttributeType=${configured.rawAttributeType} " +
+                "rawCalcPosition=${configured.rawCalcPosition} " +
+                "rawCalcParameter=${configured.rawCalcParameter}",
+        )
 
     override fun physicalDamage(invocation: EffectInvocation): Int =
         physicalDamage(invocation, selectedTarget(invocation))
@@ -220,9 +406,6 @@ class DefaultBattleValueCalculator(
         return (rate * multiplier).roundToInt().coerceAtLeast(1)
     }
 
-    private fun Int.absoluteValueLong(): Long =
-        if (this == Int.MIN_VALUE) Long.MAX_VALUE else kotlin.math.abs(toLong())
-
     private companion object {
         const val BASE_STRATEGY = 80.0
         const val FIRE_ATTACK_EFFECT_ID = 307
@@ -274,11 +457,11 @@ private class CoreEffectHandler(
     ): List<BattleStateChange> {
         val effectId = invocation.rule.effectId
         val sourceHero = invocation.liveHero(invocation.context.source)
-        val value = calculator.effectValue(invocation.rule, sourceHero)
+        val potency = calculator.effectValue(invocation.rule, sourceHero).requireResolved(invocation)
         return when (effectId) {
-            in 101..106 -> listOf(statChange(invocation, target, value, increase = true))
-            in 201..206 -> listOf(statChange(invocation, target, value, increase = false))
-            207 -> listOf(appliedEffect(invocation, target, value))
+            in 101..106 -> listOf(statChange(invocation, target, potency, increase = true))
+            in 201..206 -> listOf(statChange(invocation, target, potency, increase = false))
+            207 -> listOf(appliedEffect(invocation, target, potency))
             301 -> listOf(directDamage(invocation, target, DamageSchool.PHYSICAL))
             302 -> listOf(directDamage(invocation, target, DamageSchool.STRATEGY))
             303 -> listOf(ongoingDamage(invocation, target, BattleStatus.SHAKE, DamageSchool.PHYSICAL))
@@ -288,7 +471,7 @@ private class CoreEffectHandler(
             307 -> listOf(directDamage(invocation, target, DamageSchool.STRATEGY, setOf(DamageTag.FIRE)))
             401 -> recoveryChanges(invocation, target)
             402 -> scheduledRecoveryChanges(invocation, target)
-            in DAMAGE_MODIFIER_EFFECT_IDS -> listOf(damageModifier(invocation, target, value))
+            in DAMAGE_MODIFIER_EFFECT_IDS -> listOf(damageModifier(invocation, target, potency))
             else -> error("Core handler missing effect=$effectId")
         }
     }
@@ -296,7 +479,7 @@ private class CoreEffectHandler(
     private fun statChange(
         invocation: EffectInvocation,
         target: BattleHeroRef,
-        value: Int,
+        potency: TypedBattlePotency.Resolved,
         increase: Boolean,
     ): BattleStatChange {
         val normalizedId = if (increase) invocation.rule.effectId else invocation.rule.effectId - 100
@@ -313,8 +496,8 @@ private class CoreEffectHandler(
             source = invocation.context.source,
             target = target,
             kind = kind,
-            amount = if (increase) value else -value,
-            durationRounds = invocation.durationRounds(),
+            potency = potency.copy(value = if (increase) potency.value else -potency.value),
+            durationRounds = invocation.rule.raw.availableRounds,
             skillId = invocation.context.currentSkillId,
             effectId = invocation.rule.effectId,
         )
@@ -365,7 +548,7 @@ private class CoreEffectHandler(
                 if (status == BattleStatus.BURN) add(DamageTag.FIRE)
             },
             status = status,
-            durationRounds = invocation.durationRounds(),
+            durationRounds = invocation.rule.raw.availableRounds,
             skillId = invocation.context.currentSkillId,
             effectId = invocation.rule.effectId,
         )
@@ -384,7 +567,7 @@ private class CoreEffectHandler(
         )
         if (amount <= 0) return emptyList()
         return listOf(
-            TroopRecoveryChange(
+            RecoverTroopsChange(
                 source = invocation.context.source,
                 target = target,
                 amount = amount,
@@ -392,10 +575,12 @@ private class CoreEffectHandler(
                 skillId = invocation.context.currentSkillId,
                 effectId = invocation.rule.effectId,
             ),
-            WoundedPoolChange(
+            ConsumeWoundedTroopsChange(
                 target = target,
-                delta = -amount,
+                amount = amount,
                 woundedAfter = state.woundedTroops - amount,
+                skillId = invocation.context.currentSkillId,
+                effectId = invocation.rule.effectId,
             ),
         )
     }
@@ -405,21 +590,12 @@ private class CoreEffectHandler(
         target: BattleHeroRef,
     ): List<BattleStateChange> {
         if (isRecoveryBlocked(target)) return emptyList()
-        val state = invocation.targetState(target)
-        val amount = minOf(
-            calculator.recovery(invocation),
-            state.woundedTroops,
-            (state.maxTroops - state.troops).coerceAtLeast(0),
-        )
+        val amount = calculator.recovery(invocation)
         if (amount <= 0) return emptyList()
         return listOf(
             ScheduledRecoveryEffectChange(
-                source = invocation.context.source,
-                target = target,
-                amountPerTick = amount,
-                durationRounds = invocation.durationRounds(),
-                skillId = invocation.context.currentSkillId,
-                effectId = invocation.rule.effectId,
+                spec = persistentSpec(invocation, target, TypedBattlePotency.flat(amount)),
+                potency = TypedBattlePotency.flat(amount),
             ),
         )
     }
@@ -427,7 +603,7 @@ private class CoreEffectHandler(
     private fun damageModifier(
         invocation: EffectInvocation,
         target: BattleHeroRef,
-        value: Int,
+        potency: TypedBattlePotency.Resolved,
     ): DamageModifierChange {
         val effectId = invocation.rule.effectId
         val direction = if (effectId in TAKEN_EFFECT_IDS) {
@@ -454,8 +630,8 @@ private class CoreEffectHandler(
             school = school,
             origin = origin,
             tag = null,
-            percent = sign * value,
-            durationRounds = invocation.durationRounds(),
+            percent = sign * potency.value,
+            durationRounds = invocation.rule.raw.availableRounds,
             skillId = invocation.context.currentSkillId,
             effectId = effectId,
         )
@@ -464,16 +640,44 @@ private class CoreEffectHandler(
     private fun appliedEffect(
         invocation: EffectInvocation,
         target: BattleHeroRef,
-        strength: Int,
+        potency: TypedBattlePotency.Resolved,
     ) = ApplyBattleEffectChange(
-        source = invocation.context.source,
-        target = target,
-        skillId = invocation.context.currentSkillId,
-        detailId = invocation.rule.detailId,
-        effectId = invocation.rule.effectId,
-        strength = strength,
-        durationRounds = invocation.durationRounds(),
+        spec = persistentSpec(invocation, target, potency),
     )
+
+    private fun persistentSpec(
+        invocation: EffectInvocation,
+        target: BattleHeroRef,
+        potency: TypedBattlePotency.Resolved,
+    ): PersistentEffectSpec {
+        val raw = invocation.rule.raw
+        return PersistentEffectSpec(
+            source = invocation.context.source,
+            target = target,
+            rootSkillId = invocation.context.rootSkillId,
+            skillId = invocation.context.currentSkillId,
+            skillKind = invocation.rule.skillKind,
+            rawSkillType = invocation.rule.rawSkillType,
+            detailId = invocation.rule.detailId,
+            effectId = invocation.rule.effectId,
+            category = EffectCategory.fromClientBuffType(invocation.rule.effectBuffType),
+            conflict = raw.hideConflict,
+            replaceType = invocation.rule.effectReplaceType,
+            bindFlag = raw.bindFlag,
+            maxStacks = raw.addCountMax + 1,
+            delayRound = raw.delayRound,
+            delayHit = raw.delayHit,
+            availableRounds = raw.availableRounds,
+            availableHit = raw.availableHit,
+            clearPerHit = raw.clearPerHit,
+            startBoundary = if (raw.delayRound > 0 || raw.delayHit > 0) {
+                EffectStartBoundary.AFTER_DELAY
+            } else {
+                EffectStartBoundary.IMMEDIATE
+            },
+            potency = potency,
+        )
+    }
 
     private fun blockedChange(
         invocation: EffectInvocation,
@@ -504,8 +708,23 @@ private class CoreEffectHandler(
     }
 }
 
-private fun EffectInvocation.durationRounds(): Int =
-    rule.raw.availableRounds.takeIf { it > 0 } ?: 1
+private fun TypedBattlePotency.requireResolved(
+    invocation: EffectInvocation,
+): TypedBattlePotency.Resolved =
+    when (this) {
+        is TypedBattlePotency.Resolved -> this
+        is TypedBattlePotency.Deferred -> throw UnsupportedConfiguredBattleValueException(
+            BattleEffectDiagnostic(
+                code = EffectFailureCode.UNSUPPORTED_CONFIGURED_VALUE,
+                skillId = invocation.context.currentSkillId,
+                detailId = invocation.rule.detailId,
+                effectId = invocation.rule.effectId,
+                trigger = invocation.context.trigger,
+                callPath = invocation.callPath,
+                reason = diagnostic,
+            ),
+        )
+    }
 
 private fun EffectInvocation.targetState(target: BattleHeroRef): SkillBattleHeroState =
     requireNotNull(context.battleView.state(target)) { "Missing live target state for $target" }
