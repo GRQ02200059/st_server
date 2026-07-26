@@ -19,7 +19,9 @@ import com.stzb.server.game.battle.SkillDetailConfig
 import com.stzb.server.game.battle.SkillKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SkillTimingTest {
@@ -52,8 +54,51 @@ class SkillTimingTest {
             started.events.filterIsInstance<BattleOutputEvent>().single().event,
         )
         assertEquals(attacker, completed.stateChanges.filterIsInstance<TargetChange>().single().target)
+        val completion = completed.events.filterIsInstance<SkillTimingEvent.PreparationCompleted>().single()
+        assertEquals(attacker, completion.source)
+        assertEquals(10, completion.rootSkillId)
+        assertEquals(10, completion.currentSkillId)
+        assertEquals(1, completion.startedRound)
+        assertEquals(2, completion.readyRound)
+        assertEquals(2, completion.completedRound)
+        assertEquals(BattleTrigger.ACTIVE_SKILL_ATTEMPT, completion.trigger)
+        assertNull(completion.lockedTargets)
+        assertNull(completion.reselectedTargets)
+        assertIs<SkillTriggered>(completed.events[1])
         assertEquals(1, fixture.runtime.attemptCount(attacker, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 10))
         assertEquals(1, fixture.runtime.count(attacker, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 10))
+    }
+
+    @Test
+    fun `preparation completion is emitted once only when ready and never after cancellation`() {
+        val fixture = fixture(prepareRounds = 2)
+        val context = context()
+        fixture.coordinator.attempt(10, context)
+
+        assertTrue(
+            fixture.coordinator.onRound(context.copy(round = 2))
+                .events.none { it is SkillTimingEvent.PreparationCompleted },
+        )
+        val completed = fixture.coordinator.onRound(context.copy(round = 3))
+        assertEquals(1, completed.events.filterIsInstance<SkillTimingEvent.PreparationCompleted>().size)
+        assertTrue(
+            fixture.coordinator.onRound(context.copy(round = 3))
+                .events.none { it is SkillTimingEvent.PreparationCompleted },
+        )
+
+        val cancelledFixture = fixture(prepareRounds = 2)
+        cancelledFixture.coordinator.attempt(10, context)
+        val cancelled = cancelledFixture.coordinator.cancelPreparations(
+            attacker,
+            round = 2,
+            reason = PreparationCancelReason.CONFUSION,
+        )
+        assertEquals(1, cancelled.events.filterIsInstance<SkillPreparationCancelledEvent>().size)
+        assertTrue(cancelled.events.none { it is SkillTimingEvent.PreparationCompleted })
+        assertTrue(
+            cancelledFixture.coordinator.onRound(context.copy(round = 3))
+                .events.none { it is SkillTimingEvent.PreparationCompleted },
+        )
     }
 
     @Test
@@ -287,9 +332,45 @@ class SkillTimingTest {
     }
 
     @Test
-    fun `invalid timing is diagnosed safely without queueing`() {
+    fun `strict timing rejects invalid enqueue atomically with complete context`() {
+        val fixture = fixture()
+        val error = assertFailsWith<InvalidSkillTimingException> {
+            fixture.coordinator.enqueue(
+                marker(1, delayRound = -1, delayHit = 0),
+                currentRound = 1,
+                currentHit = 0,
+            )
+        }
+
+        assertEquals(10, error.skillId)
+        assertEquals(1, error.detailId)
+        assertTrue(error.message.orEmpty().contains("ScheduledTimingChange"))
+        assertTrue(error.message.orEmpty().contains("rootSkillId=10"))
+        assertEquals(0, fixture.runtime.delayedCount())
+    }
+
+    @Test
+    fun `strict timing rejects backward round and due overflow`() {
+        val fixture = fixture()
+        fixture.coordinator.onRound(context().copy(round = 2))
+
+        assertFailsWith<InvalidSkillTimingException> {
+            fixture.coordinator.onRound(context().copy(round = 1))
+        }
+        assertFailsWith<InvalidSkillTimingException> {
+            fixture.coordinator.enqueue(
+                marker(1, delayRound = 1, delayHit = 0),
+                currentRound = Int.MAX_VALUE,
+                currentHit = 0,
+            )
+        }
+        assertEquals(0, fixture.runtime.delayedCount())
+    }
+
+    @Test
+    fun `safe timing diagnoses invalid input without queueing`() {
         val diagnostics = mutableListOf<SkillExecutionDiagnostic>()
-        val fixture = fixture(diagnosticSink = diagnostics::add)
+        val fixture = fixture(safeTiming = true, diagnosticSink = diagnostics::add)
 
         val result = fixture.coordinator.enqueue(
             marker(1, delayRound = -1, delayHit = 0),
@@ -348,6 +429,7 @@ class SkillTimingTest {
     private fun fixture(
         prepareRounds: Int = 0,
         probability: Int = 100,
+        safeTiming: Boolean = false,
         diagnosticSink: (SkillExecutionDiagnostic) -> Unit = {},
         handler: (EffectInvocation) -> EffectExecution = { EffectExecution.EMPTY },
     ): Fixture {
@@ -394,9 +476,14 @@ class SkillTimingTest {
         )
         val runtime = SkillRuntimeState()
         val interpreter = SkillRuleInterpreter(graph, registry)
+        val coordinator = if (safeTiming) {
+            CompleteTimingCoordinator.safe(graph, interpreter, runtime, diagnosticSink)
+        } else {
+            CompleteTimingCoordinator(graph, interpreter, runtime, diagnosticSink)
+        }
         return Fixture(
             runtime,
-            CompleteTimingCoordinator(graph, interpreter, runtime, diagnosticSink),
+            coordinator,
         )
     }
 

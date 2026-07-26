@@ -31,6 +31,36 @@ data class SkillPreparationCancelledEvent(
         get() = snapshot.rootSkillId
 }
 
+sealed interface SkillTimingEvent : SkillExecutionEvent {
+    val source: BattleHeroRef
+    val currentSkillId: Int
+    val trigger: BattleTrigger
+
+    data class PreparationCompleted(
+        override val source: BattleHeroRef,
+        override val rootSkillId: Int,
+        override val currentSkillId: Int,
+        val startedRound: Int,
+        val readyRound: Int,
+        val completedRound: Int,
+        override val trigger: BattleTrigger,
+        val lockedTargets: List<BattleHeroRef>?,
+        val reselectedTargets: List<BattleHeroRef>?,
+    ) : SkillTimingEvent
+}
+
+class InvalidSkillTimingException(
+    val skillId: Int,
+    val detailId: Int?,
+    val rootSkillId: Int?,
+    val trigger: BattleTrigger,
+    val specification: Any?,
+    val reason: String,
+) : IllegalArgumentException(
+    "Invalid skill timing: skillId=$skillId detailId=$detailId rootSkillId=$rootSkillId " +
+        "trigger=$trigger reason=$reason specification=$specification",
+)
+
 data class SkillAttemptRejectedChange(
     val source: BattleHeroRef,
     val skillId: Int,
@@ -65,6 +95,7 @@ class CompleteTimingCoordinator(
     private val interpreter: SkillRuleInterpreter,
     private val runtime: SkillRuntimeState,
     private val diagnosticSink: (SkillExecutionDiagnostic) -> Unit = {},
+    private val failureMode: SkillTimingFailureMode = SkillTimingFailureMode.STRICT,
 ) {
     private val scheduledChanges = mutableMapOf<Long, BattleStateChange>()
     private var currentRound: Int = 0
@@ -84,9 +115,11 @@ class CompleteTimingCoordinator(
             reason = "Missing timing rule for skill=$skillId",
         )
         if (options.preparationReductionRounds < 0) {
-            return diagnostic(
+            return invalid(
                 context = timingContext,
                 skillId = skillId,
+                detailId = null,
+                specification = options,
                 reason = "preparationReductionRounds must not be negative: " +
                     options.preparationReductionRounds,
             )
@@ -167,13 +200,33 @@ class CompleteTimingCoordinator(
 
     fun onRound(context: SkillBattleContext): SkillExecutionResult {
         if (context.round <= 0) {
-            return diagnostic(context.copy(runtime = runtime), context.currentSkillId, "round must be positive")
+            return invalid(context.copy(runtime = runtime), context.currentSkillId, null, context, "round must be positive")
+        }
+        if (context.round < currentRound) {
+            return invalid(
+                context.copy(runtime = runtime),
+                context.currentSkillId,
+                null,
+                context,
+                "round moved backward: currentRound=$currentRound requestedRound=${context.round}",
+            )
         }
         currentRound = context.round
         currentHit = 0
         var aggregate = drain(context, currentRound, currentHit)
         runtime.duePreparations(currentRound).forEach { snapshot ->
-            aggregate += interpreter.executeAccepted(
+            val completed = SkillTimingEvent.PreparationCompleted(
+                source = snapshot.source,
+                rootSkillId = snapshot.rootSkillId,
+                currentSkillId = snapshot.skillId,
+                startedRound = snapshot.startedRound,
+                readyRound = snapshot.readyRound,
+                completedRound = currentRound,
+                trigger = snapshot.trigger,
+                lockedTargets = snapshot.lockedTargets,
+                reselectedTargets = null,
+            )
+            aggregate += result(events = listOf(completed)) + interpreter.executeAccepted(
                 snapshot,
                 context.copy(
                     runtime = runtime,
@@ -190,7 +243,16 @@ class CompleteTimingCoordinator(
 
     fun onHit(context: SkillBattleContext): SkillExecutionResult {
         if (context.round <= 0) {
-            return diagnostic(context.copy(runtime = runtime), context.currentSkillId, "round must be positive")
+            return invalid(context.copy(runtime = runtime), context.currentSkillId, null, context, "round must be positive")
+        }
+        if (context.round < currentRound) {
+            return invalid(
+                context.copy(runtime = runtime),
+                context.currentSkillId,
+                null,
+                context,
+                "round moved backward: currentRound=$currentRound requestedRound=${context.round}",
+            )
         }
         if (currentRound != context.round) {
             currentRound = context.round
@@ -215,18 +277,43 @@ class CompleteTimingCoordinator(
         if (currentRound <= 0 || currentHit < 0 || delayRound < 0 || delayHit < 0 ||
             delayRound == 0 && delayHit == 0
         ) {
-            return diagnostic(
+            return invalid(
                 trigger = BattleTrigger.ACTION_AFTER,
                 skillId = snapshot.skillId,
                 detailId = snapshot.detailId,
+                rootSkillId = snapshot.rootSkillId,
+                specification = change,
                 reason = "Invalid timing: currentRound=$currentRound currentHit=$currentHit " +
                     "delayRound=$delayRound delayHit=$delayHit",
             )
         }
-        val dueRound = currentRound + delayRound
-        val dueHit = if (delayRound == 0) currentHit + delayHit else delayHit
+        if (currentRound < this.currentRound ||
+            currentRound == this.currentRound && currentHit < this.currentHit
+        ) {
+            return invalid(
+                trigger = BattleTrigger.ACTION_AFTER,
+                skillId = snapshot.skillId,
+                detailId = snapshot.detailId,
+                rootSkillId = snapshot.rootSkillId,
+                specification = change,
+                reason = "Current timing moved backward: coordinator=${position()} " +
+                    "provided=${TimingPosition(currentRound, currentHit)}",
+            )
+        }
+        val dueRound = currentRound.toLong() + delayRound
+        val dueHit = if (delayRound == 0) currentHit.toLong() + delayHit else delayHit.toLong()
+        if (dueRound !in 1..Int.MAX_VALUE.toLong() || dueHit !in 0..Int.MAX_VALUE.toLong()) {
+            return invalid(
+                trigger = BattleTrigger.ACTION_AFTER,
+                skillId = snapshot.skillId,
+                detailId = snapshot.detailId,
+                rootSkillId = snapshot.rootSkillId,
+                specification = change,
+                reason = "Due timing is outside Int range: dueRound=$dueRound dueHit=$dueHit",
+            )
+        }
         val scheduled = runtime.schedule(
-            snapshot.copy(dueRound = dueRound, dueHit = dueHit),
+            snapshot.copy(dueRound = dueRound.toInt(), dueHit = dueHit.toInt()),
         )
         scheduledChanges[scheduled.sequence] = change
         return SkillExecutionResult.EMPTY
@@ -343,6 +430,43 @@ class CompleteTimingCoordinator(
         return result(diagnostics = listOf(diagnostic))
     }
 
+    private fun invalid(
+        context: SkillBattleContext,
+        skillId: Int,
+        detailId: Int?,
+        specification: Any?,
+        reason: String,
+    ): SkillExecutionResult =
+        invalid(
+            trigger = context.trigger,
+            skillId = skillId,
+            detailId = detailId,
+            rootSkillId = context.rootSkillId,
+            specification = specification,
+            reason = reason,
+        )
+
+    private fun invalid(
+        trigger: BattleTrigger,
+        skillId: Int,
+        detailId: Int?,
+        rootSkillId: Int?,
+        specification: Any?,
+        reason: String,
+    ): SkillExecutionResult {
+        if (failureMode == SkillTimingFailureMode.STRICT) {
+            throw InvalidSkillTimingException(
+                skillId = skillId,
+                detailId = detailId,
+                rootSkillId = rootSkillId,
+                trigger = trigger,
+                specification = specification,
+                reason = reason,
+            )
+        }
+        return diagnostic(trigger, skillId, detailId, reason)
+    }
+
     private fun cancelReason(effectId: Int): PreparationCancelReason =
         if (effectId in HESITATION_IDS) PreparationCancelReason.HESITATION
         else PreparationCancelReason.CONFUSION
@@ -354,7 +478,26 @@ class CompleteTimingCoordinator(
     ): SkillExecutionResult =
         SkillExecutionResult.immutable(changes, events, emptyList(), diagnostics)
 
-    private companion object {
+    companion object {
+        fun safe(
+            graph: SkillRuleGraph,
+            interpreter: SkillRuleInterpreter,
+            runtime: SkillRuntimeState,
+            diagnosticSink: (SkillExecutionDiagnostic) -> Unit = {},
+        ): CompleteTimingCoordinator =
+            CompleteTimingCoordinator(
+                graph,
+                interpreter,
+                runtime,
+                diagnosticSink,
+                SkillTimingFailureMode.SAFE,
+            )
+
         val HESITATION_IDS = setOf(502, 702, 902)
     }
+}
+
+enum class SkillTimingFailureMode {
+    STRICT,
+    SAFE,
 }
