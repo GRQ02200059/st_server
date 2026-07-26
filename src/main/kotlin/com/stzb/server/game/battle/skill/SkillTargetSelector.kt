@@ -78,6 +78,9 @@ class SkillTargetSelector {
             .filter { target ->
                 matchesAttributeCastConditionTarget(raw.castCondition, context, target)
             }
+            .filter { target ->
+                matchesMarkerCastConditionTarget(raw.castCondition, context, target)
+            }
             .sortedWith(CLIENT_POSITION_ORDER)
 
         candidates = when (raw.selectType) {
@@ -396,6 +399,17 @@ class SkillTargetSelector {
             else -> error("Unsupported attribute cast condition=$castCondition")
         }
     }
+
+    private fun matchesMarkerCastConditionTarget(
+        castCondition: Int,
+        context: SkillBattleContext,
+        target: BattleHeroRef,
+    ): Boolean =
+        when (castCondition) {
+            321001701 -> context.runtime.hasMarker(target, 21001701, context.round)
+            421001701 -> !context.runtime.hasMarker(target, 21001701, context.round)
+            else -> true
+        }
 
     private fun requireMetadata(
         targetType: Int,

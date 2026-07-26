@@ -461,6 +461,23 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `detail marker conditions filter each candidate independently`() {
+        val runtime = SkillRuntimeState().apply {
+            recordMarker(enemyMiddle, 21001701, value = 0, appliedRound = 0, durationRounds = 2)
+        }
+        val context = context(view(sourceRange = 5), runtime = runtime)
+
+        assertEquals(
+            listOf(enemyMiddle),
+            select(rule(selectType = 34, castCondition = 321001701), context),
+        )
+        assertEquals(
+            listOf(enemyFront, enemyBase),
+            select(rule(selectType = 34, castCondition = 421001701), context),
+        )
+    }
+
+    @Test
     fun `minimum and maximum selectors use live troops and four combat stats`() {
         val states = defaultStates().toMutableMap().apply {
             put(enemyBase, state(troops = 300, attack = 80, defense = 10, strategy = 70, speed = 40))
@@ -824,12 +841,13 @@ class SkillTargetSelectorTest {
     private fun context(
         view: SkillBattleView,
         random: BattleRandom = FixedBattleRandom(0),
+        runtime: SkillRuntimeState = SkillRuntimeState(),
     ) = SkillBattleContext(
         request = com.stzb.server.game.battle.BattleRequest(
             attacker = com.stzb.server.game.battle.BattleTeam(emptyList()),
             defender = com.stzb.server.game.battle.BattleTeam(emptyList()),
         ),
-        runtime = SkillRuntimeState(),
+        runtime = runtime,
         random = random,
         round = 1,
         source = source,
