@@ -124,22 +124,70 @@ class BattleEffectRegistryTest {
     }
 
     @Test
-    fun `registration rejects undeclared and duplicate effect handlers`() {
-        val handler = BattleEffectHandler { EffectExecution.EMPTY }
+    fun `safe mode contains a throwing logger after invoking it exactly once`() {
+        var loggerCalls = 0
+        val registry = BattleEffectRegistry.safe(graph(effectIds = setOf(7))) {
+            loggerCalls += 1
+            throw IllegalStateException("diagnostic sink unavailable")
+        }
+
+        val execution = registry.execute(
+            effectRule(detailId = 101, effectId = 7),
+            context(skillId = 1),
+        )
+
+        assertSame(EffectExecution.EMPTY, execution)
+        assertEquals(1, loggerCalls)
+    }
+
+    @Test
+    fun `placeholder registration remains absent from implemented ids and fails in strict mode`() {
+        val registry = BattleEffectRegistry.strict(graph(effectIds = setOf(7))).register(
+            EffectHandlerRegistration.placeholder(7, "damage semantics not implemented"),
+        )
+
+        assertEquals(emptySet(), registry.implementedEffectIds())
+        val error = assertFailsWith<UnsupportedSkillRuleException> {
+            registry.execute(effectRule(detailId = 101, effectId = 7), context(skillId = 1))
+        }
+        assertEquals(EffectFailureCode.UNIMPLEMENTED_EFFECT, error.diagnostic.code)
+    }
+
+    @Test
+    fun `registration rejects undeclared duplicate and empty implemented handlers`() {
+        val handler = MeaningfulTestHandler()
         val registry = BattleEffectRegistry.strict(graph(effectIds = setOf(7)))
 
         val undeclared = assertFailsWith<IllegalArgumentException> {
-            registry.register(999, handler)
+            registry.register(EffectHandlerRegistration.implemented(999, handler))
         }
         assertTrue(undeclared.message!!.contains("Undeclared effect=999"))
 
-        val registered = registry.register(7, handler)
+        val registered = registry.register(EffectHandlerRegistration.implemented(7, handler))
         val duplicate = assertFailsWith<IllegalArgumentException> {
-            registered.register(7, handler)
+            registered.register(EffectHandlerRegistration.implemented(7, handler))
         }
         assertTrue(duplicate.message!!.contains("Duplicate handler for effect=7"))
+        val empty = assertFailsWith<IllegalArgumentException> {
+            EffectHandlerRegistration.implemented(7, EmptyTestHandler())
+        }
+        assertTrue(empty.message!!.contains("must declare non-empty semantics"))
         assertEquals(emptySet(), registry.implementedEffectIds())
         assertEquals(setOf(7), registered.implementedEffectIds())
+    }
+
+    @Test
+    fun `batch registration rejects repeated effect ids before entries can be erased`() {
+        val registry = BattleEffectRegistry.strict(graph(effectIds = setOf(7)))
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            registry.register(
+                EffectHandlerRegistration.placeholder(7, "first owner"),
+                EffectHandlerRegistration.implemented(7, MeaningfulTestHandler()),
+            )
+        }
+
+        assertTrue(error.message!!.contains("Duplicate handlers for effects=[7]"))
     }
 
     @Test
@@ -148,11 +196,10 @@ class BattleEffectRegistryTest {
         val event = BattleEvent.RoundStart(3)
         val stateChanges = mutableListOf<BattleStateChange>(stateChange)
         val events = mutableListOf<BattleEvent>(event)
-        var received: EffectInvocation? = null
-        val registry = BattleEffectRegistry.strict(graph(effectIds = setOf(7))).register(7) {
-            received = it
-            EffectExecution(stateChanges, events)
-        }
+        val handler = RecordingTestHandler(stateChanges, events)
+        val registry = BattleEffectRegistry.strict(graph(effectIds = setOf(7))).register(
+            EffectHandlerRegistration.implemented(7, handler),
+        )
         val rule = effectRule(detailId = 101, effectId = 7)
         val context = context(skillId = 1, trigger = BattleTrigger.ACTION_BEFORE)
 
@@ -160,9 +207,9 @@ class BattleEffectRegistryTest {
         stateChanges.clear()
         events.clear()
 
-        assertSame(rule, received!!.rule)
-        assertSame(context, received!!.context)
-        assertEquals(listOf(1), received!!.callPath)
+        assertSame(rule, handler.received!!.rule)
+        assertSame(context, handler.received!!.context)
+        assertEquals(listOf(1), handler.received!!.callPath)
         assertEquals(listOf(stateChange), execution.stateChanges)
         assertEquals(listOf(event), execution.events)
         assertFailsWith<UnsupportedOperationException> {
@@ -170,6 +217,35 @@ class BattleEffectRegistryTest {
         }
         assertFailsWith<UnsupportedOperationException> {
             (execution.events as MutableList<BattleEvent>).clear()
+        }
+    }
+
+    private class MeaningfulTestHandler : ImplementedBattleEffectHandler {
+        override val semanticId: String = "test.state-change"
+
+        override fun execute(invocation: EffectInvocation): EffectExecution =
+            EffectExecution(
+                stateChanges = listOf(object : BattleStateChange {}),
+                events = emptyList(),
+            )
+    }
+
+    private class EmptyTestHandler : ImplementedBattleEffectHandler {
+        override val semanticId: String = ""
+
+        override fun execute(invocation: EffectInvocation): EffectExecution = EffectExecution.EMPTY
+    }
+
+    private class RecordingTestHandler(
+        private val stateChanges: List<BattleStateChange>,
+        private val events: List<BattleEvent>,
+    ) : ImplementedBattleEffectHandler {
+        override val semanticId: String = "test.recording"
+        var received: EffectInvocation? = null
+
+        override fun execute(invocation: EffectInvocation): EffectExecution {
+            received = invocation
+            return EffectExecution(stateChanges, events)
         }
     }
 

@@ -8,6 +8,54 @@ fun interface BattleEffectHandler {
     fun execute(invocation: EffectInvocation): EffectExecution
 }
 
+interface ImplementedBattleEffectHandler : BattleEffectHandler {
+    val semanticId: String
+}
+
+enum class EffectImplementationStatus {
+    IMPLEMENTED,
+    PLACEHOLDER,
+}
+
+class EffectHandlerRegistration private constructor(
+    val effectId: Int,
+    val implementationStatus: EffectImplementationStatus,
+    internal val handler: ImplementedBattleEffectHandler?,
+    val diagnosticReason: String?,
+) {
+    companion object {
+        fun implemented(
+            effectId: Int,
+            handler: ImplementedBattleEffectHandler,
+        ): EffectHandlerRegistration {
+            require(handler.semanticId.isNotBlank()) {
+                "Implemented handler for effect=$effectId must declare non-empty semantics"
+            }
+            return EffectHandlerRegistration(
+                effectId = effectId,
+                implementationStatus = EffectImplementationStatus.IMPLEMENTED,
+                handler = handler,
+                diagnosticReason = null,
+            )
+        }
+
+        fun placeholder(
+            effectId: Int,
+            diagnosticReason: String,
+        ): EffectHandlerRegistration {
+            require(diagnosticReason.isNotBlank()) {
+                "Placeholder for effect=$effectId requires a diagnostic reason"
+            }
+            return EffectHandlerRegistration(
+                effectId = effectId,
+                implementationStatus = EffectImplementationStatus.PLACEHOLDER,
+                handler = null,
+                diagnosticReason = diagnosticReason,
+            )
+        }
+    }
+}
+
 interface BattleStateChange
 
 data class EffectInvocation(
@@ -68,14 +116,18 @@ class UnsupportedSkillRuleException(
 
 class BattleEffectRegistry private constructor(
     declarations: Map<Int, EffectDeclaration>,
-    handlers: Map<Int, BattleEffectHandler>,
+    registrations: Map<Int, EffectHandlerRegistration>,
     private val failureMode: FailureMode,
     private val logger: (BattleEffectDiagnostic) -> Unit,
 ) {
     private val declarations: Map<Int, EffectDeclaration> = immutableMap(declarations)
-    private val handlers: Map<Int, BattleEffectHandler> = immutableMap(handlers)
+    private val registrations: Map<Int, EffectHandlerRegistration> = immutableMap(registrations)
     private val declaredIds: Set<Int> = immutableSet(this.declarations.keys)
-    private val implementedIds: Set<Int> = immutableSet(this.handlers.keys)
+    private val implementedIds: Set<Int> = immutableSet(
+        this.registrations.values
+            .filter { it.implementationStatus == EffectImplementationStatus.IMPLEMENTED }
+            .map { it.effectId },
+    )
 
     fun declaredEffectIds(): Set<Int> = declaredIds
 
@@ -83,32 +135,35 @@ class BattleEffectRegistry private constructor(
 
     fun declaration(effectId: Int): EffectDeclaration? = declarations[effectId]
 
-    fun register(
-        effectId: Int,
-        handler: BattleEffectHandler,
-    ): BattleEffectRegistry {
-        require(effectId in declarations) { "Undeclared effect=$effectId" }
-        require(effectId !in handlers) { "Duplicate handler for effect=$effectId" }
-        return BattleEffectRegistry(
-            declarations = declarations,
-            handlers = handlers + (effectId to handler),
-            failureMode = failureMode,
-            logger = logger,
-        )
-    }
-
-    fun register(handlers: Map<Int, BattleEffectHandler>): BattleEffectRegistry {
-        val duplicateIds = handlers.keys intersect this.handlers.keys
-        require(duplicateIds.isEmpty()) {
-            "Duplicate handlers for effects=${duplicateIds.sorted()}"
+    fun register(vararg registrations: EffectHandlerRegistration): BattleEffectRegistry {
+        val repeatedIds = registrations
+            .groupingBy { it.effectId }
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
+        require(repeatedIds.isEmpty()) {
+            "Duplicate handlers for effects=${repeatedIds.sorted()}"
         }
-        val undeclaredIds = handlers.keys - declarations.keys
+        val registrationIds = registrations.mapTo(LinkedHashSet()) { it.effectId }
+        val existingIds = registrationIds intersect this.registrations.keys
+        require(existingIds.isEmpty()) {
+            if (existingIds.size == 1) {
+                "Duplicate handler for effect=${existingIds.single()}"
+            } else {
+                "Duplicate handlers for effects=${existingIds.sorted()}"
+            }
+        }
+        val undeclaredIds = registrationIds - declarations.keys
         require(undeclaredIds.isEmpty()) {
-            "Undeclared effects=${undeclaredIds.sorted()}"
+            if (undeclaredIds.size == 1) {
+                "Undeclared effect=${undeclaredIds.single()}"
+            } else {
+                "Undeclared effects=${undeclaredIds.sorted()}"
+            }
         }
         return BattleEffectRegistry(
             declarations = declarations,
-            handlers = this.handlers + handlers,
+            registrations = this.registrations + registrations.associateBy { it.effectId },
             failureMode = failureMode,
             logger = logger,
         )
@@ -124,7 +179,7 @@ class BattleEffectRegistry private constructor(
             context = context,
             callPath = immutableList(callPath),
         )
-        val handler = handlers[rule.effectId]
+        val handler = registrations[rule.effectId]?.handler
         if (handler != null) {
             return handler.execute(invocation).immutableCopy()
         }
@@ -144,7 +199,11 @@ class BattleEffectRegistry private constructor(
         return when (failureMode) {
             FailureMode.STRICT -> throw UnsupportedSkillRuleException(diagnostic)
             FailureMode.SAFE -> {
-                logger(diagnostic)
+                try {
+                    logger(diagnostic)
+                } catch (_: Exception) {
+                    // Diagnostics must not replace safe-mode execution semantics.
+                }
                 EffectExecution.EMPTY
             }
         }
@@ -210,7 +269,7 @@ class BattleEffectRegistry private constructor(
             }
             return BattleEffectRegistry(
                 declarations = declarations,
-                handlers = emptyMap(),
+                registrations = emptyMap(),
                 failureMode = failureMode,
                 logger = logger,
             )

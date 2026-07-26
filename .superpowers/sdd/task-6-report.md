@@ -118,3 +118,46 @@ errors:
   application.
 - Sentinel effect `0` has declaration metadata only; Task 9 must register its
   real no-op/meta semantics explicitly before strict execution can succeed.
+
+## Review follow-up
+
+Addressed the Task 6 review findings:
+
+- Replaced raw handler registration with explicit
+  `EffectHandlerRegistration.implemented(...)` and
+  `EffectHandlerRegistration.placeholder(...)` descriptors.
+- Implemented coverage now requires the `ImplementedBattleEffectHandler`
+  marker contract and a nonblank semantic ID. Raw lambdas and declared
+  placeholders cannot be counted by `implementedEffectIds()`.
+- Placeholders retain an explicit diagnostic reason, have no executable
+  handler, remain absent from implemented coverage, and still fail in strict
+  mode.
+- Batch registration now accepts descriptors as varargs and detects repeated
+  IDs before collection materialization, as well as duplicates against prior
+  registrations.
+- Safe-mode diagnostic logging is invoked exactly once and contains ordinary
+  logger exceptions so the branch still returns `EffectExecution.EMPTY`.
+
+### Follow-up TDD evidence
+
+RED:
+
+```bash
+./gradlew test --rerun-tasks \
+  --tests com.stzb.server.game.battle.skill.BattleEffectRegistryTest \
+  --no-daemon \
+  -Dkotlin.compiler.execution.strategy=in-process \
+  -Pkotlin.incremental=false
+```
+
+Result: `BUILD FAILED` at `:compileTestKotlin` with the expected unresolved
+descriptor and implemented-handler marker APIs.
+
+GREEN focused result: `BUILD SUCCESSFUL`; 9 registry tests passed.
+
+Mandated regression result: `BUILD SUCCESSFUL`; 45 tests passed with zero
+failures and zero errors:
+
+- `BattleEffectRegistryTest`: 9
+- `SkillRuleCatalogTest`: 8
+- `BattleEffectStoreTest`: 28
