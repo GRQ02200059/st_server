@@ -147,6 +147,89 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `precondition 80 and minus 80 filter mixed candidates by allegiance`() {
+        val context = context(view(sourceRange = 5))
+
+        assertEquals(
+            listOf(allyBase, allyMiddle),
+            select(rule(attackType = 113, selectType = 34, precondition = 80), context),
+        )
+        assertEquals(
+            listOf(enemyFront, enemyMiddle, enemyBase),
+            select(rule(attackType = 113, selectType = 34, precondition = -80), context),
+        )
+    }
+
+    @Test
+    fun `precondition 70 compares each target morale with source morale`() {
+        val states = defaultStates().toMutableMap().apply {
+            put(source, state(morale = 100))
+            put(enemyBase, state(morale = 90))
+            put(enemyMiddle, state(morale = 100))
+            put(enemyFront, state(morale = 110))
+        }
+        val context = context(view(states = states, sourceRange = 5))
+
+        assertEquals(
+            listOf(enemyBase),
+            select(rule(selectType = 34, precondition = 70), context),
+        )
+        assertEquals(
+            listOf(enemyFront, enemyMiddle),
+            select(rule(selectType = 34, precondition = -70), context),
+        )
+    }
+
+    @Test
+    fun `hero id precondition retains only the configured hero card`() {
+        val wanted = ref(Side.DEFENDER, 1, 100010)
+        val states = defaultStates() + (wanted to state())
+        val customView = FakeBattleView(
+            refs = allRefs() + wanted,
+            states = states,
+            metadata = (allRefs() + wanted).associateWith {
+                metadata(SkillHeroGender.MALE, SkillTroopType.INFANTRY)
+            },
+            damageDealt = emptyMap(),
+            linkedTarget = null,
+            currentTarget = null,
+            previousTargets = emptyMap(),
+            acceptedStateFilters = emptyMap(),
+        )
+
+        assertEquals(
+            listOf(wanted),
+            select(
+                rule(
+                    attackType = 113,
+                    selectType = 34,
+                    precondition = 100010,
+                    skillHitRange = null,
+                ),
+                context(customView),
+            ),
+        )
+    }
+
+    @Test
+    fun `position preconditions select base non base and front positions`() {
+        val context = context(view(sourceRange = 5))
+
+        assertEquals(
+            listOf(enemyBase),
+            select(rule(selectType = 34, precondition = 14), context),
+        )
+        assertEquals(
+            listOf(enemyFront, enemyMiddle),
+            select(rule(selectType = 34, precondition = -14), context),
+        )
+        assertEquals(
+            listOf(enemyFront),
+            select(rule(selectType = 34, precondition = 16), context),
+        )
+    }
+
+    @Test
     fun `minimum and maximum selectors use live troops and four combat stats`() {
         val states = defaultStates().toMutableMap().apply {
             put(enemyBase, state(troops = 300, attack = 80, defense = 10, strategy = 70, speed = 40))
@@ -593,6 +676,7 @@ class SkillTargetSelectorTest {
         selectFlag: Int = 0,
         skillHitRange: Int? = null,
         effectBuffType: Int = 1,
+        precondition: Int = 0,
     ) = SkillEffectRule(
         detailId = detailId,
         effectId = 301,
@@ -613,6 +697,7 @@ class SkillTargetSelectorTest {
             selectAttri = selectAttri,
             targetCountry = targetCountry,
             selectFlag = selectFlag,
+            precondition = precondition,
         ),
         skillHitRange = skillHitRange,
         effectBuffType = effectBuffType,

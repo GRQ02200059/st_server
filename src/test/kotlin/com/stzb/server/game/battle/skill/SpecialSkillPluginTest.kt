@@ -52,12 +52,19 @@ class SpecialSkillPluginTest {
             executionPlugins = ConfiguredSpecialSkillPlugins.registry(config),
         )
 
+        val resolvedTargetCodes = ScopedConditionCodeCatalog.codes.filterTo(linkedSetOf()) {
+            it.field == SkillConditionField.PRECONDITION &&
+                it.value in setOf(
+                    -80, -70, 70, 80, -14, 14, 16,
+                    100003, 100010, 100479, 100661,
+                )
+        }
         assertEquals(
-            ScopedConditionCodeCatalog.codes.mapTo(linkedSetOf()) { it.skillId },
+            (ScopedConditionCodeCatalog.codes - resolvedTargetCodes)
+                .mapTo(linkedSetOf()) { it.skillId },
             report.unresolvedConditionOwnerSkillIds,
         )
-        assertEquals(169, report.unresolvedConditionOwnerSkillIds.size)
-        assertEquals(281, report.pendingConditionCodes.size)
+        assertEquals(ScopedConditionCodeCatalog.codes - resolvedTargetCodes, report.pendingConditionCodes)
         assertTrue(report.missingPluginSkillIds.isEmpty())
         assertTrue(report.duplicateExecutionSkillIds.isEmpty())
         assertEquals(setOf(200036), report.executionPluginSkillIds)

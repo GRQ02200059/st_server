@@ -43,6 +43,27 @@ enum class Comparison {
 }
 
 sealed interface SkillCondition {
+    /**
+     * A condition evaluated for each candidate by [SkillTargetSelector].
+     * It is retained in the compiled condition list so coverage cannot
+     * mistake a target predicate for an unconditional branch.
+     */
+    data class TargetPredicate(
+        val kind: Kind,
+        val value: Int? = null,
+    ) : SkillCondition {
+        enum class Kind {
+            ALLY,
+            ENEMY,
+            MORALE_LOWER_THAN_SOURCE,
+            MORALE_NOT_LOWER_THAN_SOURCE,
+            HERO_ID,
+            BASE_POSITION,
+            NON_BASE_POSITION,
+            FRONT_POSITION,
+        }
+    }
+
     data class RoundRange(
         val first: Int,
         val last: Int,
@@ -135,6 +156,7 @@ class CompiledSkillCondition internal constructor(
                 is SkillCondition.HasStatus -> matchesStatus(condition, context)
                 is SkillCondition.TriggerCount -> matchesTriggerCount(condition, context)
                 is SkillCondition.HeroId -> matchesHeroId(condition, context)
+                is SkillCondition.TargetPredicate -> true
                 is SpecialConditionRequirement -> throw unresolved(condition, trigger)
             }
         }
@@ -250,7 +272,10 @@ class SkillConditionInterpreter(
         }
         val all = linkedMapOf<SkillConditionCode, SpecialSkillPlugin>()
         all.putAll(custom)
-        defaultPendingPlugins(graph, custom.keys).forEach { plugin ->
+        builtInTargetConditionPlugins(graph, custom.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
+        defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
         pluginByCode = Collections.unmodifiableMap(all)
@@ -323,6 +348,68 @@ class SkillConditionInterpreter(
     )
 }
 
+private class BuiltInTargetConditionPlugin(
+    override val id: String,
+    ownedConditions: Set<SkillConditionCode>,
+) : SpecialSkillPlugin {
+    override val ownedConditions: Set<SkillConditionCode> =
+        Collections.unmodifiableSet(LinkedHashSet(ownedConditions))
+
+    override fun compile(
+        code: SkillConditionCode,
+        rule: SkillEffectRule,
+    ): List<SkillCondition> =
+        listOf(
+            when (code.value) {
+                80 -> SkillCondition.TargetPredicate(SkillCondition.TargetPredicate.Kind.ALLY)
+                -80 -> SkillCondition.TargetPredicate(SkillCondition.TargetPredicate.Kind.ENEMY)
+                70 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.MORALE_LOWER_THAN_SOURCE,
+                )
+                -70 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.MORALE_NOT_LOWER_THAN_SOURCE,
+                )
+                in HERO_ID_PRECONDITIONS -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.HERO_ID,
+                    code.value,
+                )
+                14 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.BASE_POSITION,
+                )
+                -14 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.NON_BASE_POSITION,
+                )
+                16 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.FRONT_POSITION,
+                )
+                else -> error("Unsupported built-in target condition $code")
+            },
+        )
+}
+
+private fun builtInTargetConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter { code ->
+            code.field == SkillConditionField.PRECONDITION &&
+                (
+                    code.value in TARGET_PRECONDITIONS ||
+                        code.value in HERO_ID_PRECONDITIONS ||
+                        code.value in POSITION_PRECONDITIONS
+                    )
+        }
+        .filterNot(overridden::contains)
+        .toSet()
+    return if (codes.isEmpty()) {
+        emptyList()
+    } else {
+        listOf(BuiltInTargetConditionPlugin("builtin.target-precondition", codes))
+    }
+}
+
 private class PendingSpecialSkillPlugin(
     override val id: String,
     ownedConditions: Set<SkillConditionCode>,
@@ -336,6 +423,10 @@ private class PendingSpecialSkillPlugin(
     ): List<SkillCondition> =
         listOf(SpecialConditionRequirement(code, id))
 }
+
+private val TARGET_PRECONDITIONS = setOf(-80, -70, 70, 80)
+private val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
+private val POSITION_PRECONDITIONS = setOf(-14, 14, 16)
 
 private fun defaultPendingPlugins(
     graph: SkillRuleGraph,

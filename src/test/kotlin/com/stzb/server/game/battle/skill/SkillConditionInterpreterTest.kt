@@ -52,18 +52,34 @@ class SkillConditionInterpreterTest {
         val compiled = graph.details.map(interpreter::compile)
         val requirements = compiled
             .flatMap { it.conditions }
-            .map { it as SpecialConditionRequirement }
+            .filterIsInstance<SpecialConditionRequirement>()
         val expectedOwners = loadExpectedPluginOwners()
+        val resolvedTargetCodes = expectedOwners.map(SpecialConditionRequirement::code)
+            .filterTo(linkedSetOf(), ::isBuiltInTargetCondition)
+        val pendingOwners = expectedOwners.filterNot {
+            it.code in resolvedTargetCodes
+        }.toSet()
 
         assertEquals(281, expectedOwners.size)
         assertEquals(
             expectedOwners.mapTo(linkedSetOf(), SpecialConditionRequirement::code),
             ScopedConditionCodeCatalog.codes,
         )
-        assertEquals(471, requirements.size)
-        assertEquals(expectedOwners, requirements.toSet())
+        assertEquals(pendingOwners, requirements.toSet())
+        assertTrue(
+            compiled.flatMap { it.conditions }
+                .filterIsInstance<SkillCondition.TargetPredicate>()
+                .isNotEmpty(),
+        )
         assertTrue(interpreter.unknownCodes().isEmpty())
     }
+
+    private fun isBuiltInTargetCondition(code: SkillConditionCode): Boolean =
+        code.field == SkillConditionField.PRECONDITION &&
+            code.value in setOf(
+                -80, -70, 70, 80, -14, 14, 16,
+                100003, 100010, 100479, 100661,
+            )
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -117,6 +133,30 @@ class SkillConditionInterpreterTest {
                 val requirement = interpreter.compile(graph.detail(detailId)).conditions.single()
                 (requirement as SpecialConditionRequirement).code.value
             },
+        )
+    }
+
+    @Test
+    fun `target preconditions compile as typed target predicates instead of pending plugins`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.TargetPredicate(SkillCondition.TargetPredicate.Kind.ALLY),
+            interpreter.compile(graph.detail(20027302)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.MORALE_LOWER_THAN_SOURCE,
+            ),
+            interpreter.compile(graph.detail(20098204)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HERO_ID,
+                100003,
+            ),
+            interpreter.compile(graph.detail(20090234)).conditions.single(),
         )
     }
 

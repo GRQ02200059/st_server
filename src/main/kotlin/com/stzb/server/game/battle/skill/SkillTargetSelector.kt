@@ -67,6 +67,7 @@ class SkillTargetSelector {
                         target,
                     )
             }
+            .filter { target -> matchesPreconditionTarget(raw.precondition, context, target) }
             .sortedWith(CLIENT_POSITION_ORDER)
 
         candidates = when (raw.selectType) {
@@ -236,6 +237,35 @@ class SkillTargetSelector {
             else -> error("Unsupported target_type=$targetType")
         }
 
+    private fun matchesPreconditionTarget(
+        precondition: Int,
+        context: SkillBattleContext,
+        target: BattleHeroRef,
+    ): Boolean =
+        when (precondition) {
+            80 -> target.side == context.source.side
+            -80 -> target.side != context.source.side
+            70 -> morale(target, context) < morale(context.source, context)
+            -70 -> morale(target, context) >= morale(context.source, context)
+            in HERO_ID_PRECONDITIONS -> target.heroId.value == precondition
+            14 -> target.position == BASE_POSITION
+            -14 -> target.position != BASE_POSITION
+            16 -> target.position == FRONT_POSITION
+            else -> true
+        }
+
+    private fun morale(
+        ref: BattleHeroRef,
+        context: SkillBattleContext,
+    ): Int {
+        require(SkillBattleViewCapability.LIVE_MORALE in context.battleView.capabilities) {
+            "precondition=${context.currentSkillId} requires live morale"
+        }
+        return requireNotNull(context.battleView.currentMorale(ref)) {
+            "Missing live morale for $ref"
+        }
+    }
+
     private fun requireMetadata(
         targetType: Int,
         metadata: SkillBattleHeroMetadata?,
@@ -287,6 +317,7 @@ class SkillTargetSelector {
         const val BASE_POSITION = 0
         const val MIDDLE_POSITION = 1
         const val FRONT_POSITION = 2
+        val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
 
         const val TARGET_ARCHER_OR_INFANTRY = -30
         const val TARGET_CAVALRY_OR_INFANTRY = -10
