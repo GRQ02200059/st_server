@@ -242,6 +242,55 @@ data class ActiveBattleStatus(
     val sourceSnapshot: BattleHero? = null,
 )
 
+enum class EffectCategory(val clientBuffType: Int) {
+    NEUTRAL(0),
+    HARMFUL(1),
+    BENEFICIAL(2),
+    ;
+
+    companion object {
+        fun fromClientBuffType(clientBuffType: Int): EffectCategory =
+            entries.singleOrNull { it.clientBuffType == clientBuffType }
+                ?: throw IllegalArgumentException("Unsupported client buff_type=$clientBuffType")
+    }
+}
+
+data class ActiveSkillEffect(
+    val source: BattleHeroRef,
+    val target: BattleHeroRef,
+    val rootSkillId: Int,
+    val skillId: Int,
+    val skillKind: SkillKind,
+    val detailId: Int,
+    val effectId: Int,
+    val category: EffectCategory,
+    val conflict: Int,
+    val strength: Int,
+    val replaceType: Int,
+    val bindFlag: Int,
+    val maxStacks: Int,
+    var stacks: Int,
+    var remainingRounds: Int?,
+    var remainingHits: Int?,
+    val clearPerHit: Boolean,
+    val clearable: Boolean = true,
+) {
+    init {
+        require(replaceType in 0..3) { "Unsupported replace_type=$replaceType" }
+        require(bindFlag >= 0) { "bindFlag must not be negative: $bindFlag" }
+        require(maxStacks > 0) { "maxStacks must be positive: $maxStacks" }
+        require(stacks in 1..maxStacks) {
+            "stacks must be within 1..maxStacks: stacks=$stacks maxStacks=$maxStacks"
+        }
+        require(remainingRounds == null || remainingRounds!! >= 0) {
+            "remainingRounds must not be negative: $remainingRounds"
+        }
+        require(remainingHits == null || remainingHits!! >= 0) {
+            "remainingHits must not be negative: $remainingHits"
+        }
+    }
+}
+
 data class SkillCastResult(
     val skillId: Int,
     val updatedEnemies: BattleTeam,
