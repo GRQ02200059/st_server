@@ -142,6 +142,11 @@ internal object ClientBattleTextReplayAdapter {
                     }
                 }
                 is BattleEvent.UnsupportedEquipmentEffect -> Unit
+                is BattleEvent.SkillTriggered,
+                is BattleEvent.TriggerPoint,
+                is BattleEvent.SkillPreparationCompleted,
+                is BattleEvent.SkillPreparationCancelled,
+                -> Unit
                 else -> Unit
             }
         }

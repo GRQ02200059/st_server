@@ -179,6 +179,34 @@ data class ActionPermission(
 
 sealed interface BattleEvent {
     data object BattleStart : BattleEvent
+    data class SkillTriggered(
+        val round: Int,
+        val source: BattleHeroRef,
+        val rootSkillId: Int,
+        val skillId: Int,
+        val trigger: com.stzb.server.game.battle.skill.BattleTrigger,
+    ) : BattleEvent
+    data class TriggerPoint(
+        val round: Int,
+        val source: BattleHeroRef,
+        val trigger: com.stzb.server.game.battle.skill.BattleTrigger,
+    ) : BattleEvent
+    data class SkillPreparationCompleted(
+        val round: Int,
+        val source: BattleHeroRef,
+        val rootSkillId: Int,
+        val skillId: Int,
+        val startedRound: Int,
+        val readyRound: Int,
+        val trigger: com.stzb.server.game.battle.skill.BattleTrigger,
+    ) : BattleEvent
+    data class SkillPreparationCancelled(
+        val round: Int,
+        val source: BattleHeroRef,
+        val rootSkillId: Int,
+        val skillId: Int,
+        val reason: String,
+    ) : BattleEvent
     data class RoundStart(val round: Int) : BattleEvent
     data class HeroActionStart(val round: Int, val source: BattleHeroRef) : BattleEvent
     data class NormalAttack(

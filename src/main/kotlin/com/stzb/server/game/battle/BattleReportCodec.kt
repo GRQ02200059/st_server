@@ -44,6 +44,38 @@ object BattleReportCodec {
     private fun BattleEvent.toReportMap(): Map<String, Any> =
         when (this) {
             BattleEvent.BattleStart -> mapOf("type" to "BattleStart")
+            is BattleEvent.SkillTriggered -> mapOf(
+                "type" to "SkillTriggered",
+                "round" to round,
+                "source" to source.toReportMap(),
+                "rootSkillId" to rootSkillId,
+                "skillId" to skillId,
+                "trigger" to trigger.name,
+            )
+            is BattleEvent.TriggerPoint -> mapOf(
+                "type" to "TriggerPoint",
+                "round" to round,
+                "source" to source.toReportMap(),
+                "trigger" to trigger.name,
+            )
+            is BattleEvent.SkillPreparationCompleted -> mapOf(
+                "type" to "SkillPreparationCompleted",
+                "round" to round,
+                "source" to source.toReportMap(),
+                "rootSkillId" to rootSkillId,
+                "skillId" to skillId,
+                "startedRound" to startedRound,
+                "readyRound" to readyRound,
+                "trigger" to trigger.name,
+            )
+            is BattleEvent.SkillPreparationCancelled -> mapOf(
+                "type" to "SkillPreparationCancelled",
+                "round" to round,
+                "source" to source.toReportMap(),
+                "rootSkillId" to rootSkillId,
+                "skillId" to skillId,
+                "reason" to reason,
+            )
             is BattleEvent.RoundStart -> mapOf("type" to "RoundStart", "round" to round)
             is BattleEvent.HeroActionStart -> mapOf(
                 "type" to "HeroActionStart",

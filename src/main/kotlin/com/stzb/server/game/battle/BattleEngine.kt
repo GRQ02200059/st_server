@@ -1,5 +1,9 @@
 package com.stzb.server.game.battle
 
+import com.stzb.server.game.battle.skill.BattleTrigger
+import com.stzb.server.game.battle.skill.DefaultCompleteSkillEngine
+import com.stzb.server.game.battle.skill.SkillBattleContext
+
 object BattleEngine {
     private val actionResolver = BattleActionResolver()
 
@@ -10,18 +14,168 @@ object BattleEngine {
         request: BattleRequest,
         config: BattleConfigRepository,
         random: BattleRandom = SeededBattleRandom(0),
+    ): BattleResult = resolveComplete(request, config, random)
+
+    private fun resolveComplete(
+        request: BattleRequest,
+        config: BattleConfigRepository,
+        random: BattleRandom,
     ): BattleResult {
-        val interpreter = BattleSkillInterpreter(config)
-        val runtime = BattleSkillRuntime(config)
-        return resolveInternal(
-            request = request.copy(
-                attacker = interpreter.applyPreBattle(request.attacker),
-                defender = interpreter.applyPreBattle(request.defender),
-            ),
-            skillRuntime = runtime,
-            runtimeState = SkillRuntimeState(),
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val events = mutableListOf<BattleEvent>(BattleEvent.BattleStart)
+        val first = engine.livingHeroesInSpeedOrder().firstOrNull()
+            ?: return BattleResult(BattleOutcome.DRAW, request.attacker, request.defender, events)
+        fun context(
+            round: Int,
+            source: BattleHeroRef,
+            trigger: BattleTrigger,
+        ) = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
             random = random,
+            round = round,
+            source = source,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = trigger,
+            battleView = engine.state.view,
         )
+        fun result(outcome: BattleOutcome): BattleResult =
+            BattleResult(
+                outcome,
+                BattleTeam(
+                    request.attacker.heroes.map { original ->
+                        engine.liveHero(BattleHeroRef(Side.ATTACKER, original.position, original.id))
+                    },
+                    request.attacker.armyBonuses,
+                ),
+                BattleTeam(
+                    request.defender.heroes.map { original ->
+                        engine.liveHero(BattleHeroRef(Side.DEFENDER, original.position, original.id))
+                    },
+                    request.defender.armyBonuses,
+                ),
+                events,
+            )
+        fun outcome(): BattleOutcome {
+            val attackerBase = engine.state.view.heroes().filter { it.side == Side.ATTACKER }.minByOrNull { it.position }
+            val defenderBase = engine.state.view.heroes().filter { it.side == Side.DEFENDER }.minByOrNull { it.position }
+            val attackerAlive = attackerBase?.let { engine.state.view.state(it)?.troops ?: 0 > 0 } ?: false
+            val defenderAlive = defenderBase?.let { engine.state.view.state(it)?.troops ?: 0 > 0 } ?: false
+            return when {
+                attackerAlive && !defenderAlive -> BattleOutcome.ATTACKER_WIN
+                !attackerAlive && defenderAlive -> BattleOutcome.DEFENDER_WIN
+                else -> BattleOutcome.DRAW
+            }
+        }
+        fun finishIfDefeated(round: Int, source: BattleHeroRef): BattleResult? {
+            val resolved = outcome()
+            if (resolved == BattleOutcome.DRAW) return null
+            events += engine.trigger(
+                BattleTrigger.BASE_HERO_DEFEATED,
+                context(round, source, BattleTrigger.BASE_HERO_DEFEATED),
+            )
+            events += BattleEvent.BattleEnd(resolved)
+            return result(resolved)
+        }
+
+        events += engine.prepareBattle(context(0, first, BattleTrigger.BATTLE_PASSIVE))
+        finishIfDefeated(0, first)?.let { return it }
+
+        for (round in 1..request.maxRounds) {
+            events += BattleEvent.RoundStart(round)
+            val roundSources = engine.livingHeroesInSpeedOrder()
+            roundSources.forEach { source ->
+                events += engine.trigger(
+                    BattleTrigger.ROUND_START,
+                    context(round, source, BattleTrigger.ROUND_START),
+                )
+            }
+            finishIfDefeated(round, first)?.let { return it }
+
+            for (actor in engine.livingHeroesInSpeedOrder()) {
+                if ((engine.state.view.state(actor)?.troops ?: 0) <= 0) continue
+                events += BattleEvent.HeroActionStart(round, actor)
+                val actorContext = context(round, actor, BattleTrigger.ACTION_BEFORE)
+                events += engine.trigger(BattleTrigger.ACTION_BEFORE, actorContext)
+                var permission = engine.permissionFor(actor, actorContext)
+                if (permission.canAct) {
+                    if (permission.canCastActive) {
+                        events += engine.trigger(
+                            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                            actorContext.copy(trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT),
+                        )
+                        finishIfDefeated(round, actor)?.let { return it }
+                    }
+                    permission = engine.permissionFor(actor, actorContext)
+                    if (permission.canNormalAttack) {
+                        repeat(permission.normalAttackCount) {
+                            val currentActor = engine.liveHero(actor)
+                            val targetPool = permission.resolvedTargetPool.ifEmpty {
+                                engine.state.view.heroes().filter { ref ->
+                                    ref.side == (permission.resolvedAllegiance ?: actor.side).opposite()
+                                }
+                            }
+                            val candidates = targetPool.map(engine::liveHero)
+                            var selected = actionResolver.selectNormalAttackTarget(currentActor, candidates, random)
+                                ?: return@repeat
+                            var target = BattleHeroRef(
+                                targetPool.first().side,
+                                selected.position,
+                                selected.id,
+                            )
+                            target = permission.redirectTarget ?: target
+                            selected = engine.liveHero(target)
+                            engine.recordTarget(actor, target)
+                            events += engine.trigger(
+                                BattleTrigger.NORMAL_ATTACK_BEFORE,
+                                actorContext.copy(trigger = BattleTrigger.NORMAL_ATTACK_BEFORE),
+                            )
+                            val evaded = engine.tryEvade(round, actor, target)
+                            if (evaded != null) {
+                                events += evaded
+                            } else {
+                                val damage = actionResolver.normalAttackDamage(currentActor, selected, random)
+                                events += engine.applyNormalDamage(round, actor, target, damage)
+                            }
+                            engine.state.runtime.recordBattleTriggerOccurrence(
+                                actor,
+                                BattleTrigger.NORMAL_ATTACK_AFTER,
+                            )
+                            events += engine.trigger(
+                                BattleTrigger.NORMAL_ATTACK_AFTER,
+                                actorContext.copy(trigger = BattleTrigger.NORMAL_ATTACK_AFTER),
+                            )
+                            finishIfDefeated(round, actor)?.let { return it }
+                            if (permission.grantsPursuitOpportunityPerNormal) {
+                                events += engine.trigger(
+                                    BattleTrigger.PURSUIT_ATTEMPT,
+                                    actorContext.copy(trigger = BattleTrigger.PURSUIT_ATTEMPT),
+                                )
+                                finishIfDefeated(round, actor)?.let { return it }
+                            }
+                        }
+                    }
+                }
+                events += engine.trigger(
+                    BattleTrigger.ACTION_AFTER,
+                    actorContext.copy(trigger = BattleTrigger.ACTION_AFTER),
+                )
+                events += BattleEvent.HeroActionEnd(round, actor)
+                finishIfDefeated(round, actor)?.let { return it }
+            }
+            engine.livingHeroesInSpeedOrder().forEach { source ->
+                events += engine.trigger(
+                    BattleTrigger.ROUND_END,
+                    context(round, source, BattleTrigger.ROUND_END),
+                )
+            }
+            engine.finishRound(round)
+            events += BattleEvent.RoundEnd(round)
+        }
+        val resolved = outcome()
+        events += BattleEvent.BattleEnd(resolved)
+        return result(resolved)
     }
 
     private fun resolveInternal(

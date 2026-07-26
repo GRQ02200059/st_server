@@ -321,13 +321,21 @@ fun BattleEffectRegistry.registerCoreEffects(
     effectStore: BattleEffectStore,
     calculator: BattleValueCalculator = DefaultBattleValueCalculator(),
 ): BattleEffectRegistry =
-    register(*CoreEffectHandlers.registrations(effectStore, calculator))
+    register(
+        *CoreEffectHandlers.registrations(effectStore, calculator)
+            .filter { it.effectId in declaredEffectIds() }
+            .toTypedArray(),
+    )
 
 fun BattleEffectRegistry.registerControlEffects(
     effectStore: BattleEffectStore,
     calculator: BattleValueCalculator = DefaultBattleValueCalculator(),
 ): BattleEffectRegistry =
-    register(*ControlEffectHandlers.registrations(effectStore, calculator))
+    register(
+        *ControlEffectHandlers.registrations(effectStore, calculator)
+            .filter { it.effectId in declaredEffectIds() }
+            .toTypedArray(),
+    )
 
 fun BattleEffectRegistry.registerMetaEffects(
     targetSelector: SkillTargetSelector = SkillTargetSelector(),

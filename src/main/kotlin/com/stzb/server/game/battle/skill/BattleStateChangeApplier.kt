@@ -53,6 +53,10 @@ sealed interface BattleStateOutput {
         val skillId: Int,
         val effectId: Int,
     ) : BattleStateOutput
+
+    data class StatChanged(
+        val change: BattleStatChange,
+    ) : BattleStateOutput
 }
 
 data class BattleStateApplyResult(
@@ -203,6 +207,37 @@ class SkillBattleState(
 
     internal fun contains(ref: BattleHeroRef): Boolean = ref in states
 
+    internal fun seedInitialEffects() {
+        states.forEach { (ref, mutable) ->
+            mutable.entry.statuses.forEach { status ->
+                val effectId = status.initialEffectId() ?: return@forEach
+                effectStore.apply(
+                    ActiveSkillEffect(
+                        source = ref,
+                        target = ref,
+                        rootSkillId = 1,
+                        skillId = 1,
+                        skillKind = SkillKind.PASSIVE,
+                        sourceSkillType = 1,
+                        detailId = -effectId,
+                        effectId = effectId,
+                        category = EffectCategory.BENEFICIAL,
+                        conflict = effectId,
+                        strength = 1,
+                        replaceType = 0,
+                        bindFlag = 0,
+                        maxStacks = 1,
+                        stacks = 1,
+                        remainingRounds = 99,
+                        remainingHits = if (status == BattleStatus.EVADE) 1 else null,
+                        clearPerHit = status == BattleStatus.EVADE,
+                        clearable = false,
+                    ),
+                )
+            }
+        }
+    }
+
     internal fun mutable(ref: BattleHeroRef): MutableHeroState =
         requireNotNull(states[ref]) { "Unknown battle hero: $ref" }
 
@@ -268,6 +303,18 @@ class SkillBattleState(
 
 }
 
+private fun BattleStatus.initialEffectId(): Int? = when (this) {
+    BattleStatus.CONFUSION -> 501
+    BattleStatus.HESITATION -> 502
+    BattleStatus.DISARM -> 552
+    BattleStatus.INSIGHT -> 511
+    BattleStatus.EVADE -> 514
+    BattleStatus.IGNORE_EVADE -> 515
+    BattleStatus.DOUBLE_ATTACK -> 544
+    BattleStatus.FIRST_ACTION -> 761
+    else -> null
+}
+
 class BattleStateChangeApplier(
     private val state: SkillBattleState,
 ) {
@@ -292,7 +339,12 @@ class BattleStateChangeApplier(
 
     private val statModifiers = mutableMapOf<EffectKey, StatModifier>()
     private val damageModifiers = mutableMapOf<EffectKey, DamageModifier>()
-    private val ongoingDamage = mutableMapOf<EffectKey, ScheduledDamageEffectChange>()
+    private data class OngoingDamageBehavior(
+        val change: ScheduledDamageEffectChange,
+        val sourceSnapshot: BattleHero,
+    )
+
+    private val ongoingDamage = mutableMapOf<EffectKey, OngoingDamageBehavior>()
     private val ongoingRecovery = mutableMapOf<EffectKey, ScheduledRecoveryEffectChange>()
     private val redirections = mutableMapOf<EffectKey, Redirection>()
     private var lastStartedRound = 0
@@ -341,11 +393,11 @@ class BattleStateChangeApplier(
         lastStartedRound = round
         pruneInactiveBehaviors()
         val changes = buildList {
-            activeEntries(ongoingDamage).forEach { (_, change) ->
+            activeEntries(ongoingDamage).forEach { (_, behavior) ->
                     add(
-                        change.tick(
-                            liveSource = state.liveHero(change.source),
-                            liveTarget = state.liveHero(change.target),
+                        behavior.change.tick(
+                            liveSource = behavior.sourceSnapshot,
+                            liveTarget = state.liveHero(behavior.change.target),
                         ),
                     )
                 }
@@ -375,7 +427,7 @@ class BattleStateChangeApplier(
 
     fun permissionFor(actor: BattleHeroRef): BattleStatePermission {
         val effects = state.effectStore.effectsFor(actor)
-        val base: ActionPermission = CompleteSkillEngine(state.effectStore).permissionFor(actor)
+        val base: ActionPermission = ActionPermissionResolver(state.effectStore).permissionFor(actor)
         val secondaryAttack = effects.any { it.effectId == 545 }
         val redirect = activeEntries(redirections)
             .asSequence()
@@ -391,7 +443,7 @@ class BattleStateChangeApplier(
             pursuitOpportunityCount = if (base.canNormalAttack) base.normalAttackCount else 0,
             splitAttack = secondaryAttack,
             counterattack = base.counterattack,
-            canEvade = CompleteSkillEngine(state.effectStore).canEvade(actor),
+            canEvade = ActionPermissionResolver(state.effectStore).canEvade(actor),
             ignoresEvade = effects.any { it.effectId == 515 },
             firstAction = base.firstAction,
             damageRedirectTarget = redirect,
@@ -509,14 +561,17 @@ class BattleStateChangeApplier(
             }
             is BattleStatChange -> {
                 val effect = statEffect(change)
-                applyBehavior(effect) { key, _ ->
+                val accepted = applyBehavior(effect) { key, _ ->
                     statModifiers[key] = StatModifier(
-                    change.kind,
+                        change.kind,
                         change.potency.unit,
                         if (change.potency.value < 0) -1 else 1,
                     )
                 }
-                recalculateStats(change.target)
+                if (accepted) {
+                    recalculateStats(change.target)
+                    outputs += BattleStateOutput.StatChanged(change)
+                }
             }
             is DamageModifierChange -> {
                 val effect = modifierEffect(change)
@@ -536,7 +591,10 @@ class BattleStateChangeApplier(
             }
             is ScheduledDamageEffectChange -> {
                 applyEffect(change.spec) { key, _ ->
-                    ongoingDamage[key] = change
+                    ongoingDamage[key] = OngoingDamageBehavior(
+                        change,
+                        state.liveHero(change.source),
+                    )
                     state.effectStatuses[key] = change.status
                 }
             }
@@ -627,10 +685,10 @@ class BattleStateChangeApplier(
     private fun applyBehavior(
         effect: ActiveSkillEffect,
         onAccepted: (EffectKey, ActiveSkillEffect) -> Unit,
-    ) {
+    ): Boolean {
         val result = state.effectStore.apply(effect)
         synchronizeRemoved(result.removed)
-        if (result.outcome == EffectApplyOutcome.REJECTED) return
+        if (result.outcome == EffectApplyOutcome.REJECTED) return false
         val accepted = requireNotNull(result.effect)
         val key = accepted.key()
         if (result.outcome == EffectApplyOutcome.STACKED ||
@@ -639,6 +697,7 @@ class BattleStateChangeApplier(
             removeBehavior(key)
         }
         onAccepted(key, accepted)
+        return true
     }
 
     private fun statEffect(change: BattleStatChange): ActiveSkillEffect =

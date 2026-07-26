@@ -584,7 +584,11 @@ class CoreEffectHandlersTest {
             TypedBattlePotency.rate(36),
             calculator.effectValue(graph.detail(20000712), source),
         )
-        listOf(20002301 to 11_400_000, 29500101 to 500_000).forEach { (detailId, raw) ->
+        assertEquals(
+            TypedBattlePotency.percent(11),
+            calculator.effectValue(graph.detail(20002301), source),
+        )
+        listOf(29500101 to 500_000).forEach { (detailId, raw) ->
             val deferred = calculator.effectValue(graph.detail(detailId), source)
             assertIs<TypedBattlePotency.Deferred>(deferred)
             assertEquals(BattleEffectValueUnit.PERCENT, deferred.unit)

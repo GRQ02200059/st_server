@@ -246,6 +246,12 @@ class CompleteTimingCoordinator(
     }
 
     fun onRound(context: SkillBattleContext): SkillExecutionResult {
+        val aggregate = onRoundStart(context)
+        if (context.round <= 0) return aggregate
+        return aggregate + completePreparations(context, source = null)
+    }
+
+    fun onRoundStart(context: SkillBattleContext): SkillExecutionResult {
         if (context.round <= 0) {
             return invalid(context.copy(runtime = runtime), context.currentSkillId, null, context, "round must be positive")
         }
@@ -260,15 +266,34 @@ class CompleteTimingCoordinator(
         }
         currentRound = context.round
         currentHit = 0
-        var aggregate = drain(context, currentRound, currentHit)
-        runtime.duePreparations(currentRound).forEach { snapshot ->
+        return drain(context, currentRound, currentHit)
+    }
+
+    fun onAction(context: SkillBattleContext): SkillExecutionResult =
+        completePreparations(context, source = context.source)
+
+    private fun completePreparations(
+        context: SkillBattleContext,
+        source: BattleHeroRef?,
+    ): SkillExecutionResult {
+        if (context.round <= 0) {
+            return invalid(context.copy(runtime = runtime), context.currentSkillId, null, context, "round must be positive")
+        }
+        var aggregate = SkillExecutionResult.EMPTY
+        runtime.duePreparations(context.round, source).forEach { snapshot ->
+            runtime.suppressAttemptForRound(
+                snapshot.source,
+                snapshot.trigger,
+                snapshot.skillId,
+                context.round,
+            )
             val completed = SkillTimingEvent.PreparationCompleted(
                 source = snapshot.source,
                 rootSkillId = snapshot.rootSkillId,
                 currentSkillId = snapshot.skillId,
                 startedRound = snapshot.startedRound,
                 readyRound = snapshot.readyRound,
-                completedRound = currentRound,
+                completedRound = context.round,
                 trigger = snapshot.trigger,
                 lockedTargets = snapshot.lockedTargets,
                 reselectedTargets = null,
@@ -277,7 +302,7 @@ class CompleteTimingCoordinator(
                 snapshot,
                 context.copy(
                     runtime = runtime,
-                    round = currentRound,
+                    round = context.round,
                     source = snapshot.source,
                     rootSkillId = snapshot.rootSkillId,
                     currentSkillId = snapshot.skillId,

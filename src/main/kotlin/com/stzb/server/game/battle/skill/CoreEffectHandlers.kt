@@ -372,7 +372,11 @@ class DefaultBattleValueCalculator(
             BattleEffectValueUnit.PERCENT ->
                 when (configured.rawCalcPosition) {
                     31, 311, 31111, 31112 -> 100.0
-                    else -> return deferred(rule, configured)
+                    else -> when (rule.detailId) {
+                        20000101 -> 100.0
+                        in 20002301..20002304 -> 1_000_000.0
+                        else -> return deferred(rule, configured)
+                    }
                 }
         }
         val constant = configured.rawConstant / scale

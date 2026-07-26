@@ -200,6 +200,14 @@ class SkillRuleInterpreter private constructor(
             rootPreselectedTargets = snapshot.lockedTargets,
         )
 
+    internal fun executeDetailForEngine(
+        detail: SkillEffectRule,
+        context: SkillBattleContext,
+        preselectedTargets: List<BattleHeroRef>? = null,
+        valueOverride: TypedBattlePotency.Resolved? = null,
+    ): SkillExecutionResult =
+        executeDetail(detail, context, preselectedTargets, valueOverride)
+
     private fun executeSkill(
         skillId: Int,
         trigger: BattleTrigger,

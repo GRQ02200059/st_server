@@ -85,7 +85,7 @@ data class DamageRedirectionEffectChange(
     val damageBearer: BattleHeroRef,
 ) : BattleStateChange
 
-class CompleteSkillEngine(
+class ActionPermissionResolver(
     private val effectStore: BattleEffectStore,
 ) {
     fun permissionFor(
@@ -319,7 +319,7 @@ private class ControlEffectHandler(
             maxStacks = raw.addCountMax + 1,
             delayRound = raw.delayRound,
             delayHit = raw.delayHit,
-            availableRounds = raw.availableRounds,
+            availableRounds = raw.availableRounds + if (raw.availableRounds > 0) 1 else 0,
             availableHit = raw.availableHit,
             clearPerHit = raw.clearPerHit,
             startBoundary =

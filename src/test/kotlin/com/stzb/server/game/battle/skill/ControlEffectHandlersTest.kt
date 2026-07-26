@@ -225,9 +225,9 @@ class ControlEffectHandlersTest {
                 secondaryAttack = true,
                 firstAction = true,
             ),
-            CompleteSkillEngine(store).permissionFor(source),
+            ActionPermissionResolver(store).permissionFor(source),
         )
-        assertEquals(ActionPermission(), CompleteSkillEngine(store).permissionFor(target))
+        assertEquals(ActionPermission(), ActionPermissionResolver(store).permissionFor(target))
     }
 
     @Test
@@ -244,7 +244,7 @@ class ControlEffectHandlersTest {
                 normalAttackCount = 0,
                 grantsPursuitOpportunityPerNormal = false,
             ),
-            CompleteSkillEngine(store).permissionFor(source),
+            ActionPermissionResolver(store).permissionFor(source),
         )
     }
 
@@ -252,7 +252,7 @@ class ControlEffectHandlersTest {
     fun `berserk resolves allegiance once with injected random and stable candidates`() {
         val store = BattleEffectStore()
         store.apply(active(503, target = source))
-        val engine = CompleteSkillEngine(store)
+        val engine = ActionPermissionResolver(store)
 
         val allied = engine.permissionFor(source, context(target, FixedBattleRandom(0)))
         assertEquals(Side.ATTACKER, allied.resolvedAllegiance)
@@ -271,15 +271,15 @@ class ControlEffectHandlersTest {
     fun `taunt and guard redirect using effect origin identities`() {
         val store = BattleEffectStore()
         store.apply(active(505, source = ally, target = target))
-        assertEquals(ally, CompleteSkillEngine(store).permissionFor(target).redirectTarget)
+        assertEquals(ally, ActionPermissionResolver(store).permissionFor(target).redirectTarget)
 
         val guardStore = BattleEffectStore()
         guardStore.apply(active(504, source = source, target = ally, category = EffectCategory.BENEFICIAL))
         assertEquals(
             source,
-            CompleteSkillEngine(guardStore).permissionFor(target, intendedTarget = ally).redirectTarget,
+            ActionPermissionResolver(guardStore).permissionFor(target, intendedTarget = ally).redirectTarget,
         )
-        assertNull(CompleteSkillEngine(guardStore).permissionFor(target, intendedTarget = target).redirectTarget)
+        assertNull(ActionPermissionResolver(guardStore).permissionFor(target, intendedTarget = target).redirectTarget)
     }
 
     @Test
@@ -323,7 +323,7 @@ class ControlEffectHandlersTest {
         assertEquals(listOf(source, ally), redirection.protectedTargets)
         val store = BattleEffectStore()
         store.apply(active(506, source = ally, target = source, category = EffectCategory.BENEFICIAL))
-        assertNull(CompleteSkillEngine(store).permissionFor(target, intendedTarget = source).redirectTarget)
+        assertNull(ActionPermissionResolver(store).permissionFor(target, intendedTarget = source).redirectTarget)
 
         assertIs<ActionEffectChange>(execute(504, BattleEffectStore()).stateChanges.single())
     }
@@ -332,7 +332,7 @@ class ControlEffectHandlersTest {
     fun `double attack is exactly two normals and each normal opens pursuit`() {
         val store = BattleEffectStore()
         store.apply(active(544, target = source, category = EffectCategory.BENEFICIAL))
-        val permission = CompleteSkillEngine(store).permissionFor(source)
+        val permission = ActionPermissionResolver(store).permissionFor(source)
 
         assertEquals(2, permission.normalAttackCount)
         assertTrue(permission.grantsPursuitOpportunityPerNormal)
@@ -342,9 +342,9 @@ class ControlEffectHandlersTest {
     fun `evade ignore evade and typed action intents remain distinct`() {
         val store = BattleEffectStore()
         store.apply(active(514, target = target, category = EffectCategory.BENEFICIAL))
-        assertTrue(CompleteSkillEngine(store).canEvade(target))
+        assertTrue(ActionPermissionResolver(store).canEvade(target))
         store.apply(active(515, target = source, category = EffectCategory.BENEFICIAL))
-        assertFalse(CompleteSkillEngine(store).canEvade(target, attacker = source))
+        assertFalse(ActionPermissionResolver(store).canEvade(target, attacker = source))
 
         val expectedKinds = mapOf(
             542 to ActionEffectKind.STRATEGY_LIFE_STEAL,

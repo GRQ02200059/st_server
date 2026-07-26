@@ -47,6 +47,15 @@ class SkillRuntimeState {
         return true
     }
 
+    internal fun suppressAttemptForRound(
+        source: BattleHeroRef,
+        trigger: BattleTrigger,
+        skillId: Int,
+        round: Int,
+    ) {
+        lastAttemptRounds[RuntimeKey(source, trigger, skillId)] = round
+    }
+
     fun count(source: BattleHeroRef, trigger: BattleTrigger): Int =
         triggerCounts[TriggerKey(source, trigger)] ?: 0
 
@@ -92,8 +101,13 @@ class SkillRuntimeState {
         return removed
     }
 
-    fun duePreparations(round: Int): List<PreparedSkill> {
-        val due = preparations.filter { it.readyRound <= round }
+    fun duePreparations(
+        round: Int,
+        source: BattleHeroRef? = null,
+    ): List<PreparedSkill> {
+        val due = preparations.filter {
+            it.readyRound <= round && (source == null || it.source == source)
+        }
         preparations.removeAll(due.toSet())
         return due
     }
