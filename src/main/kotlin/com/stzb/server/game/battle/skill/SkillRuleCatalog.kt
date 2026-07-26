@@ -11,12 +11,16 @@ object SkillRuleCatalog {
             if (skillId in rules) return
             val skill = config.skill(skillId) ?: return
             val details = config.skillDetails(skillId).map { detail ->
+                val effect = config.skillEffect(detail.effectId)
                 SkillEffectRule(
                     detailId = detail.detailId,
                     effectId = detail.effectId,
                     childSkillIds = childSkillIds(detail, config),
                     raw = detail,
                     skillHitRange = skill.hitRange,
+                    configuredValue = effect?.let { config.configuredValue(detail) },
+                    effectBuffType = effect?.buffType ?: detail.buffType,
+                    effectReplaceType = effect?.replaceType ?: 0,
                 )
             }
             rules[skillId] = SkillRule(

@@ -417,29 +417,29 @@ object BattleEngine {
         val runtimeModifiers = runtimeStatuses.mapNotNull { status ->
             when {
                 status.status == BattleStatus.ATTACK_BUFF && status.power != 0 ->
-                    BattleModifier.DamageDealtPercent(null, status.power)
+                    BattleModifier.DamageDealtPercent(percent = status.power)
                 status.status == BattleStatus.ATTACK_DEBUFF && status.power != 0 ->
-                    BattleModifier.DamageDealtPercent(null, status.power)
+                    BattleModifier.DamageDealtPercent(percent = status.power)
                 status.status == BattleStatus.DEFENSE_DEBUFF && status.power != 0 ->
-                    BattleModifier.DamageTakenPercent(null, status.power)
+                    BattleModifier.DamageTakenPercent(percent = status.power)
                 status.status == BattleStatus.DEFENSE_BUFF && status.power != 0 ->
-                    BattleModifier.DamageTakenPercent(null, status.power)
+                    BattleModifier.DamageTakenPercent(percent = status.power)
                 status.status == BattleStatus.PHYSICAL_DAMAGE_DEALT_INCREASED && status.power != 0 ->
-                    BattleModifier.DamageDealtPercent(DamageKind.PHYSICAL, status.power)
+                    BattleModifier.DamageDealtPercent(school = DamageSchool.PHYSICAL, percent = status.power)
                 status.status == BattleStatus.PHYSICAL_DAMAGE_DEALT_REDUCED && status.power != 0 ->
-                    BattleModifier.DamageDealtPercent(DamageKind.PHYSICAL, -status.power)
+                    BattleModifier.DamageDealtPercent(school = DamageSchool.PHYSICAL, percent = -status.power)
                 status.status == BattleStatus.STRATEGY_DAMAGE_DEALT_INCREASED && status.power != 0 ->
-                    BattleModifier.DamageDealtPercent(DamageKind.STRATEGY, status.power)
+                    BattleModifier.DamageDealtPercent(school = DamageSchool.STRATEGY, percent = status.power)
                 status.status == BattleStatus.STRATEGY_DAMAGE_DEALT_REDUCED && status.power != 0 ->
-                    BattleModifier.DamageDealtPercent(DamageKind.STRATEGY, -status.power)
+                    BattleModifier.DamageDealtPercent(school = DamageSchool.STRATEGY, percent = -status.power)
                 status.status == BattleStatus.PHYSICAL_DAMAGE_TAKEN_INCREASED && status.power != 0 ->
-                    BattleModifier.DamageTakenPercent(DamageKind.PHYSICAL, status.power)
+                    BattleModifier.DamageTakenPercent(school = DamageSchool.PHYSICAL, percent = status.power)
                 status.status == BattleStatus.PHYSICAL_DAMAGE_TAKEN_REDUCED && status.power != 0 ->
-                    BattleModifier.DamageTakenPercent(DamageKind.PHYSICAL, -status.power)
+                    BattleModifier.DamageTakenPercent(school = DamageSchool.PHYSICAL, percent = -status.power)
                 status.status == BattleStatus.STRATEGY_DAMAGE_TAKEN_INCREASED && status.power != 0 ->
-                    BattleModifier.DamageTakenPercent(DamageKind.STRATEGY, status.power)
+                    BattleModifier.DamageTakenPercent(school = DamageSchool.STRATEGY, percent = status.power)
                 status.status == BattleStatus.STRATEGY_DAMAGE_TAKEN_REDUCED && status.power != 0 ->
-                    BattleModifier.DamageTakenPercent(DamageKind.STRATEGY, -status.power)
+                    BattleModifier.DamageTakenPercent(school = DamageSchool.STRATEGY, percent = -status.power)
                 else -> null
             }
         }

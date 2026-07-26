@@ -15,7 +15,9 @@ sealed interface BattleEffectPayload {
     data class Status(val status: BattleStatus) : BattleEffectPayload
     data class Stat(val delta: BattleStats) : BattleEffectPayload
     data class Damage(
-        val kind: DamageKind?,
+        val school: DamageSchool? = null,
+        val origin: DamageOrigin? = null,
+        val tag: DamageTag? = null,
         val percent: Int,
         val direction: BattleEffectDirection,
     ) : BattleEffectPayload
@@ -62,7 +64,9 @@ data class BattleEffect(
             source: BattleHeroRef,
             target: BattleHeroRef,
             skillId: Int,
-            kind: DamageKind?,
+            school: DamageSchool? = null,
+            origin: DamageOrigin? = null,
+            tag: DamageTag? = null,
             percent: Int,
             durationRounds: Int,
             category: String,
@@ -70,7 +74,7 @@ data class BattleEffect(
         ) = BattleEffect(
             source, target, skillId, category, durationRounds,
             kotlin.math.abs(percent),
-            BattleEffectPayload.Damage(kind, percent, direction),
+            BattleEffectPayload.Damage(school, origin, tag, percent, direction),
         )
     }
 }
@@ -105,12 +109,19 @@ class BattleEffectState {
 
     fun damageFactor(
         target: BattleHeroRef,
-        kind: DamageKind,
+        school: DamageSchool,
+        origin: DamageOrigin? = null,
+        tags: Set<DamageTag> = emptySet(),
         direction: BattleEffectDirection = BattleEffectDirection.DEALT,
     ): Double {
         val percent = active[target].orEmpty()
             .mapNotNull { it.effect.payload as? BattleEffectPayload.Damage }
-            .filter { it.direction == direction && (it.kind == null || it.kind == kind) }
+            .filter {
+                it.direction == direction &&
+                    (it.school == null || it.school == school) &&
+                    (it.origin == null || it.origin == origin) &&
+                    (it.tag == null || it.tag in tags)
+            }
             .sumOf { it.percent }
         return (100 + percent).coerceAtLeast(0) / 100.0
     }

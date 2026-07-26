@@ -54,20 +54,39 @@ enum class BattleStat {
     HIT_RANGE,
 }
 
-enum class DamageKind {
+enum class DamageSchool {
     PHYSICAL,
     STRATEGY,
+}
+
+enum class DamageOrigin {
     NORMAL,
-    ACTIVE_SKILL,
+    ACTIVE,
     PURSUIT,
+    COMMAND,
+    PASSIVE,
+    ONGOING,
+}
+
+enum class DamageTag {
     ONGOING,
     FIRE,
 }
 
 sealed interface BattleModifier {
     data class Stat(val stat: BattleStat, val amount: Int) : BattleModifier
-    data class DamageDealtPercent(val kind: DamageKind?, val percent: Int) : BattleModifier
-    data class DamageTakenPercent(val kind: DamageKind?, val percent: Int) : BattleModifier
+    data class DamageDealtPercent(
+        val school: DamageSchool? = null,
+        val origin: DamageOrigin? = null,
+        val tag: DamageTag? = null,
+        val percent: Int,
+    ) : BattleModifier
+    data class DamageTakenPercent(
+        val school: DamageSchool? = null,
+        val origin: DamageOrigin? = null,
+        val tag: DamageTag? = null,
+        val percent: Int,
+    ) : BattleModifier
     data class SkillProbabilityPercent(val percent: Int) : BattleModifier
     data class DefenseIgnorePercent(val percent: Int) : BattleModifier
     data class Unsupported(val sourceId: Int, val rawDescription: String) : BattleModifier

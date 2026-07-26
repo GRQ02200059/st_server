@@ -31,16 +31,16 @@ object BattleModifierParser {
         }
         Regex("""造成的?攻击伤害提高([0-9.]+)%""").find(description)
             ?.groupValues?.get(1)?.toDoubleOrNull()?.toInt()
-            ?.let { modifiers += BattleModifier.DamageDealtPercent(DamageKind.PHYSICAL, it) }
+            ?.let { modifiers += BattleModifier.DamageDealtPercent(school = DamageSchool.PHYSICAL, percent = it) }
         Regex("""受到的?普通攻击伤害降低([0-9.]+)%""").find(description)
             ?.groupValues?.get(1)?.toDoubleOrNull()?.toInt()
-            ?.let { modifiers += BattleModifier.DamageTakenPercent(DamageKind.NORMAL, -it) }
+            ?.let { modifiers += BattleModifier.DamageTakenPercent(origin = DamageOrigin.NORMAL, percent = -it) }
         Regex("""受到的?主动战法伤害降低#?([0-9.]+)""").find(description)
             ?.groupValues?.get(1)?.toDoubleOrNull()?.toInt()
-            ?.let { modifiers += BattleModifier.DamageTakenPercent(DamageKind.ACTIVE_SKILL, -it) }
+            ?.let { modifiers += BattleModifier.DamageTakenPercent(origin = DamageOrigin.ACTIVE, percent = -it) }
         Regex("""主动战法伤害提高#?([0-9.]+)""").find(description)
             ?.groupValues?.get(1)?.toDoubleOrNull()?.toInt()
-            ?.let { modifiers += BattleModifier.DamageDealtPercent(DamageKind.ACTIVE_SKILL, it) }
+            ?.let { modifiers += BattleModifier.DamageDealtPercent(origin = DamageOrigin.ACTIVE, percent = it) }
         Regex("""发动率提高#?([0-9.]+)""").find(description)
             ?.groupValues?.get(1)?.toDoubleOrNull()?.toInt()
             ?.let { modifiers += BattleModifier.SkillProbabilityPercent(it) }

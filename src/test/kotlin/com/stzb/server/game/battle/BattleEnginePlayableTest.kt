@@ -15,7 +15,7 @@ class BattleEnginePlayableTest {
         val equippedAttacker = BattleTeam(
             listOf(
                 hero(heroId = 100036, position = 2, skillIds = listOf(200070)).copy(
-                    modifiers = listOf(BattleModifier.DamageDealtPercent(DamageKind.PHYSICAL, 8)),
+                    modifiers = listOf(BattleModifier.DamageDealtPercent(school = DamageSchool.PHYSICAL, percent = 8)),
                 ),
             ),
         )

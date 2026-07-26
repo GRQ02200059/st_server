@@ -93,6 +93,7 @@ class BattleConfigRepositoryTest {
         assertEquals(20000301, detail(20000331).effectParam)
         assertEquals(311, detail(20000102).calcPos)
         assertEquals(1, detail(20001213).calcParam)
+        assertEquals(2, detail(20000712).attributeType)
         assertEquals(3, detail(20002316).selectSkillParam)
         assertEquals(2, detail(21195411).targetCountry)
         assertEquals(8, detail(20008022).selectAttri)
@@ -120,6 +121,65 @@ class BattleConfigRepositoryTest {
         val effect = repo.skillEffect(77)
         assertNotNull(effect)
         assertEquals(1, effect.replaceType)
+        assertEquals(0, effect.valueType)
+
+        assertEquals(1, repo.skillEffect(301)?.valueType)
+        assertEquals(2, repo.skillEffect(201)?.valueType)
+    }
+
+    @Test
+    fun `real configured rows preserve typed value units and raw encoding losslessly`() {
+        fun detail(detailId: Int) =
+            repo.skillDetails(detailId / 100).single { it.detailId == detailId }
+
+        assertEquals(
+            ConfiguredBattleEffectValue(
+                unit = BattleEffectValueUnit.RATE,
+                rawValueType = 1,
+                rawConstant = 300,
+                rawCoefficient = 0,
+                rawAttributeType = 0,
+                rawCalcPosition = 0,
+                rawCalcParameter = 0,
+            ),
+            repo.configuredValue(detail(20095701)),
+        )
+        assertEquals(
+            ConfiguredBattleEffectValue(
+                unit = BattleEffectValueUnit.PERCENT,
+                rawValueType = 2,
+                rawConstant = 11_400_000,
+                rawCoefficient = 9_000_000,
+                rawAttributeType = 0,
+                rawCalcPosition = 0,
+                rawCalcParameter = 0,
+            ),
+            repo.configuredValue(detail(20002301)),
+        )
+        assertEquals(
+            ConfiguredBattleEffectValue(
+                unit = BattleEffectValueUnit.PERCENT,
+                rawValueType = 2,
+                rawConstant = 500_000,
+                rawCoefficient = 0,
+                rawAttributeType = 0,
+                rawCalcPosition = 0,
+                rawCalcParameter = 0,
+            ),
+            repo.configuredValue(detail(29500101)),
+        )
+        assertEquals(
+            ConfiguredBattleEffectValue(
+                unit = BattleEffectValueUnit.RATE,
+                rawValueType = 1,
+                rawConstant = 35,
+                rawCoefficient = 35,
+                rawAttributeType = 2,
+                rawCalcPosition = 0,
+                rawCalcParameter = 0,
+            ),
+            repo.configuredValue(detail(20000712)),
+        )
     }
 
     @Test

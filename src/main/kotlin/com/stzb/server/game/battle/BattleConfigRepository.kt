@@ -85,6 +85,10 @@ data class SkillDetailConfig(
     val selectFlag: Int = 0,
     val inherent: Int = 0,
     val moraleAffected: Boolean = false,
+    val attributeType: Int = 0,
+    val valueAddMax: Int = 0,
+    val hideConflict: Int = 0,
+    val probabilitySeries: List<Int> = emptyList(),
     val calculationType: Int = 0,
     val calculationTypes: List<Int> = emptyList(),
     val effectName: String,
@@ -96,6 +100,34 @@ data class SkillEffectConfig(
     val buffType: Int,
     val replaceType: Int = 0,
     val valueType: Int,
+)
+
+enum class BattleEffectValueUnit(val rawValueType: Int) {
+    FLAT(0),
+    RATE(1),
+    PERCENT(2),
+    ;
+
+    companion object {
+        fun fromRaw(rawValueType: Int): BattleEffectValueUnit =
+            entries.singleOrNull { it.rawValueType == rawValueType }
+                ?: throw IllegalArgumentException("Unsupported value_type=$rawValueType")
+    }
+}
+
+/**
+ * Lossless configured numeric value. Raw scaling is intentionally retained:
+ * value_type identifies semantic application, but does not by itself define
+ * how every client subsystem encodes constant/coefficient magnitudes.
+ */
+data class ConfiguredBattleEffectValue(
+    val unit: BattleEffectValueUnit,
+    val rawValueType: Int,
+    val rawConstant: Int,
+    val rawCoefficient: Int,
+    val rawAttributeType: Int,
+    val rawCalcPosition: Int,
+    val rawCalcParameter: Int,
 )
 
 data class HeroExtraConfig(
@@ -149,6 +181,21 @@ class BattleConfigRepository private constructor(
     }
 
     fun skillEffect(effectId: Int): SkillEffectConfig? = effects[effectId]
+
+    fun configuredValue(detail: SkillDetailConfig): ConfiguredBattleEffectValue {
+        val effect = requireNotNull(effects[detail.effectId]) {
+            "Missing effect config for effect=${detail.effectId}"
+        }
+        return ConfiguredBattleEffectValue(
+            unit = BattleEffectValueUnit.fromRaw(effect.valueType),
+            rawValueType = effect.valueType,
+            rawConstant = detail.constantParam,
+            rawCoefficient = detail.intelParam,
+            rawAttributeType = detail.attributeType,
+            rawCalcPosition = detail.calcPos,
+            rawCalcParameter = detail.calcParam,
+        )
+    }
 
     fun armyBonusesFor(heroIds: Collection<Int>): List<ArmyBonusConfig> {
         val teamHeroIds = heroIds.toSet()
@@ -281,6 +328,10 @@ class BattleConfigRepository private constructor(
                 selectFlag = row.int("select_flag"),
                 inherent = row.int("inherent"),
                 moraleAffected = row.int("shi_qi_affect") != 0,
+                attributeType = row.int("attri_type"),
+                valueAddMax = row.int("value_add_max"),
+                hideConflict = row.int("hide_conflict"),
+                probabilitySeries = row.intList("prob_series"),
                 calculationType = row.int("calc_type"),
                 calculationTypes = row.intList("calc_type"),
                 effectName = row["effect_name"].orEmpty(),

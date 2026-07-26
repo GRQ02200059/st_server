@@ -1,5 +1,6 @@
 package com.stzb.server.game.battle.skill
 
+import com.stzb.server.game.battle.ConfiguredBattleEffectValue
 import com.stzb.server.game.battle.SkillDetailConfig
 import com.stzb.server.game.battle.SkillKind
 import java.util.Collections
@@ -20,7 +21,34 @@ data class SkillEffectRule(
     val childSkillIds: Set<Int>,
     val raw: SkillDetailConfig,
     val skillHitRange: Int? = null,
+    val configuredValue: ConfiguredBattleEffectValue? = null,
+    val effectBuffType: Int = raw.buffType,
+    val effectReplaceType: Int = 0,
 )
+
+enum class BattleCoefficientSource {
+    NONE,
+    ATTACK,
+    DEFENSE,
+    STRATEGY,
+    SPEED,
+}
+
+val SkillEffectRule.coefficientSource: BattleCoefficientSource
+    get() =
+        when (raw.attributeType) {
+            1 -> BattleCoefficientSource.ATTACK
+            2 -> BattleCoefficientSource.DEFENSE
+            3 -> BattleCoefficientSource.STRATEGY
+            4 -> BattleCoefficientSource.SPEED
+            99 -> BattleCoefficientSource.STRATEGY
+            0 -> when (raw.calcParam) {
+                1 -> BattleCoefficientSource.ATTACK
+                2 -> BattleCoefficientSource.STRATEGY
+                else -> BattleCoefficientSource.STRATEGY
+            }
+            else -> BattleCoefficientSource.NONE
+        }
 
 data class SkillDiagnostic(
     val skillId: Int,

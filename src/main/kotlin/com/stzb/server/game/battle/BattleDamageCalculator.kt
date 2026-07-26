@@ -14,10 +14,11 @@ object BattleDamageCalculator {
         target: BattleHero,
         ratePercent: Int = 100,
         attributeRandomTenths: Int = 35,
-        category: DamageKind? = null,
+        origin: DamageOrigin? = null,
+        tags: Set<DamageTag> = emptySet(),
     ): Int {
         val rate = ratePercent.coerceAtLeast(1) / 100.0
-        val damageFactor = modifierFactor(source, target, DamageKind.PHYSICAL, category)
+        val damageFactor = modifierFactor(source, target, DamageSchool.PHYSICAL, origin, tags)
         val troopDamage = source.troops * 373.0 / (7_700 + source.troops)
         val attributeDamage =
             source.stats.attack *
@@ -27,8 +28,9 @@ object BattleDamageCalculator {
         val mainDamage =
             (300.0 * source.troops / (3_500 + source.troops)) *
                 rate *
-                attackDefenseFactor(source.stats.attack, target.stats.defense)
-        return ((troopDamage + attributeDamage + mainDamage) * damageFactor)
+                attackDefenseFactor(source.stats.attack, target.stats.defense) *
+                damageFactor
+        return (troopDamage + attributeDamage + mainDamage)
             .roundToInt()
             .coerceIn(1, target.troops.coerceAtLeast(1))
     }
@@ -38,10 +40,11 @@ object BattleDamageCalculator {
         target: BattleHero,
         ratePercent: Int,
         ongoing: Boolean = false,
-        category: DamageKind? = null,
+        origin: DamageOrigin? = null,
+        tags: Set<DamageTag> = emptySet(),
     ): Int {
         val rate = ratePercent.coerceAtLeast(1) / 100.0
-        val damageFactor = modifierFactor(source, target, DamageKind.STRATEGY, category)
+        val damageFactor = modifierFactor(source, target, DamageSchool.STRATEGY, origin, tags)
         val strategyFactor = strategyDefenseFactor(target.stats.strategy)
         val troopDamage = source.troops * 178.0 / (6_459 + source.troops) * if (ongoing) 1.0 / 3 else 1.0
         val attributeDamage = source.stats.strategy * (if (ongoing) 0.25 else 0.5) * damageFactor * strategyFactor
@@ -58,19 +61,38 @@ object BattleDamageCalculator {
     private fun modifierFactor(
         source: BattleHero,
         target: BattleHero,
-        school: DamageKind,
-        category: DamageKind?,
+        school: DamageSchool,
+        origin: DamageOrigin?,
+        tags: Set<DamageTag>,
     ): Double {
         val dealt = source.modifiers
             .filterIsInstance<BattleModifier.DamageDealtPercent>()
-            .filter { it.kind == null || it.kind == school || it.kind == category }
+            .filter { it.matches(school, origin, tags) }
             .sumOf { it.percent }
         val taken = target.modifiers
             .filterIsInstance<BattleModifier.DamageTakenPercent>()
-            .filter { it.kind == null || it.kind == school || it.kind == category }
+            .filter { it.matches(school, origin, tags) }
             .sumOf { it.percent }
         return (100 + dealt + taken).coerceAtLeast(10) / 100.0
     }
+
+    private fun BattleModifier.DamageDealtPercent.matches(
+        school: DamageSchool,
+        origin: DamageOrigin?,
+        tags: Set<DamageTag>,
+    ): Boolean =
+        (this.school == null || this.school == school) &&
+            (this.origin == null || this.origin == origin) &&
+            (tag == null || tag in tags)
+
+    private fun BattleModifier.DamageTakenPercent.matches(
+        school: DamageSchool,
+        origin: DamageOrigin?,
+        tags: Set<DamageTag>,
+    ): Boolean =
+        (this.school == null || this.school == school) &&
+            (this.origin == null || this.origin == origin) &&
+            (tag == null || tag in tags)
 
     private fun attackDefenseFactor(attack: Int, defense: Int): Double {
         val difference = attack - defense

@@ -2,6 +2,7 @@ package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.SkillDetailConfig
 import com.stzb.server.game.battle.SkillKind
+import com.stzb.server.game.battle.BattleEffectValueUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -38,6 +39,23 @@ class SkillRuleCatalogTest {
 
         assertEquals(3, graph.rule(200012)?.rawSkillType)
         assertEquals(14, graph.rule(270012)?.rawSkillType)
+    }
+
+    @Test
+    fun `real rules preserve effect unit and structural coefficient source`() {
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200007, 200957, 200665, 200194),
+                learnableSaSkillIds = emptySet(),
+            ),
+            com.stzb.server.game.battle.BattleConfigRepository.loadDefault(),
+        )
+
+        assertEquals(BattleEffectValueUnit.RATE, graph.detail(20000712).configuredValue?.unit)
+        assertEquals(BattleCoefficientSource.DEFENSE, graph.detail(20000712).coefficientSource)
+        assertEquals(BattleCoefficientSource.ATTACK, graph.detail(20095702).coefficientSource)
+        assertEquals(BattleCoefficientSource.SPEED, graph.detail(20066501).coefficientSource)
+        assertEquals(BattleCoefficientSource.STRATEGY, graph.detail(20019401).coefficientSource)
     }
 
     @Test

@@ -22,16 +22,16 @@ class BattleEffectStateTest {
     @Test
     fun `different damage categories stack and expire`() {
         val state = BattleEffectState()
-        state.apply(BattleEffect.damage(source, target, 1001, DamageKind.PHYSICAL, 20, 1, "command"))
-        state.apply(BattleEffect.damage(source, target, 1002, DamageKind.PHYSICAL, 30, 2, "active"))
+        state.apply(BattleEffect.damage(source, target, 1001, DamageSchool.PHYSICAL, percent = 20, durationRounds = 1, category = "command"))
+        state.apply(BattleEffect.damage(source, target, 1002, DamageSchool.PHYSICAL, percent = 30, durationRounds = 2, category = "active"))
 
-        assertEquals(1.5, state.damageFactor(target, DamageKind.PHYSICAL))
-
-        state.tick(BattleEffectPhase.ROUND_END)
-        assertEquals(1.3, state.damageFactor(target, DamageKind.PHYSICAL))
+        assertEquals(1.5, state.damageFactor(target, DamageSchool.PHYSICAL))
 
         state.tick(BattleEffectPhase.ROUND_END)
-        assertEquals(1.0, state.damageFactor(target, DamageKind.PHYSICAL))
+        assertEquals(1.3, state.damageFactor(target, DamageSchool.PHYSICAL))
+
+        state.tick(BattleEffectPhase.ROUND_END)
+        assertEquals(1.0, state.damageFactor(target, DamageSchool.PHYSICAL))
     }
 
     @Test

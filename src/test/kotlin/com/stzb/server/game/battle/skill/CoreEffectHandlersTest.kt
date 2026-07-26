@@ -13,7 +13,9 @@ import com.stzb.server.game.battle.FixedBattleRandom
 import com.stzb.server.game.battle.Side
 import com.stzb.server.game.battle.SkillDetailConfig
 import com.stzb.server.game.battle.SkillKind
-import com.stzb.server.game.battle.DamageKind
+import com.stzb.server.game.battle.DamageOrigin
+import com.stzb.server.game.battle.DamageSchool
+import com.stzb.server.game.battle.DamageTag
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -24,17 +26,10 @@ class CoreEffectHandlersTest {
     private val targetRef = BattleHeroRef(Side.DEFENDER, 2, BattleHeroId(2))
 
     @Test
-    fun `core effect family produces meaningful state or event`() {
-        val registry = registry()
-
-        coreEffectIds.forEach { effectId ->
-            val result = registry.execute(rule(effectId), context())
-            assertTrue(
-                result.events.isNotEmpty() || result.stateChanges.isNotEmpty(),
-                "effect $effectId produced no behavior",
-            )
-        }
-        assertEquals(coreEffectIds, registry.implementedEffectIds())
+    fun `core effect registry owns the exact forty effect contract`() {
+        assertEquals(40, coreEffectIds.size)
+        assertEquals(coreEffectIds, CoreEffectHandlers.effectIds)
+        assertEquals(coreEffectIds, registry().implementedEffectIds())
     }
 
     @Test
@@ -76,15 +71,18 @@ class CoreEffectHandlersTest {
 
         assertIs<TroopDamageChange>(physical)
         assertEquals(DamageSchool.PHYSICAL, physical.school)
-        assertEquals(DamageCategory.ACTIVE, physical.category)
+        assertEquals(DamageOrigin.ACTIVE, physical.origin)
+        assertEquals(emptySet(), physical.tags)
         assertEquals(targetRef, physical.target)
         assertTrue(physical.amount > 0)
         assertIs<TroopDamageChange>(strategy)
         assertEquals(DamageSchool.STRATEGY, strategy.school)
-        assertEquals(DamageCategory.ACTIVE, strategy.category)
+        assertEquals(DamageOrigin.ACTIVE, strategy.origin)
+        assertEquals(emptySet(), strategy.tags)
         assertIs<TroopDamageChange>(fire)
         assertEquals(DamageSchool.STRATEGY, fire.school)
-        assertEquals(DamageCategory.FIRE, fire.category)
+        assertEquals(DamageOrigin.ACTIVE, fire.origin)
+        assertEquals(setOf(DamageTag.FIRE), fire.tags)
 
         val lowDefense = context(targetDefense = 20)
         val highDefense = context(targetDefense = 300)
@@ -118,7 +116,12 @@ class CoreEffectHandlersTest {
             assertIs<ScheduledDamageEffectChange>(scheduled)
             assertEquals(type.first, scheduled.status)
             assertEquals(type.second, scheduled.school)
-            assertEquals(DamageCategory.ONGOING, scheduled.category)
+            assertEquals(DamageOrigin.ONGOING, scheduled.origin)
+            assertEquals(
+                if (scheduled.status == BattleStatus.BURN) setOf(DamageTag.ONGOING, DamageTag.FIRE)
+                else setOf(DamageTag.ONGOING),
+                scheduled.tags,
+            )
             assertTrue(scheduled.damagePerTick > 0)
             assertEquals(2, scheduled.durationRounds)
             assertTrue(result.stateChanges.none { it is TroopDamageChange })
@@ -164,24 +167,25 @@ class CoreEffectHandlersTest {
     fun `damage modifiers keep normal active pursuit physical and strategy categories separate`() {
         val registry = registry()
         val expected = mapOf(
-            321 to Triple(DamageModifierChange.Direction.DEALT, DamageCategory.NORMAL, 20),
-            322 to Triple(DamageModifierChange.Direction.DEALT, DamageCategory.ACTIVE, 20),
-            325 to Triple(DamageModifierChange.Direction.DEALT, DamageCategory.PURSUIT, 20),
-            331 to Triple(DamageModifierChange.Direction.DEALT, DamageCategory.NORMAL, -20),
-            332 to Triple(DamageModifierChange.Direction.DEALT, DamageCategory.ACTIVE, -20),
-            335 to Triple(DamageModifierChange.Direction.DEALT, DamageCategory.PURSUIT, -20),
-            342 to Triple(DamageModifierChange.Direction.TAKEN, DamageCategory.ACTIVE, 20),
-            351 to Triple(DamageModifierChange.Direction.TAKEN, DamageCategory.NORMAL, -20),
-            352 to Triple(DamageModifierChange.Direction.TAKEN, DamageCategory.ACTIVE, -20),
-            355 to Triple(DamageModifierChange.Direction.TAKEN, DamageCategory.PURSUIT, -20),
+            321 to Triple(DamageModifierChange.Direction.DEALT, DamageOrigin.NORMAL, 20),
+            322 to Triple(DamageModifierChange.Direction.DEALT, DamageOrigin.ACTIVE, 20),
+            325 to Triple(DamageModifierChange.Direction.DEALT, DamageOrigin.PURSUIT, 20),
+            331 to Triple(DamageModifierChange.Direction.DEALT, DamageOrigin.NORMAL, -20),
+            332 to Triple(DamageModifierChange.Direction.DEALT, DamageOrigin.ACTIVE, -20),
+            335 to Triple(DamageModifierChange.Direction.DEALT, DamageOrigin.PURSUIT, -20),
+            342 to Triple(DamageModifierChange.Direction.TAKEN, DamageOrigin.ACTIVE, 20),
+            351 to Triple(DamageModifierChange.Direction.TAKEN, DamageOrigin.NORMAL, -20),
+            352 to Triple(DamageModifierChange.Direction.TAKEN, DamageOrigin.ACTIVE, -20),
+            355 to Triple(DamageModifierChange.Direction.TAKEN, DamageOrigin.PURSUIT, -20),
         )
         expected.forEach { (effectId, values) ->
             val change = registry.execute(rule(effectId, constant = 20), context())
                 .stateChanges.single()
             assertIs<DamageModifierChange>(change)
             assertEquals(values.first, change.direction)
-            assertEquals(values.second, change.category)
+            assertEquals(values.second, change.origin)
             assertEquals(null, change.school)
+            assertEquals(null, change.tag)
             assertEquals(values.third, change.percent)
         }
 
@@ -200,32 +204,102 @@ class CoreEffectHandlersTest {
                 .stateChanges.single() as DamageModifierChange
             assertEquals(values.first, change.direction)
             assertEquals(values.second, change.school)
-            assertEquals(null, change.category)
+            assertEquals(null, change.origin)
+            assertEquals(null, change.tag)
             assertEquals(values.third, change.percent)
         }
     }
 
     @Test
-    fun `damage calculator composes school and category modifiers without leaking classifications`() {
+    fun `pursuit physical damage applies pursuit and physical modifiers only`() {
         val target = hero(id = 2, position = 2, troops = 10_000, maxTroops = 10_000)
-        val source = hero(id = 1, position = 2, troops = 10_000, maxTroops = 10_000).copy(
+        val base = hero(id = 1, position = 2, troops = 10_000, maxTroops = 10_000)
+        val source = base.copy(
             modifiers = listOf(
-                BattleModifier.DamageDealtPercent(DamageKind.PHYSICAL, 10),
-                BattleModifier.DamageDealtPercent(DamageKind.NORMAL, 20),
-                BattleModifier.DamageDealtPercent(DamageKind.ACTIVE_SKILL, 30),
-                BattleModifier.DamageDealtPercent(DamageKind.PURSUIT, 40),
-                BattleModifier.DamageDealtPercent(DamageKind.STRATEGY, 90),
+                BattleModifier.DamageDealtPercent(school = DamageSchool.PHYSICAL, percent = 10),
+                BattleModifier.DamageDealtPercent(origin = DamageOrigin.PURSUIT, percent = 20),
+                BattleModifier.DamageDealtPercent(origin = DamageOrigin.ACTIVE, percent = 80),
+                BattleModifier.DamageDealtPercent(school = DamageSchool.STRATEGY, percent = 90),
+                BattleModifier.DamageDealtPercent(tag = DamageTag.FIRE, percent = 70),
             ),
         )
 
-        val normal = BattleDamageCalculator.physical(source, target, category = DamageKind.NORMAL)
-        val active = BattleDamageCalculator.physical(source, target, category = DamageKind.ACTIVE_SKILL)
-        val pursuit = BattleDamageCalculator.physical(source, target, category = DamageKind.PURSUIT)
-        val uncategorized = BattleDamageCalculator.physical(source, target)
+        assertEquals(
+            BattleDamageCalculator.physical(
+                source = base.copy(
+                    modifiers = listOf(
+                        BattleModifier.DamageDealtPercent(school = DamageSchool.PHYSICAL, percent = 10),
+                        BattleModifier.DamageDealtPercent(origin = DamageOrigin.PURSUIT, percent = 20),
+                    ),
+                ),
+                target = target,
+                origin = DamageOrigin.PURSUIT,
+            ),
+            BattleDamageCalculator.physical(
+                source = source,
+                target = target,
+                origin = DamageOrigin.PURSUIT,
+            ),
+        )
+    }
 
-        assertTrue(normal > uncategorized)
-        assertTrue(active > normal)
-        assertTrue(pursuit > active)
+    @Test
+    fun `active fire damage applies active strategy and fire modifiers only`() {
+        val target = hero(id = 2, position = 2, troops = 10_000, maxTroops = 10_000)
+        val base = hero(id = 1, position = 2, troops = 10_000, maxTroops = 10_000)
+        val source = base.copy(
+            modifiers = listOf(
+                BattleModifier.DamageDealtPercent(school = DamageSchool.STRATEGY, percent = 10),
+                BattleModifier.DamageDealtPercent(origin = DamageOrigin.ACTIVE, percent = 20),
+                BattleModifier.DamageDealtPercent(tag = DamageTag.FIRE, percent = 30),
+                BattleModifier.DamageDealtPercent(origin = DamageOrigin.PURSUIT, percent = 80),
+                BattleModifier.DamageDealtPercent(school = DamageSchool.PHYSICAL, percent = 90),
+                BattleModifier.DamageDealtPercent(tag = DamageTag.ONGOING, percent = 70),
+            ),
+        )
+
+        assertEquals(
+            BattleDamageCalculator.strategy(
+                source = base.copy(
+                    modifiers = listOf(
+                        BattleModifier.DamageDealtPercent(school = DamageSchool.STRATEGY, percent = 10),
+                        BattleModifier.DamageDealtPercent(origin = DamageOrigin.ACTIVE, percent = 20),
+                        BattleModifier.DamageDealtPercent(tag = DamageTag.FIRE, percent = 30),
+                    ),
+                ),
+                target = target,
+                ratePercent = 100,
+                origin = DamageOrigin.ACTIVE,
+                tags = setOf(DamageTag.FIRE),
+            ),
+            BattleDamageCalculator.strategy(
+                source = source,
+                target = target,
+                ratePercent = 100,
+                origin = DamageOrigin.ACTIVE,
+                tags = setOf(DamageTag.FIRE),
+            ),
+        )
+    }
+
+    @Test
+    fun `physical curve leaves troop base unmodified and applies modifier once to attack terms`() {
+        val target = hero(id = 2, position = 2, troops = 10_000, maxTroops = 10_000)
+        val source = hero(id = 1, position = 2, troops = 10_000, maxTroops = 10_000).copy(
+            modifiers = listOf(
+                BattleModifier.DamageDealtPercent(school = DamageSchool.PHYSICAL, percent = 30),
+            ),
+        )
+
+        assertEquals(
+            643,
+            BattleDamageCalculator.physical(
+                source = source,
+                target = target,
+                ratePercent = 100,
+                attributeRandomTenths = 35,
+            ),
+        )
     }
 
     @Test
@@ -417,9 +491,14 @@ class CoreEffectHandlersTest {
     }
 
     private companion object {
-        val coreEffectIds =
-            ((101..106) + (201..207) + (301..307) +
-                listOf(321, 322, 325, 331, 332, 335, 342, 351, 352, 355, 401, 402) +
-                (521..524) + (531..534)).toSet()
+        val coreEffectIds = setOf(
+            101, 102, 103, 104, 105, 106,
+            201, 202, 203, 204, 205, 206, 207,
+            301, 302, 303, 304, 305, 306, 307,
+            321, 322, 325, 331, 332, 335, 342, 351, 352, 355,
+            401, 402,
+            521, 522, 523, 524,
+            531, 532, 533, 534,
+        )
     }
 }

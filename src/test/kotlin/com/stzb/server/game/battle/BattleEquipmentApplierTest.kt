@@ -15,7 +15,7 @@ class BattleEquipmentApplierTest {
 
         assertTrue(modifiers.contains(BattleModifier.Stat(BattleStat.ATTACK, 2)))
         assertTrue(modifiers.contains(BattleModifier.Stat(BattleStat.DEFENSE, 3)))
-        assertTrue(modifiers.contains(BattleModifier.DamageDealtPercent(DamageKind.PHYSICAL, 8)))
+        assertTrue(modifiers.contains(BattleModifier.DamageDealtPercent(school = DamageSchool.PHYSICAL, percent = 8)))
     }
 
     @Test
@@ -49,6 +49,6 @@ class BattleEquipmentApplierTest {
         assertEquals(listOf(1024), hero.equipmentIds)
         assertEquals(123, hero.stats.attack)
         assertEquals(95, hero.stats.defense)
-        assertTrue(hero.modifiers.contains(BattleModifier.DamageDealtPercent(DamageKind.PHYSICAL, 8)))
+        assertTrue(hero.modifiers.contains(BattleModifier.DamageDealtPercent(school = DamageSchool.PHYSICAL, percent = 8)))
     }
 }

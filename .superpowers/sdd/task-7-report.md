@@ -2,11 +2,11 @@
 
 ## Status
 
-DONE
+DONE_WITH_CONCERNS
 
 ## Scope
 
-Implemented 37 configured effect IDs:
+Implemented 40 configured effect IDs:
 
 - Stats: `101-106`, `201-207`
 - Direct and ongoing damage: `301-307`
@@ -45,7 +45,7 @@ blocked-effect intent.
 
 ### GREEN
 
-Focused result: `BUILD SUCCESSFUL`; `CoreEffectHandlersTest` passed 9 tests.
+Focused result: `BUILD SUCCESSFUL`; `CoreEffectHandlersTest` passed 11 tests.
 
 Mandated regression command:
 
@@ -56,18 +56,33 @@ Mandated regression command:
   --tests com.stzb.server.game.battle.BattleEnginePlayableTest \
   --tests com.stzb.server.game.battle.skill.BattleEffectRegistryTest \
   --tests com.stzb.server.game.battle.skill.BattleEffectStoreTest \
+  --tests com.stzb.server.game.battle.BattleConfigRepositoryTest \
+  --tests com.stzb.server.game.battle.skill.SkillRuleCatalogTest \
   --no-daemon \
   -Dkotlin.compiler.execution.strategy=in-process \
   -Pkotlin.incremental=false
 ```
 
-Result: `BUILD SUCCESSFUL`; 64 tests passed with zero failures/errors:
+Result: `BUILD SUCCESSFUL`; 85 tests passed with zero failures/errors:
 
-- `CoreEffectHandlersTest`: 9
+- `CoreEffectHandlersTest`: 11
 - `BattleActionResolverTest`: 4
 - `BattleEnginePlayableTest`: 14
 - `BattleEffectRegistryTest`: 9
 - `BattleEffectStoreTest`: 28
+- `BattleConfigRepositoryTest`: 10
+- `SkillRuleCatalogTest`: 9
+
+### Review-fix RED/GREEN evidence
+
+- Physical-curve RED: the exact 10,000-troop fixture exposed modifier
+  application to troop-base damage. GREEN locks the simulator result at `643`.
+- Config-value RED: repository/rule tests did not compile until typed,
+  lossless configured values and coefficient-source metadata existed. GREEN
+  covers real rows `20095701`, `20002301`, `29500101`, and `20000712`.
+- Damage-axis RED: the focused suite failed compilation while `DamageKind`
+  conflated school, origin, and tags. GREEN independently composes
+  physical/strategy, normal/active/pursuit, ongoing, and fire axes.
 
 ## Evidence and locked semantics
 
@@ -82,6 +97,7 @@ Result: `BUILD SUCCESSFUL`; 64 tests passed with zero failures/errors:
   Effect `207` produces a blocked intent for both `401` and `402`.
 - Normal, active, pursuit, physical, strategy, ongoing, and fire
   classifications remain separate.
+- The registry contract is the literal set of 40 IDs, asserted directly.
 - Registrations use `ImplementedBattleEffectHandler`, one explicit semantic
   owner per requested ID.
 
@@ -93,8 +109,21 @@ Result: `BUILD SUCCESSFUL`; 64 tests passed with zero failures/errors:
 
 ## Concerns
 
+- `DefaultBattleValueCalculator.effectValue` still returns a bare `Int` and
+  retains the magnitude-based `>= 1_000_000` scaling heuristic. The repository
+  now preserves raw unit/scaling metadata losslessly, but execution does not
+  yet use a typed/deferred value and percentage stat application remains
+  unresolved.
+- Persistent and scheduled intents do not yet snapshot the complete skill,
+  conflict, stacking, delay, hit, and lifecycle identity. Zero configured
+  duration is still coerced to one round.
+- Scheduled recovery stores an already capped amount. It still needs an
+  uncapped-potency tick helper that caps against live troops, capacity, and
+  wounded pool on every tick and consumes wounded troops once.
+- `ApplyBattleEffectChange` still lacks the complete fields and conversion
+  needed to construct `ActiveSkillEffect` without a repository lookup.
+- Some older damage/recovery assertions remain relational rather than exact
+  numeric fixtures. The physical simulator regression is exact.
 - These handlers intentionally produce state-change intents. A later
   interpreter/orchestrator task must apply them to the live battle state and
-  `BattleEffectStore`.
-- The default entry snapshot has no historical wounded pool, so it defaults
-  to zero; the live battle view must supply current wounded troops.
+  `BattleEffectStore`; the entry snapshot has no historical wounded pool.

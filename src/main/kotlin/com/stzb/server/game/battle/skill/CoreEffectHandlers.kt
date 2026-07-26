@@ -4,21 +4,10 @@ import com.stzb.server.game.battle.BattleDamageCalculator
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleStatus
-import com.stzb.server.game.battle.DamageKind
+import com.stzb.server.game.battle.DamageOrigin
+import com.stzb.server.game.battle.DamageSchool
+import com.stzb.server.game.battle.DamageTag
 import kotlin.math.roundToInt
-
-enum class DamageSchool {
-    PHYSICAL,
-    STRATEGY,
-}
-
-enum class DamageCategory {
-    NORMAL,
-    ACTIVE,
-    PURSUIT,
-    ONGOING,
-    FIRE,
-}
 
 data class BattleStatChange(
     val source: BattleHeroRef,
@@ -45,7 +34,8 @@ data class TroopDamageChange(
     val amount: Int,
     val troopsAfter: Int,
     val school: DamageSchool,
-    val category: DamageCategory,
+    val origin: DamageOrigin,
+    val tags: Set<DamageTag>,
     val skillId: Int,
     val effectId: Int,
 ) : BattleStateChange
@@ -80,7 +70,8 @@ data class ScheduledDamageEffectChange(
     val target: BattleHeroRef,
     val damagePerTick: Int,
     val school: DamageSchool,
-    val category: DamageCategory,
+    val origin: DamageOrigin,
+    val tags: Set<DamageTag>,
     val status: BattleStatus,
     val durationRounds: Int,
     val skillId: Int,
@@ -101,7 +92,8 @@ data class DamageModifierChange(
     val target: BattleHeroRef,
     val direction: Direction,
     val school: DamageSchool?,
-    val category: DamageCategory?,
+    val origin: DamageOrigin?,
+    val tag: DamageTag?,
     val percent: Int,
     val durationRounds: Int,
     val skillId: Int,
@@ -170,7 +162,7 @@ class DefaultBattleValueCalculator(
             target = targetHero,
             ratePercent = damageRate(invocation.rule, source),
             attributeRandomTenths = 30 + invocation.context.random.nextInt(10),
-            category = DamageKind.ACTIVE_SKILL,
+            origin = DamageOrigin.ACTIVE,
         )
     }
 
@@ -184,17 +176,18 @@ class DefaultBattleValueCalculator(
     ): Int {
         val source = invocation.liveHero(invocation.context.source)
         val targetHero = invocation.liveHero(target)
-        val category = when {
-            ongoing -> DamageKind.ONGOING
-            invocation.rule.effectId == FIRE_ATTACK_EFFECT_ID -> DamageKind.FIRE
-            else -> DamageKind.ACTIVE_SKILL
+        val origin = if (ongoing) DamageOrigin.ONGOING else DamageOrigin.ACTIVE
+        val tags = buildSet {
+            if (ongoing) add(DamageTag.ONGOING)
+            if (invocation.rule.effectId == FIRE_ATTACK_EFFECT_ID) add(DamageTag.FIRE)
         }
         return BattleDamageCalculator.strategy(
             source = source,
             target = targetHero,
             ratePercent = damageRate(invocation.rule, source),
             ongoing = ongoing,
-            category = category,
+            origin = origin,
+            tags = tags,
         )
     }
 
@@ -286,13 +279,13 @@ private class CoreEffectHandler(
             in 101..106 -> listOf(statChange(invocation, target, value, increase = true))
             in 201..206 -> listOf(statChange(invocation, target, value, increase = false))
             207 -> listOf(appliedEffect(invocation, target, value))
-            301 -> listOf(directDamage(invocation, target, DamageSchool.PHYSICAL, DamageCategory.ACTIVE))
-            302 -> listOf(directDamage(invocation, target, DamageSchool.STRATEGY, DamageCategory.ACTIVE))
+            301 -> listOf(directDamage(invocation, target, DamageSchool.PHYSICAL))
+            302 -> listOf(directDamage(invocation, target, DamageSchool.STRATEGY))
             303 -> listOf(ongoingDamage(invocation, target, BattleStatus.SHAKE, DamageSchool.PHYSICAL))
             304 -> listOf(ongoingDamage(invocation, target, BattleStatus.PANIC, DamageSchool.STRATEGY))
             305 -> listOf(ongoingDamage(invocation, target, BattleStatus.BURN, DamageSchool.STRATEGY))
             306 -> listOf(ongoingDamage(invocation, target, BattleStatus.HEX, DamageSchool.STRATEGY))
-            307 -> listOf(directDamage(invocation, target, DamageSchool.STRATEGY, DamageCategory.FIRE))
+            307 -> listOf(directDamage(invocation, target, DamageSchool.STRATEGY, setOf(DamageTag.FIRE)))
             401 -> recoveryChanges(invocation, target)
             402 -> scheduledRecoveryChanges(invocation, target)
             in DAMAGE_MODIFIER_EFFECT_IDS -> listOf(damageModifier(invocation, target, value))
@@ -331,7 +324,7 @@ private class CoreEffectHandler(
         invocation: EffectInvocation,
         target: BattleHeroRef,
         school: DamageSchool,
-        category: DamageCategory,
+        tags: Set<DamageTag> = emptySet(),
     ): TroopDamageChange {
         val targetState = invocation.targetState(target)
         val damage = when (school) {
@@ -344,7 +337,8 @@ private class CoreEffectHandler(
             amount = damage,
             troopsAfter = (targetState.troops - damage).coerceAtLeast(0),
             school = school,
-            category = category,
+            origin = DamageOrigin.ACTIVE,
+            tags = tags,
             skillId = invocation.context.currentSkillId,
             effectId = invocation.rule.effectId,
         )
@@ -365,7 +359,11 @@ private class CoreEffectHandler(
             target = target,
             damagePerTick = damage,
             school = school,
-            category = DamageCategory.ONGOING,
+            origin = DamageOrigin.ONGOING,
+            tags = buildSet {
+                add(DamageTag.ONGOING)
+                if (status == BattleStatus.BURN) add(DamageTag.FIRE)
+            },
             status = status,
             durationRounds = invocation.durationRounds(),
             skillId = invocation.context.currentSkillId,
@@ -438,10 +436,10 @@ private class CoreEffectHandler(
             DamageModifierChange.Direction.DEALT
         }
         val sign = if (effectId in REDUCTION_EFFECT_IDS) -1 else 1
-        val category = when (effectId) {
-            321, 331, 351 -> DamageCategory.NORMAL
-            322, 332, 342, 352 -> DamageCategory.ACTIVE
-            325, 335, 355 -> DamageCategory.PURSUIT
+        val origin = when (effectId) {
+            321, 331, 351 -> DamageOrigin.NORMAL
+            322, 332, 342, 352 -> DamageOrigin.ACTIVE
+            325, 335, 355 -> DamageOrigin.PURSUIT
             else -> null
         }
         val school = when (effectId) {
@@ -454,7 +452,8 @@ private class CoreEffectHandler(
             target = target,
             direction = direction,
             school = school,
-            category = category,
+            origin = origin,
+            tag = null,
             percent = sign * value,
             durationRounds = invocation.durationRounds(),
             skillId = invocation.context.currentSkillId,
