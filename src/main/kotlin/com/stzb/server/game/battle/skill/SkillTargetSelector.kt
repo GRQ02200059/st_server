@@ -406,6 +406,7 @@ class SkillTargetSelector {
         target: BattleHeroRef,
     ): Boolean =
         when (castCondition) {
+            121002401 -> context.runtime.hasMarker(target, 21002401, context.round)
             321001701 -> context.runtime.hasMarker(target, 21001701, context.round)
             421001701 -> !context.runtime.hasMarker(target, 21001701, context.round)
             else -> true

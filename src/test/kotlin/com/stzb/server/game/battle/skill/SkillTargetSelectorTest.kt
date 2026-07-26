@@ -475,6 +475,11 @@ class SkillTargetSelectorTest {
             listOf(enemyFront, enemyBase),
             select(rule(selectType = 34, castCondition = 421001701), context),
         )
+        runtime.recordMarker(enemyBase, 21002401, value = 0, appliedRound = 0, durationRounds = 2)
+        assertEquals(
+            listOf(enemyBase),
+            select(rule(selectType = 34, castCondition = 121002401), context),
+        )
     }
 
     @Test

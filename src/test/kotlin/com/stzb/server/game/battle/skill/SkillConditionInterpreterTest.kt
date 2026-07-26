@@ -97,7 +97,7 @@ class SkillConditionInterpreterTest {
                     )
                 ) ||
             code.field == SkillConditionField.CAST_CONDITION &&
-            code.value in setOf(321001701, 421001701) ||
+            code.value in setOf(121002401, 321001701, 421001701) ||
             code.field == SkillConditionField.PRECONDITION &&
             code.value in setOf(18, -18) ||
             code.field == SkillConditionField.CONDITION &&
@@ -634,18 +634,31 @@ class SkillConditionInterpreterTest {
     }
 
     @Test
-    fun `zhuge pouch branches distinguish existing marker from first application`() {
+    fun `marker branches compile as per target predicates`() {
         val graph = realGraph()
-        val runtime = SkillRuntimeState()
         val interpreter = SkillConditionInterpreter(graph)
 
-        assertFalse(interpreter.matches(graph.detail(20001705), trigger(), context(runtime = runtime)))
-        assertTrue(interpreter.matches(graph.detail(20001706), trigger(), context(runtime = runtime)))
-
-        runtime.recordMarker(SOURCE, 21001701, value = 0, appliedRound = 2, durationRounds = 2)
-
-        assertTrue(interpreter.matches(graph.detail(20001705), trigger(), context(runtime = runtime)))
-        assertFalse(interpreter.matches(graph.detail(20001706), trigger(), context(runtime = runtime)))
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
+                21001701,
+            ),
+            interpreter.compile(graph.detail(20001705)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.LACKS_DETAIL_MARKER,
+                21001701,
+            ),
+            interpreter.compile(graph.detail(20001706)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
+                21002401,
+            ),
+            interpreter.compile(graph.detail(20002414)).conditions.single(),
+        )
     }
 
     @Test
