@@ -166,11 +166,43 @@ class SkillRuleInterpreter private constructor(
     ): SkillExecutionResult =
         executeSkill(skillId, trigger, context, ChildProbabilityOwnership.CONFIGURED_CHILD)
 
+    internal fun probabilitySucceeds(
+        skillId: Int,
+        trigger: BattleTrigger,
+        context: SkillBattleContext,
+    ): Boolean {
+        val rule = graph.rule(skillId) ?: throw MissingSkillRuleException(
+            context.runtime.currentCallPath() + skillId,
+        )
+        if (!triggerMatches(rule.kind, trigger)) return false
+        return rollProbability(rule, context.copy(currentSkillId = skillId, trigger = trigger))
+    }
+
+    internal fun executeAccepted(
+        snapshot: SkillExecutionSnapshot,
+        context: SkillBattleContext,
+    ): SkillExecutionResult =
+        executeSkill(
+            skillId = snapshot.skillId,
+            trigger = snapshot.trigger,
+            parentContext = context.copy(
+                source = snapshot.source,
+                rootSkillId = snapshot.rootSkillId,
+                currentSkillId = snapshot.skillId,
+                trigger = snapshot.trigger,
+            ),
+            probabilityOwnership = ChildProbabilityOwnership.FORCED_SUCCESS,
+            recordSuccessfulExecution = false,
+            rootPreselectedTargets = snapshot.lockedTargets,
+        )
+
     private fun executeSkill(
         skillId: Int,
         trigger: BattleTrigger,
         parentContext: SkillBattleContext,
         probabilityOwnership: ChildProbabilityOwnership,
+        recordSuccessfulExecution: Boolean = true,
+        rootPreselectedTargets: List<BattleHeroRef>? = null,
     ): SkillExecutionResult {
         val attemptedPath = parentContext.runtime.currentCallPath() + skillId
         val rule = graph.rule(skillId) ?: throw MissingSkillRuleException(attemptedPath)
@@ -195,7 +227,9 @@ class SkillRuleInterpreter private constructor(
             ) {
                 return SkillExecutionResult.EMPTY
             }
-            parentContext.runtime.recordSuccessfulExecution(context.source, trigger, skillId)
+            if (recordSuccessfulExecution) {
+                parentContext.runtime.recordSuccessfulExecution(context.source, trigger, skillId)
+            }
 
             var result = SkillExecutionResult.immutable(
                 stateChanges = emptyList(),
@@ -212,7 +246,7 @@ class SkillRuleInterpreter private constructor(
                 diagnostics = emptyList(),
             )
             rule.details.forEach { detail ->
-                result += executeBranch(detail, context)
+                result += executeBranch(detail, context, rootPreselectedTargets)
             }
             return result
         } finally {
@@ -223,12 +257,13 @@ class SkillRuleInterpreter private constructor(
     private fun executeBranch(
         detail: SkillEffectRule,
         context: SkillBattleContext,
+        preselectedTargets: List<BattleHeroRef>? = null,
     ): SkillExecutionResult =
         try {
             if (!conditionInterpreter.matches(detail, context.trigger, context)) {
                 SkillExecutionResult.EMPTY
             } else {
-                executeDetail(detail, context)
+                executeDetail(detail, context, preselectedTargets)
             }
         } catch (error: Exception) {
             if (failureMode == InterpreterFailureMode.STRICT || !isRecoverable(error)) throw error

@@ -11,6 +11,8 @@ data class SkillExecutionFrame(
 
 class SkillRuntimeState {
     private val counts = mutableMapOf<RuntimeKey, Int>()
+    private val attemptCounts = mutableMapOf<RuntimeKey, Int>()
+    private val lastAttemptRounds = mutableMapOf<RuntimeKey, Int>()
     private val triggerCounts = mutableMapOf<TriggerKey, Int>()
     private val preparations = mutableListOf<PreparedSkill>()
     private val delayedEffects = mutableListOf<DelayedEffect>()
@@ -26,6 +28,23 @@ class SkillRuntimeState {
         val updated = count(source, trigger, skillId) + 1
         counts[key] = updated
         return updated
+    }
+
+    fun attemptCount(source: BattleHeroRef, trigger: BattleTrigger, skillId: Int): Int =
+        attemptCounts[RuntimeKey(source, trigger, skillId)] ?: 0
+
+    fun recordAttempt(
+        source: BattleHeroRef,
+        trigger: BattleTrigger,
+        skillId: Int,
+        round: Int,
+        oncePerRound: Boolean = true,
+    ): Boolean {
+        val key = RuntimeKey(source, trigger, skillId)
+        if (oncePerRound && lastAttemptRounds[key] == round) return false
+        lastAttemptRounds[key] = round
+        attemptCounts[key] = attemptCount(source, trigger, skillId) + 1
+        return true
     }
 
     fun count(source: BattleHeroRef, trigger: BattleTrigger): Int =
@@ -64,13 +83,28 @@ class SkillRuntimeState {
 
     fun preparedSkills(): List<PreparedSkill> = preparations.toList()
 
-    fun interruptPreparations(source: BattleHeroRef) {
-        preparations.removeAll { it.source == source }
+    fun isPreparing(source: BattleHeroRef, skillId: Int): Boolean =
+        preparations.any { it.source == source && it.skillId == skillId }
+
+    fun interruptPreparations(source: BattleHeroRef): List<PreparedSkill> {
+        val removed = preparations.filter { it.source == source }
+        preparations.removeAll(removed.toSet())
+        return removed
     }
 
-    fun schedule(effect: DelayedEffect) {
-        delayedEffects += effect.copy(sequence = nextSequence++)
+    fun duePreparations(round: Int): List<PreparedSkill> {
+        val due = preparations.filter { it.readyRound <= round }
+        preparations.removeAll(due.toSet())
+        return due
     }
+
+    fun schedule(effect: DelayedEffect): DelayedEffect {
+        val scheduled = effect.copy(sequence = nextSequence++)
+        delayedEffects += scheduled
+        return scheduled
+    }
+
+    fun delayedCount(): Int = delayedEffects.size
 
     fun dueEffects(round: Int, hit: Int = 0): List<DelayedEffect> {
         val due = delayedEffects

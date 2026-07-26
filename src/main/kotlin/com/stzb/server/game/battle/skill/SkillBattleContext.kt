@@ -225,7 +225,10 @@ data class PreparedSkill(
     val trigger: BattleTrigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
     val startedRound: Int = 0,
     val readyRound: Int,
+    val lockedTargets: List<BattleHeroRef>? = null,
 )
+
+typealias SkillExecutionSnapshot = PreparedSkill
 
 data class DelayedEffect(
     val source: BattleHeroRef,
