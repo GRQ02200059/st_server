@@ -1,0 +1,297 @@
+package com.stzb.server.game.battle.skill
+
+import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.Side
+import com.stzb.server.game.battle.opposite
+
+fun interface CompiledTargetSelector {
+    fun select(context: SkillBattleContext): List<BattleHeroRef>
+}
+
+class SkillTargetSelector {
+    fun compile(rule: SkillEffectRule): CompiledTargetSelector {
+        val raw = rule.raw
+        require(raw.targetType in TARGET_TYPES) {
+            "Unsupported target_type=${raw.targetType} for detail ${rule.detailId}"
+        }
+        require(raw.selectType in SELECT_TYPES) {
+            "Unsupported select_type=${raw.selectType} for detail ${rule.detailId}"
+        }
+        require(raw.attackType % 1000 in ATTACK_TYPES) {
+            "Unsupported attack_type=${raw.attackType} for detail ${rule.detailId}"
+        }
+        if (raw.selectType == SELECT_MINIMUM || raw.selectType == SELECT_MAXIMUM) {
+            require(raw.selectAttri in ATTRIBUTE_SELECTORS) {
+                "Unsupported select_attri=${raw.selectAttri} for detail ${rule.detailId}"
+            }
+        }
+
+        return CompiledTargetSelector { context -> select(rule, context) }
+    }
+
+    private fun select(
+        rule: SkillEffectRule,
+        context: SkillBattleContext,
+    ): List<BattleHeroRef> {
+        val raw = rule.raw
+        val view = context.battleView
+        if (raw.selectType == SELECT_LINKED) {
+            return view.linkedTarget(context.source)
+                ?.takeIf { view.isTargetable(it) }
+                ?.let(::listOf)
+                .orEmpty()
+        }
+        if (raw.selectType == SELECT_ADJACENT_TO_CURRENT) {
+            return adjacentTargets(context)
+        }
+
+        var candidates = attackCandidates(raw.attackType, context)
+            .filter { view.isTargetable(it) }
+            .filter { target -> matchesTargetType(raw.targetType, view.metadata(target)) }
+            .filter { target ->
+                raw.targetCountry == 0 || view.metadata(target)?.country == raw.targetCountry
+            }
+            .sortedWith(CLIENT_POSITION_ORDER)
+
+        candidates = when (raw.selectType) {
+            SELECT_INSIDE_CURRENT_RANGE -> candidates.filter { inCurrentAttackRange(context.source, it, view) }
+            SELECT_OUTSIDE_CURRENT_RANGE -> candidates.filterNot {
+                inCurrentAttackRange(context.source, it, view)
+            }
+            else -> candidates.filter { target ->
+                target.side == context.source.side ||
+                    attackTypeIgnoresRange(raw.attackType) ||
+                    inCurrentAttackRange(context.source, target, view)
+            }
+        }
+
+        val limit = raw.attackMax.coerceAtLeast(1)
+        return when (raw.selectType) {
+            SELECT_RANDOM -> randomWithoutReplacement(candidates, limit, context)
+            SELECT_MINIMUM -> selectByAttribute(candidates, raw.selectAttri, view, minimum = true)
+            SELECT_FARTHEST -> candidates.maxByOrNull { formationDistance(context.source, it) }?.let(::listOf).orEmpty()
+            SELECT_BASE -> candidates.filter { it.position == BASE_POSITION }.take(1)
+            SELECT_MIDDLE -> candidates.filter { it.position == MIDDLE_POSITION }.take(1)
+            SELECT_FRONT -> candidates.filter { it.position == FRONT_POSITION }.take(1)
+            SELECT_MALE -> randomWithoutReplacement(
+                candidates.filter { view.metadata(it)?.gender == SkillHeroGender.MALE },
+                limit,
+                context,
+            )
+            SELECT_FEMALE -> randomWithoutReplacement(
+                candidates.filter { view.metadata(it)?.gender == SkillHeroGender.FEMALE },
+                limit,
+                context,
+            )
+            SELECT_MAXIMUM -> selectByAttribute(candidates, raw.selectAttri, view, minimum = false)
+            SELECT_RANDOM_COUNT -> {
+                if (candidates.isEmpty()) {
+                    emptyList()
+                } else {
+                    val maxCount = minOf(MAX_RANDOM_GROUP_SIZE, limit, candidates.size)
+                    val count = context.random.nextInt(maxCount) + 1
+                    randomWithoutReplacement(candidates, count, context)
+                }
+            }
+            SELECT_ALL -> candidates.take(limit)
+            SELECT_GREATEST_DAMAGE -> candidates
+                .maxByOrNull(view::accumulatedDamageDealt)
+                ?.let(::listOf)
+                .orEmpty()
+            SELECT_HIGHEST_MORALE -> candidates
+                .maxByOrNull { view.currentMorale(it) ?: Int.MIN_VALUE }
+                ?.let(::listOf)
+                .orEmpty()
+            SELECT_INSIDE_CURRENT_RANGE,
+            SELECT_OUTSIDE_CURRENT_RANGE,
+            -> randomWithoutReplacement(candidates, limit, context)
+            SELECT_LINKED, SELECT_ADJACENT_TO_CURRENT -> error("handled before candidate selection")
+            else -> error("Unsupported select_type=${raw.selectType}")
+        }
+    }
+
+    private fun attackCandidates(
+        attackType: Int,
+        context: SkillBattleContext,
+    ): List<BattleHeroRef> {
+        val normalized = attackType % 1000
+        val source = context.source
+        val view = context.battleView
+        return when (normalized) {
+            0, 21 -> listOf(source)
+            11, 13, 23 -> view.heroes().filter { it.side == source.side && it != source }
+            24 -> view.heroes().filter { it.side == source.side }
+            41, 43, 94, 95, 96, 97 -> view.heroes().filter { it.side == source.side.opposite() }
+            81 -> listOfNotNull(view.previousTarget(baseHero(view, source.side)))
+            98 -> listOfNotNull(view.linkedTarget(source))
+            99, 113 -> listOfNotNull(view.currentTarget(source))
+            else -> throw IllegalArgumentException(
+                "Unsupported attack_type=$attackType for skill ${context.currentSkillId}",
+            )
+        }
+    }
+
+    private fun adjacentTargets(context: SkillBattleContext): List<BattleHeroRef> {
+        val view = context.battleView
+        val current = view.currentTarget(context.source) ?: return emptyList()
+        return view.heroes()
+            .filter { it.side == current.side && kotlin.math.abs(it.position - current.position) <= 1 }
+            .filter { view.isTargetable(it) }
+            .sortedWith(CLIENT_POSITION_ORDER)
+            .take(3)
+    }
+
+    private fun selectByAttribute(
+        candidates: List<BattleHeroRef>,
+        attribute: Int,
+        view: SkillBattleView,
+        minimum: Boolean,
+    ): List<BattleHeroRef> {
+        val selected = if (minimum) {
+            candidates.minByOrNull { attributeValue(it, attribute, view) }
+        } else {
+            candidates.maxByOrNull { attributeValue(it, attribute, view) }
+        }
+        return selected?.let(::listOf).orEmpty()
+    }
+
+    private fun attributeValue(
+        target: BattleHeroRef,
+        attribute: Int,
+        view: SkillBattleView,
+    ): Int {
+        val state = requireNotNull(view.state(target)) { "Missing live state for $target" }
+        return when (attribute) {
+            ATTRIBUTE_ATTACK -> state.stats.attack
+            ATTRIBUTE_DEFENSE -> state.stats.defense
+            ATTRIBUTE_STRATEGY -> state.stats.strategy
+            ATTRIBUTE_SPEED -> state.stats.speed
+            ATTRIBUTE_TROOPS -> state.troops
+            else -> error("Unsupported select_attri=$attribute")
+        }
+    }
+
+    private fun randomWithoutReplacement(
+        candidates: List<BattleHeroRef>,
+        count: Int,
+        context: SkillBattleContext,
+    ): List<BattleHeroRef> {
+        if (candidates.size <= 1 || count <= 0) return candidates.take(count)
+        val remaining = candidates.toMutableList()
+        return buildList {
+            repeat(minOf(count, remaining.size)) {
+                add(remaining.removeAt(context.random.nextInt(remaining.size)))
+            }
+        }
+    }
+
+    private fun matchesTargetType(
+        targetType: Int,
+        metadata: SkillBattleHeroMetadata?,
+    ): Boolean =
+        when (targetType) {
+            TARGET_ANY -> true
+            TARGET_ARCHER_OR_INFANTRY ->
+                requireMetadata(targetType, metadata).troopType in
+                    setOf(SkillTroopType.ARCHER, SkillTroopType.INFANTRY)
+            TARGET_CAVALRY_OR_INFANTRY ->
+                requireMetadata(targetType, metadata).troopType in
+                    setOf(SkillTroopType.CAVALRY, SkillTroopType.INFANTRY)
+            TARGET_ARCHER -> requireMetadata(targetType, metadata).troopType == SkillTroopType.ARCHER
+            TARGET_INFANTRY -> requireMetadata(targetType, metadata).troopType == SkillTroopType.INFANTRY
+            TARGET_CAVALRY -> requireMetadata(targetType, metadata).troopType == SkillTroopType.CAVALRY
+            TARGET_RATTAN_ARMOR ->
+                SkillTroopCategory.RATTAN_ARMOR in requireMetadata(targetType, metadata).troopCategories
+            TARGET_BARBARIAN ->
+                SkillTroopCategory.BARBARIAN in requireMetadata(targetType, metadata).troopCategories
+            TARGET_ELEPHANT ->
+                SkillTroopCategory.ELEPHANT in requireMetadata(targetType, metadata).troopCategories
+            else -> error("Unsupported target_type=$targetType")
+        }
+
+    private fun requireMetadata(
+        targetType: Int,
+        metadata: SkillBattleHeroMetadata?,
+    ): SkillBattleHeroMetadata =
+        requireNotNull(metadata) { "target_type=$targetType requires live hero metadata" }
+
+    private fun inCurrentAttackRange(
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+        view: SkillBattleView,
+    ): Boolean {
+        if (source.side == target.side) return true
+        val range = view.currentAttackRange(source) ?: return false
+        return 5 - source.position - target.position <= range
+    }
+
+    private fun formationDistance(source: BattleHeroRef, target: BattleHeroRef): Int =
+        if (source.side == target.side) {
+            kotlin.math.abs(source.position - target.position)
+        } else {
+            5 - source.position - target.position
+        }
+
+    private fun attackTypeIgnoresRange(attackType: Int): Boolean =
+        attackType % 1000 in setOf(81, 98, 99, 113)
+
+    private fun baseHero(view: SkillBattleView, side: Side): BattleHeroRef =
+        view.heroes().firstOrNull { it.side == side && it.position == BASE_POSITION }
+            ?: error("Missing base hero for $side")
+
+    private fun SkillBattleView.isTargetable(ref: BattleHeroRef): Boolean =
+        state(ref)?.let { it.troops > 0 || it.canReceiveEffectsWhenDefeated } == true
+
+    private companion object {
+        const val BASE_POSITION = 0
+        const val MIDDLE_POSITION = 1
+        const val FRONT_POSITION = 2
+
+        const val TARGET_ARCHER_OR_INFANTRY = -30
+        const val TARGET_CAVALRY_OR_INFANTRY = -10
+        const val TARGET_ANY = 0
+        const val TARGET_ARCHER = 10
+        const val TARGET_INFANTRY = 20
+        const val TARGET_CAVALRY = 30
+        const val TARGET_RATTAN_ARMOR = 42
+        const val TARGET_BARBARIAN = 52
+        const val TARGET_ELEPHANT = 53
+
+        const val SELECT_RANDOM = 0
+        const val SELECT_MINIMUM = 1
+        const val SELECT_FARTHEST = 3
+        const val SELECT_BASE = 4
+        const val SELECT_MIDDLE = 5
+        const val SELECT_FRONT = 6
+        const val SELECT_MALE = 7
+        const val SELECT_FEMALE = 8
+        const val SELECT_MAXIMUM = 9
+        const val SELECT_LINKED = 11
+        const val SELECT_RANDOM_COUNT = 33
+        const val SELECT_ALL = 34
+        const val SELECT_GREATEST_DAMAGE = 900
+        const val SELECT_HIGHEST_MORALE = 901
+        const val SELECT_INSIDE_CURRENT_RANGE = 907
+        const val SELECT_OUTSIDE_CURRENT_RANGE = 908
+        const val SELECT_ADJACENT_TO_CURRENT = 3002
+
+        const val ATTRIBUTE_ATTACK = 1
+        const val ATTRIBUTE_DEFENSE = 2
+        const val ATTRIBUTE_STRATEGY = 3
+        const val ATTRIBUTE_SPEED = 4
+        const val ATTRIBUTE_TROOPS = 8
+
+        val TARGET_TYPES = setOf(-30, -10, 0, 10, 20, 30, 42, 52, 53)
+        val SELECT_TYPES = setOf(0, 1, 3, 4, 5, 6, 7, 8, 9, 11, 33, 34, 900, 901, 907, 908, 3002)
+        val ATTRIBUTE_SELECTORS = setOf(1, 2, 3, 4, 8)
+        val ATTACK_TYPES = setOf(0, 11, 13, 21, 23, 24, 41, 43, 81, 94, 95, 96, 97, 98, 99, 113)
+        const val MAX_RANDOM_GROUP_SIZE = 2
+
+        val CLIENT_POSITION_ORDER = compareBy<BattleHeroRef> {
+            when (it.side) {
+                Side.ATTACKER -> it.position + 1
+                Side.DEFENDER -> 6 - it.position
+            }
+        }
+    }
+}
