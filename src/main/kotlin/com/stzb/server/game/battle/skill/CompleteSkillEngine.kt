@@ -789,11 +789,7 @@ class DefaultCompleteSkillEngine private constructor(
                 SkillRuleInterpreter.safe(
                     graph,
                     registry,
-                    conditionInterpreter = PendingSkillConditionInterpreter { rule, _, _ ->
-                        rule.raw.castCondition == 0 &&
-                            rule.raw.precondition == 0 &&
-                            rule.raw.condition == 0
-                    },
+                    conditionInterpreter = SkillConditionInterpreter(graph),
                     diagnosticSink = diagnostics::add,
                 )
             }

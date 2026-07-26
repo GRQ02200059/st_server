@@ -20,6 +20,42 @@ class CompleteSkillEngineIntegrationTest {
     private val config = BattleConfigRepository.loadDefault()
 
     @Test
+    fun `safe production engine executes known conditions instead of suppressing every conditional detail`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100885, 200, listOf(200885), position = 2)),
+            ),
+            defender = BattleTeam(
+                listOf(hero(200001, 10, position = 2)),
+            ),
+            maxRounds = 4,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val actor = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        engine.recordTarget(actor, target)
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = actor,
+            rootSkillId = 200885,
+            currentSkillId = 200885,
+            trigger = BattleTrigger.PURSUIT_ATTEMPT,
+            battleView = engine.state.view,
+        )
+
+        val events = engine.trigger(BattleTrigger.PURSUIT_ATTEMPT, context)
+
+        assertTrue(
+            events.filterIsInstance<BattleEvent.SkillDamage>()
+                .any { it.skillId == 200885 },
+            "known cast_condition=104 must execute in the production-safe engine",
+        )
+    }
+
+    @Test
     fun `complete engine routes fuwangyikou through its single plugin path`() {
         val request = BattleRequest(
             attacker = BattleTeam(
