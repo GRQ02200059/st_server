@@ -16,6 +16,7 @@ object SkillRuleCatalog {
                     effectId = detail.effectId,
                     childSkillIds = childSkillIds(detail, config),
                     raw = detail,
+                    skillHitRange = skill.hitRange,
                 )
             }
             rules[skillId] = SkillRule(

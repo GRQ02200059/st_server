@@ -113,6 +113,22 @@ class BattleConfigRepositoryTest {
     }
 
     @Test
+    fun `raw detail loader preserves nonzero custom select flag`() {
+        val row = mutableMapOf<String, String>().withDefault { "0" }.apply {
+            put("detail_id", "90000101")
+            put("effect_id", "301")
+            put("attack_type", "43")
+            put("target_type", "0")
+            put("select_type", "0")
+            put("attack_max", "1")
+            put("custom_select_flag", "7123")
+            put("effect_name", "fixture")
+        }
+
+        assertEquals(7123, BattleConfigRepository.loadSkillDetail(row).customSelectFlag)
+    }
+
+    @Test
     fun `matches army bonus when team contains configured heroes`() {
         val bonuses = repo.armyBonusesFor(listOf(100352, 100345, 100344))
 

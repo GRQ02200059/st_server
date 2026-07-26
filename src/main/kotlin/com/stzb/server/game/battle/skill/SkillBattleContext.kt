@@ -26,6 +26,37 @@ enum class SkillTroopCategory {
     ELEPHANT,
 }
 
+enum class SkillTargetStateFilter(val rawCode: Int) {
+    FLAG_1(1),
+    FLAG_2(2),
+    FLAG_3(3),
+    FLAG_99(99),
+    ;
+
+    companion object {
+        fun fromRaw(rawCode: Int): SkillTargetStateFilter =
+            entries.singleOrNull { it.rawCode == rawCode }
+                ?: throw IllegalArgumentException("Unsupported select_flag=$rawCode")
+    }
+}
+
+enum class SkillBattleViewCapability {
+    HERO_ROSTER,
+    ENTRY_STATE,
+    LIVE_STATE,
+    HERO_METADATA,
+    DAMAGE_HISTORY,
+    LIVE_MORALE,
+    NORMAL_ATTACK_RANGE,
+    TARGET_HISTORY,
+    STATE_FILTERS,
+}
+
+class MissingLiveBattleViewData(
+    capability: SkillBattleViewCapability,
+    operation: String,
+) : IllegalStateException("Missing live battle-view data: capability=$capability operation=$operation")
+
 data class SkillBattleHeroState(
     val stats: BattleStats,
     val troops: Int,
@@ -44,7 +75,11 @@ data class SkillBattleHeroMetadata(
 )
 
 interface SkillBattleView {
+    val capabilities: Set<SkillBattleViewCapability>
+
     fun heroes(): List<BattleHeroRef>
+
+    fun entryState(ref: BattleHeroRef): SkillBattleHeroState?
 
     fun state(ref: BattleHeroRef): SkillBattleHeroState?
 
@@ -52,15 +87,21 @@ interface SkillBattleView {
 
     fun accumulatedDamageDealt(ref: BattleHeroRef): Int
 
-    fun currentMorale(ref: BattleHeroRef): Int? = state(ref)?.morale
+    fun currentMorale(ref: BattleHeroRef): Int?
 
-    fun currentAttackRange(ref: BattleHeroRef): Int? = state(ref)?.attackRange
+    fun currentAttackRange(ref: BattleHeroRef): Int?
 
     fun linkedTarget(source: BattleHeroRef): BattleHeroRef?
 
     fun currentTarget(source: BattleHeroRef): BattleHeroRef?
 
     fun previousTarget(source: BattleHeroRef): BattleHeroRef?
+
+    fun matchesStateFilter(
+        filter: SkillTargetStateFilter,
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+    ): Boolean
 
     companion object {
         fun entrySnapshot(request: BattleRequest): SkillBattleView =
@@ -71,6 +112,10 @@ interface SkillBattleView {
 private class EntrySnapshotSkillBattleView(
     request: BattleRequest,
 ) : SkillBattleView {
+    override val capabilities: Set<SkillBattleViewCapability> = setOf(
+        SkillBattleViewCapability.HERO_ROSTER,
+        SkillBattleViewCapability.ENTRY_STATE,
+    )
     private val states = buildMap {
         request.attacker.heroes.forEach { hero ->
             put(
@@ -88,17 +133,42 @@ private class EntrySnapshotSkillBattleView(
 
     override fun heroes(): List<BattleHeroRef> = states.keys.toList()
 
-    override fun state(ref: BattleHeroRef): SkillBattleHeroState? = states[ref]
+    override fun entryState(ref: BattleHeroRef): SkillBattleHeroState? = states[ref]
 
-    override fun metadata(ref: BattleHeroRef): SkillBattleHeroMetadata? = null
+    override fun state(ref: BattleHeroRef): SkillBattleHeroState? =
+        missing(SkillBattleViewCapability.LIVE_STATE, "state")
 
-    override fun accumulatedDamageDealt(ref: BattleHeroRef): Int = 0
+    override fun metadata(ref: BattleHeroRef): SkillBattleHeroMetadata? =
+        missing(SkillBattleViewCapability.HERO_METADATA, "metadata")
 
-    override fun linkedTarget(source: BattleHeroRef): BattleHeroRef? = null
+    override fun accumulatedDamageDealt(ref: BattleHeroRef): Int =
+        missing(SkillBattleViewCapability.DAMAGE_HISTORY, "accumulatedDamageDealt")
 
-    override fun currentTarget(source: BattleHeroRef): BattleHeroRef? = null
+    override fun currentMorale(ref: BattleHeroRef): Int? =
+        missing(SkillBattleViewCapability.LIVE_MORALE, "currentMorale")
 
-    override fun previousTarget(source: BattleHeroRef): BattleHeroRef? = null
+    override fun currentAttackRange(ref: BattleHeroRef): Int? =
+        missing(SkillBattleViewCapability.NORMAL_ATTACK_RANGE, "currentAttackRange")
+
+    override fun linkedTarget(source: BattleHeroRef): BattleHeroRef? =
+        missing(SkillBattleViewCapability.TARGET_HISTORY, "linkedTarget")
+
+    override fun currentTarget(source: BattleHeroRef): BattleHeroRef? =
+        missing(SkillBattleViewCapability.TARGET_HISTORY, "currentTarget")
+
+    override fun previousTarget(source: BattleHeroRef): BattleHeroRef? =
+        missing(SkillBattleViewCapability.TARGET_HISTORY, "previousTarget")
+
+    override fun matchesStateFilter(
+        filter: SkillTargetStateFilter,
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+    ): Boolean = missing(SkillBattleViewCapability.STATE_FILTERS, "matchesStateFilter")
+
+    private fun <T> missing(
+        capability: SkillBattleViewCapability,
+        operation: String,
+    ): T = throw MissingLiveBattleViewData(capability, operation)
 }
 
 private fun com.stzb.server.game.battle.BattleHero.toSkillState() =

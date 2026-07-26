@@ -41,28 +41,43 @@ class SkillTargetSelectorTest {
     }
 
     @Test
-    fun `attack type selects self allies own side and enemies from live view`() {
-        val view = view()
+    fun `every attack type has its structurally evidenced candidate scope`() {
+        val view = view(previousTargets = mapOf(allyBase to enemyBase))
         val context = context(view)
 
-        assertEquals(listOf(source), select(rule(attackType = 0), context))
-        assertEquals(
-            listOf(allyBase, allyMiddle),
-            select(rule(attackType = 13, selectType = 34, attackMax = 3), context),
+        val expected = mapOf(
+            0 to listOf(source),
+            11 to listOf(allyBase, allyMiddle),
+            13 to listOf(allyBase, allyMiddle),
+            21 to listOf(allyBase, allyMiddle, source),
+            23 to listOf(allyBase, allyMiddle),
+            24 to listOf(allyBase, allyMiddle, source),
+            41 to listOf(enemyFront, enemyMiddle),
+            43 to listOf(enemyFront, enemyMiddle),
+            94 to listOf(enemyFront, enemyMiddle),
+            95 to listOf(enemyFront, enemyMiddle),
+            96 to listOf(enemyFront, enemyMiddle),
+            97 to listOf(enemyFront, enemyMiddle),
+            98 to listOf(enemyFront),
+            99 to listOf(enemyMiddle),
+            113 to listOf(allyBase, allyMiddle, enemyFront, enemyMiddle, enemyBase),
+            81 to listOf(enemyBase),
         )
-        assertEquals(
-            listOf(allyBase, allyMiddle),
-            select(rule(attackType = 23, selectType = 34, attackMax = 3), context),
-        )
-        assertEquals(
-            listOf(allyBase, allyMiddle, source),
-            select(rule(attackType = 24, selectType = 34, attackMax = 3), context),
-        )
-        assertEquals(
-            listOf(enemyFront, enemyMiddle),
-            select(rule(attackType = 43, selectType = 34, attackMax = 3), context),
-            "enemy candidates use the source's live attack range",
-        )
+        expected.forEach { (attackType, candidates) ->
+            assertEquals(
+                candidates,
+                select(
+                    rule(
+                        attackType = attackType,
+                        selectType = 34,
+                        attackMax = 1,
+                        skillHitRange = if (attackType in setOf(41, 43, 94, 95, 96, 97)) 2 else null,
+                    ),
+                    context,
+                ),
+                "attack_type=$attackType",
+            )
+        }
     }
 
     @Test
@@ -195,6 +210,136 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `select flag codes are explicitly delegated to typed live filters`() {
+        val accepted = mapOf(
+            SkillTargetStateFilter.FLAG_1 to enemyBase,
+            SkillTargetStateFilter.FLAG_2 to enemyMiddle,
+            SkillTargetStateFilter.FLAG_3 to enemyFront,
+            SkillTargetStateFilter.FLAG_99 to enemyMiddle,
+        )
+        val view = view(sourceRange = 5, acceptedStateFilters = accepted)
+        val context = context(view)
+
+        accepted.forEach { (filter, expected) ->
+            assertEquals(
+                listOf(expected),
+                select(rule(selectType = 34, attackMax = 3, selectFlag = filter.rawCode), context),
+                "select_flag=${filter.rawCode}",
+            )
+        }
+        assertEquals(
+            emptyList(),
+            select(rule(selectType = 34, attackMax = 3, selectFlag = 1), context(view())),
+        )
+    }
+
+    @Test
+    fun `ordinary skill range comes from compiled parent skill while 907 and 908 use live normal range`() {
+        val context = context(view(sourceRange = 1))
+
+        assertEquals(
+            listOf(enemyFront, enemyMiddle, enemyBase),
+            select(rule(selectType = 34, attackMax = 3, skillHitRange = 5), context),
+        )
+        assertEquals(
+            listOf(enemyFront),
+            select(rule(selectType = 907, attackMax = 3, skillHitRange = 5), context),
+        )
+        assertEquals(
+            listOf(enemyMiddle, enemyBase),
+            select(rule(selectType = 908, attackMax = 3, skillHitRange = 1), context),
+        )
+    }
+
+    @Test
+    fun `entry snapshot advertises only snapshot capabilities and rejects unavailable live data`() {
+        val request = com.stzb.server.game.battle.BattleRequest(
+            attacker = com.stzb.server.game.battle.BattleTeam(
+                listOf(
+                    com.stzb.server.game.battle.BattleHero(
+                        id = source.heroId,
+                        position = source.position,
+                        stats = BattleStats(1, 1, 1, 1, 0, 2),
+                        troops = 100,
+                    ),
+                ),
+            ),
+            defender = com.stzb.server.game.battle.BattleTeam(emptyList()),
+        )
+        val view = SkillBattleView.entrySnapshot(request)
+
+        assertEquals(
+            setOf(SkillBattleViewCapability.HERO_ROSTER, SkillBattleViewCapability.ENTRY_STATE),
+            view.capabilities,
+        )
+        assertTrue(view.entryState(source) != null)
+        assertFailsWith<MissingLiveBattleViewData> { view.state(source) }
+        assertFailsWith<MissingLiveBattleViewData> { view.metadata(source) }
+        assertFailsWith<MissingLiveBattleViewData> { view.accumulatedDamageDealt(source) }
+        assertFailsWith<MissingLiveBattleViewData> { view.currentMorale(source) }
+        assertFailsWith<MissingLiveBattleViewData> { view.currentAttackRange(source) }
+        assertFailsWith<MissingLiveBattleViewData> { view.linkedTarget(source) }
+        assertFailsWith<MissingLiveBattleViewData> { view.currentTarget(source) }
+        assertFailsWith<MissingLiveBattleViewData> { view.previousTarget(source) }
+        assertFailsWith<MissingLiveBattleViewData> {
+            view.matchesStateFilter(SkillTargetStateFilter.FLAG_1, source, source)
+        }
+    }
+
+    @Test
+    fun `special seeds still pass filters and configured cardinality`() {
+        val states = defaultStates().toMutableMap().apply {
+            put(enemyMiddle, state(troops = 0))
+        }
+        val metadata = allRefs().associateWith {
+            metadata(
+                SkillHeroGender.MALE,
+                if (it == enemyFront) SkillTroopType.ARCHER else SkillTroopType.INFANTRY,
+                country = if (it == enemyBase) 2 else 1,
+            )
+        }
+        val context = context(
+            view(
+                states = states,
+                metadata = metadata,
+                linkedTarget = enemyFront,
+                currentTarget = enemyMiddle,
+                sourceRange = 5,
+            ),
+        )
+
+        assertEquals(emptyList(), select(rule(selectType = 11, targetType = 20), context))
+        assertEquals(
+            listOf(enemyFront),
+            select(rule(selectType = 3002, attackMax = 1, targetCountry = 1), context),
+        )
+        assertEquals(
+            listOf(enemyFront, enemyBase),
+            select(rule(selectType = 3002, attackMax = 2), context),
+        )
+        assertEquals(
+            listOf(enemyFront),
+            select(rule(selectType = 3002, attackMax = 3, skillHitRange = 1), context),
+        )
+    }
+
+    @Test
+    fun `select all returns the complete filtered scope regardless of attack max`() {
+        assertEquals(
+            listOf(enemyFront, enemyMiddle, enemyBase),
+            select(rule(selectType = 34, attackMax = 1, skillHitRange = 5), context(view(sourceRange = 1))),
+        )
+    }
+
+    @Test
+    fun `attribute ties preserve stable client position order`() {
+        val context = context(view(sourceRange = 5))
+
+        assertEquals(listOf(enemyFront), select(rule(selectType = 1, selectAttri = 1), context))
+        assertEquals(listOf(enemyFront), select(rule(selectType = 9, selectAttri = 1), context))
+    }
+
+    @Test
     fun `random candidates are stable and removed after each draw`() {
         val random = SequenceRandom(2, 0)
         val context = context(view(sourceRange = 5), random)
@@ -286,7 +431,10 @@ class SkillTargetSelectorTest {
         val context = context(view)
 
         assertEquals(listOf(enemyMiddle), select(rule(attackType = 99), context))
-        assertEquals(listOf(enemyMiddle), select(rule(attackType = 113), context))
+        assertEquals(
+            5,
+            select(rule(attackType = 113, attackMax = 5), context).size,
+        )
         assertEquals(listOf(enemyBase), select(rule(attackType = 81), context))
     }
 
@@ -320,6 +468,7 @@ class SkillTargetSelectorTest {
         linkedTarget: BattleHeroRef? = enemyFront,
         currentTarget: BattleHeroRef? = enemyMiddle,
         previousTargets: Map<BattleHeroRef, BattleHeroRef> = emptyMap(),
+        acceptedStateFilters: Map<SkillTargetStateFilter, BattleHeroRef> = emptyMap(),
     ): SkillBattleView {
         val liveStates = states.toMutableMap()
         liveStates[source] = liveStates.getValue(source).copy(attackRange = sourceRange)
@@ -331,6 +480,7 @@ class SkillTargetSelectorTest {
             linkedTarget = linkedTarget,
             currentTarget = currentTarget,
             previousTargets = previousTargets,
+            acceptedStateFilters = acceptedStateFilters,
         )
     }
 
@@ -373,6 +523,8 @@ class SkillTargetSelectorTest {
         selectAttri: Int = 0,
         targetCountry: Int = 0,
         attackMax: Int = 1,
+        selectFlag: Int = 0,
+        skillHitRange: Int? = null,
     ) = SkillEffectRule(
         detailId = 1,
         effectId = 301,
@@ -392,7 +544,9 @@ class SkillTargetSelectorTest {
             effectName = "",
             selectAttri = selectAttri,
             targetCountry = targetCountry,
+            selectFlag = selectFlag,
         ),
+        skillHitRange = skillHitRange,
     )
 
     private fun ref(side: Side, position: Int, heroId: Int) =
@@ -416,13 +570,24 @@ class SkillTargetSelectorTest {
         private val linkedTarget: BattleHeroRef?,
         private val currentTarget: BattleHeroRef?,
         private val previousTargets: Map<BattleHeroRef, BattleHeroRef>,
+        private val acceptedStateFilters: Map<SkillTargetStateFilter, BattleHeroRef>,
     ) : SkillBattleView {
+        override val capabilities: Set<SkillBattleViewCapability> =
+            SkillBattleViewCapability.entries.toSet()
         override fun heroes(): List<BattleHeroRef> = refs
+        override fun entryState(ref: BattleHeroRef): SkillBattleHeroState? = states[ref]
         override fun state(ref: BattleHeroRef): SkillBattleHeroState? = states[ref]
         override fun metadata(ref: BattleHeroRef): SkillBattleHeroMetadata? = metadata[ref]
         override fun accumulatedDamageDealt(ref: BattleHeroRef): Int = damageDealt[ref] ?: 0
+        override fun currentMorale(ref: BattleHeroRef): Int? = states[ref]?.morale
+        override fun currentAttackRange(ref: BattleHeroRef): Int? = states[ref]?.attackRange
         override fun linkedTarget(source: BattleHeroRef): BattleHeroRef? = linkedTarget
         override fun currentTarget(source: BattleHeroRef): BattleHeroRef? = currentTarget
         override fun previousTarget(source: BattleHeroRef): BattleHeroRef? = previousTargets[source]
+        override fun matchesStateFilter(
+            filter: SkillTargetStateFilter,
+            source: BattleHeroRef,
+            target: BattleHeroRef,
+        ): Boolean = acceptedStateFilters[filter] == target
     }
 }

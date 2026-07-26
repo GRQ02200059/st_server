@@ -171,42 +171,7 @@ class BattleConfigRepository private constructor(
                 }
             val details = Csv.read(projectRoot.resolve("skill_detail_table.csv"))
                 .associate { row ->
-                    val detail = SkillDetailConfig(
-                        detailId = row.int("detail_id"),
-                        effectId = row.int("effect_id"),
-                        effectParam = row.int("effect_param"),
-                        calcPos = row.int("calc_pos"),
-                        calcParam = row.int("calc_param"),
-                        attackType = row.int("attack_type"),
-                        selectSkillParam = row.int("select_skill_param"),
-                        targetType = row.int("target_type"),
-                        selectType = row.int("select_type"),
-                        targetCountry = row.int("target_country"),
-                        selectAttri = row.int("select_attri"),
-                        customSelectFlag = row.int("custom_select_flag"),
-                        availableHit = row.int("available_hit"),
-                        intelParam = row.int("intel_param"),
-                        constantParam = row.int("constant_param"),
-                        probabilityInit = row.int("prob_init_param"),
-                        probabilityMax = row.int("prob_max_param"),
-                        bindFlag = row.int("bind_flag"),
-                        castCondition = row.int("cast_condition"),
-                        precondition = row.int("precondition"),
-                        condition = row.int("condition"),
-                        addCountMax = row.int("add_count_max"),
-                        buffType = row.int("buff_type"),
-                        attackMax = row.int("attack_max"),
-                        delayRound = row.int("delay_round"),
-                        delayHit = row.int("delay_hit"),
-                        availableRounds = row.int("available_round"),
-                        clearPerHit = row.int("clear_per_hit") != 0,
-                        selectFlag = row.int("select_flag"),
-                        inherent = row.int("inherent"),
-                        moraleAffected = row.int("shi_qi_affect") != 0,
-                        calculationType = row.int("calc_type"),
-                        calculationTypes = row.intList("calc_type"),
-                        effectName = row["effect_name"].orEmpty(),
-                    )
+                    val detail = loadSkillDetail(row)
                     detail.detailId to detail
                 }
             val skills = Csv.read(projectRoot.resolve("skill_table.csv"))
@@ -267,6 +232,44 @@ class BattleConfigRepository private constructor(
                 effects = effects,
             )
         }
+
+        internal fun loadSkillDetail(row: Map<String, String>): SkillDetailConfig =
+            SkillDetailConfig(
+                detailId = row.int("detail_id"),
+                effectId = row.int("effect_id"),
+                effectParam = row.int("effect_param"),
+                calcPos = row.int("calc_pos"),
+                calcParam = row.int("calc_param"),
+                attackType = row.int("attack_type"),
+                selectSkillParam = row.int("select_skill_param"),
+                targetType = row.int("target_type"),
+                selectType = row.int("select_type"),
+                targetCountry = row.int("target_country"),
+                selectAttri = row.int("select_attri"),
+                customSelectFlag = row.int("custom_select_flag"),
+                availableHit = row.int("available_hit"),
+                intelParam = row.int("intel_param"),
+                constantParam = row.int("constant_param"),
+                probabilityInit = row.int("prob_init_param"),
+                probabilityMax = row.int("prob_max_param"),
+                bindFlag = row.int("bind_flag"),
+                castCondition = row.int("cast_condition"),
+                precondition = row.int("precondition"),
+                condition = row.int("condition"),
+                addCountMax = row.int("add_count_max"),
+                buffType = row.int("buff_type"),
+                attackMax = row.int("attack_max"),
+                delayRound = row.int("delay_round"),
+                delayHit = row.int("delay_hit"),
+                availableRounds = row.int("available_round"),
+                clearPerHit = row.int("clear_per_hit") != 0,
+                selectFlag = row.int("select_flag"),
+                inherent = row.int("inherent"),
+                moraleAffected = row.int("shi_qi_affect") != 0,
+                calculationType = row.int("calc_type"),
+                calculationTypes = row.intList("calc_type"),
+                effectName = row["effect_name"].orEmpty(),
+            )
 
         private fun loadHeroExtras(path: Path): Map<Int, HeroExtraConfig> =
             Json.readArray(path).associate { row ->

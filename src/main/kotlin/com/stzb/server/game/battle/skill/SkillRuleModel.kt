@@ -18,6 +18,7 @@ data class SkillEffectRule(
     val effectId: Int,
     val childSkillIds: Set<Int>,
     val raw: SkillDetailConfig,
+    val skillHitRange: Int? = null,
 )
 
 data class SkillDiagnostic(

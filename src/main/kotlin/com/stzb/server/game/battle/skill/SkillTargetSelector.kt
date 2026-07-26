@@ -25,6 +25,9 @@ class SkillTargetSelector {
                 "Unsupported select_attri=${raw.selectAttri} for detail ${rule.detailId}"
             }
         }
+        if (raw.selectFlag != 0) {
+            SkillTargetStateFilter.fromRaw(raw.selectFlag)
+        }
 
         return CompiledTargetSelector { context -> select(rule, context) }
     }
@@ -35,21 +38,24 @@ class SkillTargetSelector {
     ): List<BattleHeroRef> {
         val raw = rule.raw
         val view = context.battleView
-        if (raw.selectType == SELECT_LINKED) {
-            return view.linkedTarget(context.source)
-                ?.takeIf { view.isTargetable(it) }
-                ?.let(::listOf)
-                .orEmpty()
-        }
-        if (raw.selectType == SELECT_ADJACENT_TO_CURRENT) {
-            return adjacentTargets(context)
-        }
-
-        var candidates = attackCandidates(raw.attackType, context)
+        var candidates = seedCandidates(raw.selectType, raw.attackType, context)
             .filter { view.isTargetable(it) }
-            .filter { target -> matchesTargetType(raw.targetType, view.metadata(target)) }
+            .filter { target ->
+                matchesTargetType(
+                    raw.targetType,
+                    if (raw.targetType == TARGET_ANY) null else view.metadata(target),
+                )
+            }
             .filter { target ->
                 raw.targetCountry == 0 || view.metadata(target)?.country == raw.targetCountry
+            }
+            .filter { target ->
+                raw.selectFlag == 0 ||
+                    view.matchesStateFilter(
+                        SkillTargetStateFilter.fromRaw(raw.selectFlag),
+                        context.source,
+                        target,
+                    )
             }
             .sortedWith(CLIENT_POSITION_ORDER)
 
@@ -61,7 +67,7 @@ class SkillTargetSelector {
             else -> candidates.filter { target ->
                 target.side == context.source.side ||
                     attackTypeIgnoresRange(raw.attackType) ||
-                    inCurrentAttackRange(context.source, target, view)
+                    inSkillRange(context.source, target, rule.skillHitRange)
             }
         }
 
@@ -93,7 +99,7 @@ class SkillTargetSelector {
                     randomWithoutReplacement(candidates, count, context)
                 }
             }
-            SELECT_ALL -> candidates.take(limit)
+            SELECT_ALL -> candidates
             SELECT_GREATEST_DAMAGE -> candidates
                 .maxByOrNull(view::accumulatedDamageDealt)
                 ?.let(::listOf)
@@ -105,10 +111,22 @@ class SkillTargetSelector {
             SELECT_INSIDE_CURRENT_RANGE,
             SELECT_OUTSIDE_CURRENT_RANGE,
             -> randomWithoutReplacement(candidates, limit, context)
-            SELECT_LINKED, SELECT_ADJACENT_TO_CURRENT -> error("handled before candidate selection")
+            SELECT_LINKED -> candidates.take(limit)
+            SELECT_ADJACENT_TO_CURRENT -> candidates.take(limit)
             else -> error("Unsupported select_type=${raw.selectType}")
         }
     }
+
+    private fun seedCandidates(
+        selectType: Int,
+        attackType: Int,
+        context: SkillBattleContext,
+    ): List<BattleHeroRef> =
+        when (selectType) {
+            SELECT_LINKED -> listOfNotNull(context.battleView.linkedTarget(context.source))
+            SELECT_ADJACENT_TO_CURRENT -> adjacentTargets(context)
+            else -> attackCandidates(attackType, context)
+        }
 
     private fun attackCandidates(
         attackType: Int,
@@ -118,13 +136,14 @@ class SkillTargetSelector {
         val source = context.source
         val view = context.battleView
         return when (normalized) {
-            0, 21 -> listOf(source)
+            0 -> listOf(source)
             11, 13, 23 -> view.heroes().filter { it.side == source.side && it != source }
-            24 -> view.heroes().filter { it.side == source.side }
+            21, 24 -> view.heroes().filter { it.side == source.side }
             41, 43, 94, 95, 96, 97 -> view.heroes().filter { it.side == source.side.opposite() }
             81 -> listOfNotNull(view.previousTarget(baseHero(view, source.side)))
             98 -> listOfNotNull(view.linkedTarget(source))
-            99, 113 -> listOfNotNull(view.currentTarget(source))
+            99 -> listOfNotNull(view.currentTarget(source))
+            113 -> view.heroes().filter { it != source }
             else -> throw IllegalArgumentException(
                 "Unsupported attack_type=$attackType for skill ${context.currentSkillId}",
             )
@@ -136,9 +155,7 @@ class SkillTargetSelector {
         val current = view.currentTarget(context.source) ?: return emptyList()
         return view.heroes()
             .filter { it.side == current.side && kotlin.math.abs(it.position - current.position) <= 1 }
-            .filter { view.isTargetable(it) }
             .sortedWith(CLIENT_POSITION_ORDER)
-            .take(3)
     }
 
     private fun selectByAttribute(
@@ -225,6 +242,13 @@ class SkillTargetSelector {
         return 5 - source.position - target.position <= range
     }
 
+    private fun inSkillRange(
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+        skillHitRange: Int?,
+    ): Boolean =
+        skillHitRange == null || formationDistance(source, target) <= skillHitRange
+
     private fun formationDistance(source: BattleHeroRef, target: BattleHeroRef): Int =
         if (source.side == target.side) {
             kotlin.math.abs(source.position - target.position)
@@ -240,7 +264,14 @@ class SkillTargetSelector {
             ?: error("Missing base hero for $side")
 
     private fun SkillBattleView.isTargetable(ref: BattleHeroRef): Boolean =
-        state(ref)?.let { it.troops > 0 || it.canReceiveEffectsWhenDefeated } == true
+        targetabilityState(ref)?.let { it.troops > 0 || it.canReceiveEffectsWhenDefeated } == true
+
+    private fun SkillBattleView.targetabilityState(ref: BattleHeroRef): SkillBattleHeroState? =
+        if (SkillBattleViewCapability.LIVE_STATE in capabilities) {
+            state(ref)
+        } else {
+            entryState(ref)
+        }
 
     private companion object {
         const val BASE_POSITION = 0
