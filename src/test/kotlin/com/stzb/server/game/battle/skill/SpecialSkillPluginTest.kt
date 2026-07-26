@@ -71,7 +71,7 @@ class SpecialSkillPluginTest {
                 it.field == SkillConditionField.CAST_CONDITION &&
                 it.value in setOf(
                     1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013,
-                    6207, 6306, 11079, 11099, 12080, 12100, 14100,
+                    5300, 6207, 6306, 11079, 11099, 12080, 12100, 14100,
                 ) ||
                 it.field == SkillConditionField.CAST_CONDITION &&
                 (

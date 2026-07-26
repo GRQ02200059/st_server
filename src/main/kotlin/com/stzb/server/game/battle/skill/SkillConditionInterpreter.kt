@@ -173,6 +173,12 @@ sealed interface SkillCondition {
         val negated: Boolean,
     ) : SkillCondition
 
+    data class Country(
+        val subject: Subject,
+        val country: Int,
+        val negated: Boolean = false,
+    ) : SkillCondition
+
     sealed interface Unresolved : SkillCondition
 }
 
@@ -218,6 +224,7 @@ class CompiledSkillCondition internal constructor(
                 is SkillCondition.HasStatus -> matchesStatus(condition, context)
                 is SkillCondition.TriggerCount -> matchesTriggerCount(condition, context)
                 is SkillCondition.HeroId -> matchesHeroId(condition, context)
+                is SkillCondition.Country -> matchesCountry(condition, context)
                 is SkillCondition.TargetPredicate -> true
                 is SpecialConditionRequirement -> throw unresolved(condition, trigger)
             }
@@ -356,6 +363,16 @@ class CompiledSkillCondition internal constructor(
     ): Boolean {
         val ref = subject(condition.subject, context) ?: return false
         val matches = ref.heroId.value == condition.heroId
+        return if (condition.negated) !matches else matches
+    }
+
+    private fun matchesCountry(
+        condition: SkillCondition.Country,
+        context: SkillBattleContext,
+    ): Boolean {
+        val ref = subject(condition.subject, context) ?: return false
+        if (SkillBattleViewCapability.HERO_METADATA !in context.battleView.capabilities) return false
+        val matches = context.battleView.metadata(ref)?.country == condition.country
         return if (condition.negated) !matches else matches
     }
 
@@ -650,6 +667,7 @@ private class BuiltInAttributeConditionPlugin(
                 4013 -> SkillCondition.TargetPredicate(
                     SkillCondition.TargetPredicate.Kind.HAS_CONFUSION_OR_BERSERK,
                 )
+                5300 -> SkillCondition.Country(Subject.SOURCE, country = 3)
                 6207 -> SkillCondition.TargetPredicate(
                     SkillCondition.TargetPredicate.Kind.HAS_RECOVERY_BLOCK,
                 )
@@ -1054,7 +1072,7 @@ private val FORMATION_PRECONDITIONS = setOf(1, 2, -2, 13, 19)
 private val ATTRIBUTE_CAST_CONDITIONS =
     setOf(
         1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013,
-        6207, 6306, 11079, 11099, 12080, 12100, 14100,
+        5300, 6207, 6306, 11079, 11099, 12080, 12100, 14100,
     )
 private const val FORMATION_HERO_COUNT = 3
 private const val CURRENT_CLIENT_BRANCH_PREFIX = "127"

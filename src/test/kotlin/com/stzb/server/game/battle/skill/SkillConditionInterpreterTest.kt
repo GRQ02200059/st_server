@@ -84,7 +84,7 @@ class SkillConditionInterpreterTest {
             code.field == SkillConditionField.CAST_CONDITION &&
             code.value in setOf(
                 104, 203, 205, 207, 303,
-                1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013,
+                1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013, 5300,
                 6207, 6306, 11079, 11099, 12080, 12100, 14100,
             ) ||
             code.field == SkillConditionField.CAST_CONDITION &&
@@ -606,6 +606,27 @@ class SkillConditionInterpreterTest {
                 graph.detail(20096401),
                 trigger(),
                 context(view = distinctCountries),
+            ),
+        )
+    }
+
+    @Test
+    fun `shu country cast condition uses live source metadata`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertTrue(
+            interpreter.matches(
+                graph.detail(21429803),
+                trigger(),
+                context(view = view(metadata = mapOf(SOURCE to metadata(country = 3)))),
+            ),
+        )
+        assertFalse(
+            interpreter.matches(
+                graph.detail(21429803),
+                trigger(),
+                context(view = view(metadata = mapOf(SOURCE to metadata(country = 1)))),
             ),
         )
     }
