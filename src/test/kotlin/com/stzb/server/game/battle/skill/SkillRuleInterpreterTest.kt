@@ -151,7 +151,7 @@ class SkillRuleInterpreterTest {
     }
 
     @Test
-    fun `pending condition interpreter rejects every nonzero field explicitly`() {
+    fun `condition interpreter rejects an unknown synthetic code explicitly`() {
         val graph = graph(
             rule(
                 1,

@@ -150,7 +150,7 @@ class SkillRuleInterpreter private constructor(
     constructor(
         graph: SkillRuleGraph,
         registry: BattleEffectRegistry,
-        conditionInterpreter: PendingSkillConditionInterpreter = StrictPendingConditionInterpreter(),
+        conditionInterpreter: PendingSkillConditionInterpreter = SkillConditionInterpreter(graph),
     ) : this(
         graph,
         registry,
@@ -519,7 +519,7 @@ class SkillRuleInterpreter private constructor(
         fun safe(
             graph: SkillRuleGraph,
             registry: BattleEffectRegistry,
-            conditionInterpreter: PendingSkillConditionInterpreter = StrictPendingConditionInterpreter(),
+            conditionInterpreter: PendingSkillConditionInterpreter = SkillConditionInterpreter(graph),
             diagnosticSink: (SkillExecutionDiagnostic) -> Unit,
         ): SkillRuleInterpreter =
             SkillRuleInterpreter(

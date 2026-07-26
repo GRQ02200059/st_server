@@ -11,6 +11,7 @@ data class SkillExecutionFrame(
 
 class SkillRuntimeState {
     private val counts = mutableMapOf<RuntimeKey, Int>()
+    private val triggerCounts = mutableMapOf<TriggerKey, Int>()
     private val preparations = mutableListOf<PreparedSkill>()
     private val delayedEffects = mutableListOf<DelayedEffect>()
     private val callStack = ArrayDeque<Int>()
@@ -27,11 +28,24 @@ class SkillRuntimeState {
         return updated
     }
 
+    fun count(source: BattleHeroRef, trigger: BattleTrigger): Int =
+        triggerCounts[TriggerKey(source, trigger)] ?: 0
+
+    fun recordTrigger(source: BattleHeroRef, trigger: BattleTrigger): Int {
+        val key = TriggerKey(source, trigger)
+        val updated = count(source, trigger) + 1
+        triggerCounts[key] = updated
+        return updated
+    }
+
     fun recordSuccessfulExecution(
         source: BattleHeroRef,
         trigger: BattleTrigger,
         skillId: Int,
-    ): Int = increment(source, trigger, skillId)
+    ): Int {
+        recordTrigger(source, trigger)
+        return increment(source, trigger, skillId)
+    }
 
     fun prepare(skill: PreparedSkill): Boolean {
         if (preparations.any { it.source == skill.source && it.skillId == skill.skillId }) {
@@ -105,6 +119,11 @@ class SkillRuntimeState {
         val source: BattleHeroRef,
         val trigger: BattleTrigger,
         val skillId: Int,
+    )
+
+    private data class TriggerKey(
+        val source: BattleHeroRef,
+        val trigger: BattleTrigger,
     )
 
     companion object {

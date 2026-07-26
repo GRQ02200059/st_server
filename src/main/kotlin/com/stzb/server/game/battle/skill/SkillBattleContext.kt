@@ -50,6 +50,7 @@ enum class SkillBattleViewCapability {
     NORMAL_ATTACK_RANGE,
     TARGET_HISTORY,
     STATE_FILTERS,
+    ACTIVE_EFFECTS,
 }
 
 class MissingLiveBattleViewData(
@@ -103,6 +104,12 @@ interface SkillBattleView {
         source: BattleHeroRef,
         target: BattleHeroRef,
     ): Boolean
+
+    fun activeEffectIds(ref: BattleHeroRef): Set<Int> =
+        throw MissingLiveBattleViewData(
+            SkillBattleViewCapability.ACTIVE_EFFECTS,
+            "activeEffectIds",
+        )
 
     companion object {
         fun entrySnapshot(request: BattleRequest): SkillBattleView =

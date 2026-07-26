@@ -1,0 +1,797 @@
+package com.stzb.server.game.battle.skill
+
+import com.stzb.server.game.battle.BattleConfigRepository
+import com.stzb.server.game.battle.BattleHero
+import com.stzb.server.game.battle.BattleHeroId
+import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleRandom
+import com.stzb.server.game.battle.BattleRequest
+import com.stzb.server.game.battle.BattleStats
+import com.stzb.server.game.battle.BattleStatus
+import com.stzb.server.game.battle.BattleTeam
+import com.stzb.server.game.battle.FixedBattleRandom
+import com.stzb.server.game.battle.Side
+import com.stzb.server.game.battle.SkillDetailConfig
+import com.stzb.server.game.battle.SkillKind
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotSame
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
+
+class SkillConditionInterpreterTest {
+    @Test
+    fun `scoped condition inventory is an independent literal`() {
+        val graph = realGraph()
+        val castRows = graph.details.filter { it.raw.castCondition != 0 }
+        val preconditionRows = graph.details.filter { it.raw.precondition != 0 }
+        val conditionRows = graph.details.filter { it.raw.condition != 0 }
+
+        assertEquals(308, SkillScopeCatalog.loadDefault().mainSkillIds.size)
+        assertEquals(668, graph.executionNodeIds.size)
+        assertEquals(1935, graph.details.size)
+        assertEquals(298, castRows.size)
+        assertEquals(110, preconditionRows.size)
+        assertEquals(63, conditionRows.size)
+        assertEquals(EXPECTED_CAST_CONDITIONS, castRows.mapTo(linkedSetOf()) { it.raw.castCondition })
+        assertEquals(
+            EXPECTED_PRECONDITIONS,
+            preconditionRows.mapTo(linkedSetOf()) { it.raw.precondition },
+        )
+        assertEquals(EXPECTED_CONDITIONS, conditionRows.mapTo(linkedSetOf()) { it.raw.condition })
+    }
+
+    @Test
+    fun `every scoped condition code compiles through an explicit typed or plugin requirement`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        val compiled = graph.details.map(interpreter::compile)
+
+        assertEquals(471, compiled.sumOf { it.conditions.size })
+        assertTrue(interpreter.unknownCodes().isEmpty())
+        assertTrue(
+            compiled.flatMap { it.conditions }.all {
+                it is SpecialConditionRequirement
+            },
+        )
+    }
+
+    @Test
+    fun `real unresolved rows retain exact field code and skill plugin ownership`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            listOf(
+                SpecialConditionRequirement(
+                    code = SkillConditionCode(
+                        skillId = 200003,
+                        field = SkillConditionField.CAST_CONDITION,
+                        value = 4013,
+                    ),
+                    pluginId = "skill.200003",
+                ),
+            ),
+            interpreter.compile(graph.detail(20000301)).conditions,
+        )
+        assertEquals(
+            listOf(
+                SpecialConditionRequirement(
+                    SkillConditionCode(
+                        200008,
+                        SkillConditionField.CAST_CONDITION,
+                        420000802,
+                    ),
+                    "skill.200008",
+                ),
+                SpecialConditionRequirement(
+                    SkillConditionCode(
+                        200008,
+                        SkillConditionField.CONDITION,
+                        26636,
+                    ),
+                    "skill.200008",
+                ),
+            ),
+            interpreter.compile(graph.detail(20000802)).conditions,
+        )
+        assertEquals(
+            SpecialConditionRequirement(
+                SkillConditionCode(200248, SkillConditionField.PRECONDITION, 19),
+                "skill.200248",
+            ),
+            interpreter.compile(graph.detail(20024801)).conditions.single(),
+        )
+        assertEquals(
+            listOf(1090, 1070, 1050, 1030),
+            (20093902..20093905).map { detailId ->
+                val requirement = interpreter.compile(graph.detail(detailId)).conditions.single()
+                (requirement as SpecialConditionRequirement).code.value
+            },
+        )
+    }
+
+    @Test
+    fun `unknown diagnostics report every field with skill detail and raw value`() {
+        val detail = effectRule(
+            detailId = 101,
+            castCondition = 991,
+            precondition = 992,
+            condition = 993,
+        )
+        val interpreter = SkillConditionInterpreter(graph(rule(1, detail)))
+
+        val error = assertFailsWith<UnsupportedPendingSkillConditionException> {
+            interpreter.compile(detail)
+        }
+
+        assertTrue(error.message.orEmpty().contains("skill=1 detail=101"))
+        assertTrue(error.message.orEmpty().contains("cast_condition=991"))
+        assertTrue(error.message.orEmpty().contains("precondition=992"))
+        assertTrue(error.message.orEmpty().contains("condition=993"))
+        assertEquals(
+            setOf(
+                SkillConditionCode(1, SkillConditionField.CAST_CONDITION, 991),
+                SkillConditionCode(1, SkillConditionField.PRECONDITION, 992),
+                SkillConditionCode(1, SkillConditionField.CONDITION, 993),
+            ),
+            interpreter.unknownCodes(),
+        )
+    }
+
+    @Test
+    fun `round ranges include both boundaries and exclude adjacent rounds`() {
+        val rule = effectRule(101, castCondition = 9001)
+        val plugin = plugin(
+            "test.round",
+            SkillConditionCode(1, SkillConditionField.CAST_CONDITION, 9001) to
+                listOf(SkillCondition.RoundRange(first = 2, last = 4)),
+        )
+        val interpreter = SkillConditionInterpreter(graph(rule(1, rule)), listOf(plugin))
+
+        assertFalse(interpreter.matches(rule, BattleTrigger.ROUND_START, context(round = 1)))
+        assertTrue(interpreter.matches(rule, BattleTrigger.ROUND_START, context(round = 2)))
+        assertTrue(interpreter.matches(rule, BattleTrigger.ROUND_START, context(round = 4)))
+        assertFalse(interpreter.matches(rule, BattleTrigger.ROUND_START, context(round = 5)))
+    }
+
+    @Test
+    fun `troop ratios use exact integer boundaries and the requested subject`() {
+        val sourceAtBoundary = state(troops = 50, maxTroops = 100)
+        val targetAboveBoundary = state(troops = 51, maxTroops = 100)
+        val view = view(sourceAtBoundary, targetAboveBoundary)
+        val mappings = listOf(
+            9010 to SkillCondition.TroopRatio(
+                Subject.SOURCE,
+                Comparison.LESS_THAN_OR_EQUAL,
+                50,
+            ),
+            9011 to SkillCondition.TroopRatio(
+                Subject.SOURCE,
+                Comparison.GREATER_THAN,
+                50,
+            ),
+            9012 to SkillCondition.TroopRatio(
+                Subject.CURRENT_TARGET,
+                Comparison.GREATER_THAN,
+                50,
+            ),
+            9013 to SkillCondition.TroopRatio(
+                Subject.CURRENT_TARGET,
+                Comparison.LESS_THAN_OR_EQUAL,
+                50,
+            ),
+        )
+        val plugin = plugin(
+            id = "test.ratio",
+            *mappings.map { (code, condition) ->
+                SkillConditionCode(1, SkillConditionField.CAST_CONDITION, code) to
+                    listOf(condition)
+            }.toTypedArray(),
+        )
+        val interpreter = SkillConditionInterpreter(
+            graph(rule(1, *mappings.mapIndexed { index, (code, _) ->
+                effectRule(101 + index, castCondition = code)
+            }.toTypedArray())),
+            listOf(plugin),
+        )
+
+        assertTrue(interpreter.matches(effectRule(101, castCondition = 9010), trigger(), context(view = view)))
+        assertFalse(interpreter.matches(effectRule(102, castCondition = 9011), trigger(), context(view = view)))
+        assertTrue(interpreter.matches(effectRule(103, castCondition = 9012), trigger(), context(view = view)))
+        assertFalse(interpreter.matches(effectRule(104, castCondition = 9013), trigger(), context(view = view)))
+    }
+
+    @Test
+    fun `hero status and effect requirements honor target and negation`() {
+        val sourceState = state(statuses = setOf(BattleStatus.BURN))
+        val targetState = state(statuses = setOf(BattleStatus.INSIGHT))
+        val view = view(
+            sourceState = sourceState,
+            targetState = targetState,
+            effects = mapOf(TARGET to setOf(305)),
+        )
+        val conditions = listOf(
+            9020 to SkillCondition.HeroId(Subject.SOURCE, SOURCE.heroId.value, negated = false),
+            9021 to SkillCondition.HeroId(Subject.CURRENT_TARGET, TARGET.heroId.value, negated = false),
+            9022 to SkillCondition.HeroId(Subject.CURRENT_TARGET, SOURCE.heroId.value, negated = true),
+            9023 to SkillCondition.HasStatus(Subject.SOURCE, BattleStatus.BURN, negated = false),
+            9024 to SkillCondition.HasStatus(Subject.SOURCE, BattleStatus.CONFUSION, negated = true),
+            9025 to SkillCondition.HasEffect(Subject.CURRENT_TARGET, 305, negated = false),
+            9026 to SkillCondition.HasEffect(Subject.CURRENT_TARGET, 501, negated = true),
+        )
+        val plugin = plugin(
+            id = "test.identity-and-state",
+            *conditions.map { (code, condition) ->
+                SkillConditionCode(1, SkillConditionField.CONDITION, code) to listOf(condition)
+            }.toTypedArray(),
+        )
+        val interpreter = SkillConditionInterpreter(
+            graph(rule(1, *conditions.mapIndexed { index, (code, _) ->
+                effectRule(110 + index, condition = code)
+            }.toTypedArray())),
+            listOf(plugin),
+        )
+
+        conditions.forEachIndexed { index, (code, _) ->
+            assertTrue(
+                interpreter.matches(
+                    effectRule(110 + index, condition = code),
+                    trigger(),
+                    context(view = view),
+                ),
+                "condition=$code",
+            )
+        }
+    }
+
+    @Test
+    fun `missing live target state and effect data fail closed including negation`() {
+        val conditions = listOf(
+            9030 to SkillCondition.TroopRatio(
+                Subject.SOURCE,
+                Comparison.LESS_THAN_OR_EQUAL,
+                100,
+            ),
+            9031 to SkillCondition.HeroId(
+                Subject.CURRENT_TARGET,
+                TARGET.heroId.value,
+                negated = true,
+            ),
+            9032 to SkillCondition.HasStatus(
+                Subject.SOURCE,
+                BattleStatus.CONFUSION,
+                negated = true,
+            ),
+            9033 to SkillCondition.HasEffect(
+                Subject.SOURCE,
+                501,
+                negated = true,
+            ),
+        )
+        val plugin = plugin(
+            id = "test.fail-closed",
+            *conditions.map { (code, condition) ->
+                SkillConditionCode(1, SkillConditionField.PRECONDITION, code) to
+                    listOf(condition)
+            }.toTypedArray(),
+        )
+        val interpreter = SkillConditionInterpreter(
+            graph(rule(1, *conditions.mapIndexed { index, (code, _) ->
+                effectRule(120 + index, precondition = code)
+            }.toTypedArray())),
+            listOf(plugin),
+        )
+        val entryOnly = SkillBattleView.entrySnapshot(request())
+
+        conditions.forEachIndexed { index, (code, _) ->
+            assertFalse(
+                interpreter.matches(
+                    effectRule(120 + index, precondition = code),
+                    trigger(),
+                    context(view = entryOnly),
+                ),
+                "condition=$code",
+            )
+        }
+    }
+
+    @Test
+    fun `trigger counters isolate hero trigger and skill and support battle event history`() {
+        val runtime = SkillRuntimeState()
+        runtime.recordSuccessfulExecution(SOURCE, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1)
+        runtime.recordSuccessfulExecution(SOURCE, BattleTrigger.PURSUIT_ATTEMPT, 2)
+        runtime.recordSuccessfulExecution(TARGET, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1)
+        runtime.recordSuccessfulExecution(TARGET, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1)
+        runtime.recordTrigger(SOURCE, BattleTrigger.NORMAL_ATTACK_AFTER)
+        runtime.recordTrigger(SOURCE, BattleTrigger.NORMAL_ATTACK_AFTER)
+        runtime.recordTrigger(SOURCE, BattleTrigger.HURT_AFTER)
+        val conditions = listOf(
+            9040 to SkillCondition.TriggerCount(
+                trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                comparison = Comparison.EQUAL,
+                value = 1,
+                subject = Subject.SOURCE,
+                skillId = 1,
+            ),
+            9041 to SkillCondition.TriggerCount(
+                trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                comparison = Comparison.GREATER_THAN,
+                value = 1,
+                subject = Subject.CURRENT_TARGET,
+                skillId = 1,
+            ),
+            9042 to SkillCondition.TriggerCount(
+                trigger = BattleTrigger.PURSUIT_ATTEMPT,
+                comparison = Comparison.EQUAL,
+                value = 1,
+            ),
+            9043 to SkillCondition.TriggerCount(
+                trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+                comparison = Comparison.GREATER_THAN_OR_EQUAL,
+                value = 2,
+            ),
+            9044 to SkillCondition.TriggerCount(
+                trigger = BattleTrigger.HURT_AFTER,
+                comparison = Comparison.LESS_THAN,
+                value = 2,
+            ),
+        )
+        val plugin = plugin(
+            id = "test.counts",
+            *conditions.map { (code, condition) ->
+                SkillConditionCode(1, SkillConditionField.CAST_CONDITION, code) to
+                    listOf(condition)
+            }.toTypedArray(),
+        )
+        val interpreter = SkillConditionInterpreter(
+            graph(rule(1, *conditions.mapIndexed { index, (code, _) ->
+                effectRule(130 + index, castCondition = code)
+            }.toTypedArray())),
+            listOf(plugin),
+        )
+        val context = context(runtime = runtime, view = view())
+
+        conditions.forEachIndexed { index, (code, _) ->
+            assertTrue(
+                interpreter.matches(
+                    effectRule(130 + index, castCondition = code),
+                    trigger(),
+                    context,
+                ),
+                "condition=$code",
+            )
+        }
+        assertEquals(1, runtime.count(SOURCE, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1))
+        assertEquals(2, runtime.count(SOURCE, BattleTrigger.NORMAL_ATTACK_AFTER))
+        assertEquals(1, runtime.count(SOURCE, BattleTrigger.HURT_AFTER))
+    }
+
+    @Test
+    fun `compiled conditions are immutable cached conjunctions and matching is pure`() {
+        val compileCalls = AtomicInteger()
+        val random = CountingRandom()
+        val codes = listOf(
+            SkillConditionCode(1, SkillConditionField.CAST_CONDITION, 9050),
+            SkillConditionCode(1, SkillConditionField.PRECONDITION, 9051),
+            SkillConditionCode(1, SkillConditionField.CONDITION, 9052),
+        )
+        val plugin = object : SpecialSkillPlugin {
+            override val id: String = "test.conjunction"
+            override val ownedConditions: Set<SkillConditionCode> = codes.toSet()
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> {
+                compileCalls.incrementAndGet()
+                return when (code.field) {
+                    SkillConditionField.CAST_CONDITION ->
+                        listOf(SkillCondition.RoundRange(3, 3))
+                    SkillConditionField.PRECONDITION ->
+                        listOf(SkillCondition.HeroId(Subject.SOURCE, SOURCE.heroId.value, false))
+                    SkillConditionField.CONDITION ->
+                        listOf(SkillCondition.HasStatus(Subject.SOURCE, BattleStatus.BURN, false))
+                }
+            }
+        }
+        val detail = effectRule(101, castCondition = 9050, precondition = 9051, condition = 9052)
+        val interpreter = SkillConditionInterpreter(graph(rule(1, detail)), listOf(plugin))
+        val context = context(
+            random = random,
+            view = view(sourceState = state(statuses = setOf(BattleStatus.BURN))),
+        )
+
+        val first = interpreter.compile(detail)
+        val second = interpreter.compile(detail)
+
+        assertSame(first, second)
+        assertEquals(3, compileCalls.get())
+        assertEquals(3, first.conditions.size)
+        assertTrue(first.matches(trigger(), context))
+        assertTrue(first.matches(trigger(), context))
+        assertEquals(0, random.calls)
+        assertEquals(0, context.runtime.count(SOURCE, trigger(), 1))
+        assertFailsWith<UnsupportedOperationException> {
+            (first.conditions as MutableList<SkillCondition>).clear()
+        }
+    }
+
+    @Test
+    fun `special plugin may resolve only the exact owned skill field and code`() {
+        val graph = realGraph()
+        val detail = graph.detail(20000301)
+        val key = SkillConditionCode(200003, SkillConditionField.CAST_CONDITION, 4013)
+        val plugin = plugin(
+            id = "skill.200003",
+            key to listOf(SkillCondition.RoundRange(3, 3)),
+        )
+        val interpreter = SkillConditionInterpreter(graph, listOf(plugin))
+
+        assertTrue(interpreter.matches(detail, trigger(), context(skillId = 200003, round = 3)))
+        assertFalse(interpreter.matches(detail, trigger(), context(skillId = 200003, round = 2)))
+
+        val wrongOwner = effectRule(20000401, castCondition = 4013)
+        val error = assertFailsWith<UnsupportedPendingSkillConditionException> {
+            interpreter.compile(wrongOwner)
+        }
+        assertTrue(error.message.orEmpty().contains("skill=200004"))
+        assertEquals(
+            setOf(SkillConditionCode(200004, SkillConditionField.CAST_CONDITION, 4013)),
+            interpreter.unknownCodes(),
+        )
+        assertFailsWith<IllegalArgumentException> {
+            SkillConditionInterpreter(
+                graph,
+                listOf(
+                    plugin(
+                        id = "skill.someone-else",
+                        key to listOf(SkillCondition.RoundRange(3, 3)),
+                    ),
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `unresolved plugin requirement throws in strict mode and becomes safe diagnostic`() {
+        val detail = effectRule(20000301, castCondition = 4013)
+        val graph = graph(rule(200003, detail))
+        val context = context(skillId = 200003)
+        val registry = BattleEffectRegistry.strict(graph).registerMetaEffects()
+
+        val strictError = assertFailsWith<UnsupportedPendingSkillConditionException> {
+            SkillRuleInterpreter(graph, registry).execute(
+                200003,
+                BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                context,
+            )
+        }
+        assertTrue(strictError.message.orEmpty().contains("plugin=skill.200003"))
+
+        val safeContext = context(skillId = 200003)
+        val safeResult = SkillRuleInterpreter.safe(
+            graph = graph,
+            registry = registry,
+            diagnosticSink = {},
+        ).execute(
+            200003,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            safeContext,
+        )
+
+        assertEquals("UNSUPPORTED_CONDITION", safeResult.diagnostics.single().code)
+        assertTrue(safeResult.diagnostics.single().reason.contains("cast_condition=4013"))
+        assertTrue(safeResult.stateChanges.isEmpty())
+    }
+
+    @Test
+    fun `successful execution count includes the current invocation before detail matching`() {
+        val detail = effectRule(101, effectId = 77, castCondition = 9060)
+        val graph = graph(rule(1, detail))
+        val plugin = plugin(
+            id = "test.current-execution",
+            SkillConditionCode(1, SkillConditionField.CAST_CONDITION, 9060) to
+                listOf(
+                    SkillCondition.TriggerCount(
+                        trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                        comparison = Comparison.EQUAL,
+                        value = 1,
+                        skillId = 1,
+                    ),
+                ),
+        )
+        val interpreter = SkillRuleInterpreter(
+            graph = graph,
+            registry = BattleEffectRegistry.strict(graph).registerMetaEffects(),
+            conditionInterpreter = SkillConditionInterpreter(graph, listOf(plugin)),
+        )
+        val context = context()
+
+        val first = interpreter.execute(1, BattleTrigger.ACTIVE_SKILL_ATTEMPT, context)
+        val second = interpreter.execute(1, BattleTrigger.ACTIVE_SKILL_ATTEMPT, context)
+
+        assertEquals(1, first.stateChanges.filterIsInstance<MarkerEffectChange>().size)
+        assertEquals(0, second.stateChanges.filterIsInstance<MarkerEffectChange>().size)
+        assertEquals(2, context.runtime.count(SOURCE, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1))
+    }
+
+    @Test
+    fun `compiled snapshots do not alias plugin condition lists`() {
+        val mutable = mutableListOf<SkillCondition>(SkillCondition.RoundRange(3, 3))
+        val key = SkillConditionCode(1, SkillConditionField.CAST_CONDITION, 9070)
+        val plugin = object : SpecialSkillPlugin {
+            override val id: String = "test.snapshot"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(key)
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> = mutable
+        }
+        val detail = effectRule(101, castCondition = 9070)
+        val interpreter = SkillConditionInterpreter(graph(rule(1, detail)), listOf(plugin))
+
+        val compiled = interpreter.compile(detail)
+        mutable.clear()
+
+        assertEquals(1, compiled.conditions.size)
+        assertNotSame(mutable, compiled.conditions)
+        assertTrue(compiled.matches(trigger(), context(round = 3)))
+    }
+
+    private fun realGraph(): SkillRuleGraph =
+        SkillRuleCatalog.build(
+            SkillScopeCatalog.loadDefault(),
+            BattleConfigRepository.loadDefault(),
+        )
+
+    private fun SkillRuleGraph.detail(detailId: Int): SkillEffectRule =
+        details.single { it.detailId == detailId }
+
+    private fun plugin(
+        id: String,
+        vararg mappings: Pair<SkillConditionCode, List<SkillCondition>>,
+    ): SpecialSkillPlugin {
+        val conditions = mappings.toMap()
+        return object : SpecialSkillPlugin {
+            override val id: String = id
+            override val ownedConditions: Set<SkillConditionCode> = conditions.keys
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> = conditions.getValue(code)
+        }
+    }
+
+    private fun graph(vararg rules: SkillRule): SkillRuleGraph =
+        SkillRuleGraph(
+            rules = rules.associateBy(SkillRule::skillId),
+            effectIds = rules.flatMap { it.details }.mapTo(linkedSetOf()) { it.effectId },
+            rootSkillIds = rules.mapTo(linkedSetOf()) { it.skillId },
+        )
+
+    private fun rule(
+        skillId: Int,
+        vararg details: SkillEffectRule,
+        kind: SkillKind = SkillKind.ACTIVE,
+    ): SkillRule =
+        SkillRule(
+            skillId = skillId,
+            kind = kind,
+            rawSkillType = when (kind) {
+                SkillKind.PASSIVE -> 1
+                SkillKind.COMMAND -> 2
+                SkillKind.ACTIVE -> 3
+                SkillKind.PURSUIT -> 4
+                SkillKind.UNKNOWN -> 99
+            },
+            probability = 100,
+            prepareRounds = 0,
+            hitRange = 5,
+            details = details.toList(),
+        )
+
+    private fun effectRule(
+        detailId: Int,
+        effectId: Int = 0,
+        castCondition: Int = 0,
+        precondition: Int = 0,
+        condition: Int = 0,
+    ): SkillEffectRule =
+        SkillEffectRule(
+            detailId = detailId,
+            effectId = effectId,
+            childSkillIds = emptySet(),
+            raw = SkillDetailConfig(
+                detailId = detailId,
+                effectId = effectId,
+                attackType = 0,
+                targetType = 0,
+                selectType = 0,
+                intelParam = 0,
+                constantParam = 0,
+                probabilityInit = 100,
+                probabilityMax = 100,
+                castCondition = castCondition,
+                precondition = precondition,
+                condition = condition,
+                attackMax = 1,
+                availableRounds = 0,
+                effectName = "condition-fixture",
+            ),
+            skillHitRange = 5,
+            skillKind = SkillKind.ACTIVE,
+            rawSkillType = 3,
+        )
+
+    private fun trigger(): BattleTrigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT
+
+    private fun context(
+        skillId: Int = 1,
+        round: Int = 3,
+        runtime: SkillRuntimeState = SkillRuntimeState(),
+        random: BattleRandom = FixedBattleRandom(0),
+        view: SkillBattleView = view(),
+    ): SkillBattleContext =
+        SkillBattleContext(
+            request = request(),
+            runtime = runtime,
+            random = random,
+            round = round,
+            source = SOURCE,
+            rootSkillId = skillId,
+            currentSkillId = skillId,
+            trigger = trigger(),
+            battleView = view,
+        )
+
+    private fun request(): BattleRequest =
+        BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    BattleHero(
+                        id = SOURCE.heroId,
+                        position = SOURCE.position,
+                        stats = STATS,
+                        troops = 100,
+                        maxTroops = 100,
+                    ),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    BattleHero(
+                        id = TARGET.heroId,
+                        position = TARGET.position,
+                        stats = STATS,
+                        troops = 100,
+                        maxTroops = 100,
+                    ),
+                ),
+            ),
+        )
+
+    private fun state(
+        troops: Int = 100,
+        maxTroops: Int = 100,
+        statuses: Set<BattleStatus> = emptySet(),
+    ): SkillBattleHeroState =
+        SkillBattleHeroState(
+            stats = STATS,
+            troops = troops,
+            maxTroops = maxTroops,
+            statuses = statuses,
+            morale = 100,
+            attackRange = 5,
+        )
+
+    private fun view(
+        sourceState: SkillBattleHeroState = state(),
+        targetState: SkillBattleHeroState = state(),
+        effects: Map<BattleHeroRef, Set<Int>> = emptyMap(),
+    ): SkillBattleView =
+        ConditionBattleView(
+            states = mapOf(SOURCE to sourceState, TARGET to targetState),
+            currentTargets = mapOf(SOURCE to TARGET),
+            effects = effects,
+        )
+
+    private class ConditionBattleView(
+        private val states: Map<BattleHeroRef, SkillBattleHeroState>,
+        private val currentTargets: Map<BattleHeroRef, BattleHeroRef>,
+        private val effects: Map<BattleHeroRef, Set<Int>>,
+    ) : SkillBattleView {
+        override val capabilities: Set<SkillBattleViewCapability> = setOf(
+            SkillBattleViewCapability.HERO_ROSTER,
+            SkillBattleViewCapability.ENTRY_STATE,
+            SkillBattleViewCapability.LIVE_STATE,
+            SkillBattleViewCapability.TARGET_HISTORY,
+            SkillBattleViewCapability.ACTIVE_EFFECTS,
+        )
+
+        override fun heroes(): List<BattleHeroRef> = states.keys.toList()
+
+        override fun entryState(ref: BattleHeroRef): SkillBattleHeroState? = states[ref]
+
+        override fun state(ref: BattleHeroRef): SkillBattleHeroState? = states[ref]
+
+        override fun metadata(ref: BattleHeroRef): SkillBattleHeroMetadata? = null
+
+        override fun accumulatedDamageDealt(ref: BattleHeroRef): Int = 0
+
+        override fun currentMorale(ref: BattleHeroRef): Int? = states[ref]?.morale
+
+        override fun currentAttackRange(ref: BattleHeroRef): Int? = states[ref]?.attackRange
+
+        override fun linkedTarget(source: BattleHeroRef): BattleHeroRef? = null
+
+        override fun currentTarget(source: BattleHeroRef): BattleHeroRef? = currentTargets[source]
+
+        override fun previousTarget(source: BattleHeroRef): BattleHeroRef? = null
+
+        override fun matchesStateFilter(
+            filter: SkillTargetStateFilter,
+            source: BattleHeroRef,
+            target: BattleHeroRef,
+        ): Boolean = false
+
+        override fun activeEffectIds(ref: BattleHeroRef): Set<Int> = effects[ref].orEmpty()
+    }
+
+    private class CountingRandom : BattleRandom {
+        var calls: Int = 0
+
+        override fun nextInt(bound: Int): Int {
+            calls += 1
+            return 0
+        }
+    }
+
+    private companion object {
+        val SOURCE = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(100003))
+        val TARGET = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(100010))
+        val STATS = BattleStats(100, 100, 100, 100, 100, 5)
+
+        val EXPECTED_CAST_CONDITIONS = setOf(
+            104, 203, 205, 207, 303, 400, 401, 402, 403, 404, 405, 406, 500,
+            1103, 1123, 2313, 2414, 2434, 3103, 3123, 4000, 4003, 4013, 5300,
+            6207, 6306, 7001, 11079, 11099, 12080, 12100, 14100, 121002401,
+            121079601, 121196601, 121329301, 121384301, 127000501, 127000601,
+            127001101, 127001701, 127001901, 127002201, 127002301, 127007201,
+            127008001, 127027001, 127065501, 127067701, 127068001, 127068101,
+            127068901, 127072301, 127073201, 127075601, 127076401, 127077101,
+            127082801, 127084801, 127084901, 127091501, 127092701, 127093901,
+            127094701, 130001912, 130005101, 130005205, 130005301, 220028331,
+            220096801, 220096802, 220097913, 221095712, 221384301, 227000501,
+            227002201, 227002301, 227003301, 227007201, 227008001, 227027001,
+            227065501, 227068001, 227068101, 227068901, 227072301, 227073201,
+            227075601, 227077101, 227082801, 227084801, 227084901, 227091501,
+            227092701, 227094701, 230001912, 230005101, 230005301, 320000301,
+            320024411, 320024421, 320024601, 320025101, 320025111, 320025122,
+            320026412, 320026811, 320092602, 321001701, 321024601, 321025111,
+            321025601, 321098402, 321125401, 321126401, 321199301, 321226402,
+            321296501, 321299001, 321324601, 321325201, 321396501, 321399101,
+            321496501, 321525101, 321529301, 322200801, 327002401, 420000802,
+            420024301, 420024302, 420026421, 420026822, 421001701, 421196502,
+            421196601, 421325701, 421529301,
+        )
+
+        val EXPECTED_PRECONDITIONS = setOf(
+            -6000, -80, -70, -18, -14, -2, 1, 2, 13, 14, 16, 18, 19, 43, 70,
+            80, 500, 2099, 3100, 4040, 6000, 100003, 100010, 100479, 100661,
+        )
+
+        val EXPECTED_CONDITIONS = setOf(
+            1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060, 5001, 5003, 5005,
+            5006, 5007, 5008, 5009, 15002, 15003, 17000, 18306, 20160, 21110,
+            24001, 25002, 25003, 25011, 26636, 29001, 29004, 30000, 32002,
+            32011, 33003, 33004, 33005,
+        )
+    }
+}
