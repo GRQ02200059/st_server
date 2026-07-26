@@ -59,6 +59,9 @@ enum class DamageKind {
     STRATEGY,
     NORMAL,
     ACTIVE_SKILL,
+    PURSUIT,
+    ONGOING,
+    FIRE,
 }
 
 sealed interface BattleModifier {

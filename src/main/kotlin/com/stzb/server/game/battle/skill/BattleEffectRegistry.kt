@@ -279,6 +279,12 @@ class BattleEffectRegistry private constructor(
     }
 }
 
+fun BattleEffectRegistry.registerCoreEffects(
+    effectStore: BattleEffectStore,
+    calculator: BattleValueCalculator = DefaultBattleValueCalculator(),
+): BattleEffectRegistry =
+    register(*CoreEffectHandlers.registrations(effectStore, calculator))
+
 private fun <K, V> immutableMap(values: Map<K, V>): Map<K, V> =
     Collections.unmodifiableMap(LinkedHashMap(values))
 

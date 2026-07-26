@@ -53,6 +53,7 @@ class BattleActionResolver {
             source = source,
             target = target,
             attributeRandomTenths = 30 + (random?.nextInt(10) ?: 5),
+            category = DamageKind.NORMAL,
         )
     }
 }

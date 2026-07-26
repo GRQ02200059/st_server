@@ -65,6 +65,7 @@ data class SkillBattleHeroState(
     val morale: Int,
     val attackRange: Int,
     val canReceiveEffectsWhenDefeated: Boolean = false,
+    val woundedTroops: Int = 0,
 )
 
 data class SkillBattleHeroMetadata(

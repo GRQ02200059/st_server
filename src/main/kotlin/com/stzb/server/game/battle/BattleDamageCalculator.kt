@@ -14,11 +14,16 @@ object BattleDamageCalculator {
         target: BattleHero,
         ratePercent: Int = 100,
         attributeRandomTenths: Int = 35,
+        category: DamageKind? = null,
     ): Int {
         val rate = ratePercent.coerceAtLeast(1) / 100.0
-        val damageFactor = modifierFactor(source, target, DamageKind.PHYSICAL)
+        val damageFactor = modifierFactor(source, target, DamageKind.PHYSICAL, category)
         val troopDamage = source.troops * 373.0 / (7_700 + source.troops)
-        val attributeDamage = source.stats.attack * (attributeRandomTenths.coerceIn(30, 39) / 100.0) * rate
+        val attributeDamage =
+            source.stats.attack *
+                (attributeRandomTenths.coerceIn(30, 39) / 100.0) *
+                rate *
+                damageFactor
         val mainDamage =
             (300.0 * source.troops / (3_500 + source.troops)) *
                 rate *
@@ -33,9 +38,10 @@ object BattleDamageCalculator {
         target: BattleHero,
         ratePercent: Int,
         ongoing: Boolean = false,
+        category: DamageKind? = null,
     ): Int {
         val rate = ratePercent.coerceAtLeast(1) / 100.0
-        val damageFactor = modifierFactor(source, target, DamageKind.STRATEGY)
+        val damageFactor = modifierFactor(source, target, DamageKind.STRATEGY, category)
         val strategyFactor = strategyDefenseFactor(target.stats.strategy)
         val troopDamage = source.troops * 178.0 / (6_459 + source.troops) * if (ongoing) 1.0 / 3 else 1.0
         val attributeDamage = source.stats.strategy * (if (ongoing) 0.25 else 0.5) * damageFactor * strategyFactor
@@ -52,15 +58,16 @@ object BattleDamageCalculator {
     private fun modifierFactor(
         source: BattleHero,
         target: BattleHero,
-        kind: DamageKind,
+        school: DamageKind,
+        category: DamageKind?,
     ): Double {
         val dealt = source.modifiers
             .filterIsInstance<BattleModifier.DamageDealtPercent>()
-            .filter { it.kind == null || it.kind == kind || it.kind == DamageKind.ACTIVE_SKILL }
+            .filter { it.kind == null || it.kind == school || it.kind == category }
             .sumOf { it.percent }
         val taken = target.modifiers
             .filterIsInstance<BattleModifier.DamageTakenPercent>()
-            .filter { it.kind == null || it.kind == kind || it.kind == DamageKind.ACTIVE_SKILL }
+            .filter { it.kind == null || it.kind == school || it.kind == category }
             .sumOf { it.percent }
         return (100 + dealt + taken).coerceAtLeast(10) / 100.0
     }
