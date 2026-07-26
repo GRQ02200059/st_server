@@ -74,6 +74,31 @@ class SkillRuntimeStateTest {
         }
     }
 
+    @Test
+    fun `battle event counters aggregate by side without crossing formations`() {
+        val defender = ref(Side.DEFENDER, 0, 100019)
+        val state = SkillRuntimeState()
+
+        state.recordBattleTriggerOccurrence(refA, BattleTrigger.DAMAGE_AFTER)
+        state.recordBattleTriggerOccurrence(refB, BattleTrigger.DAMAGE_AFTER)
+        state.recordBattleTriggerOccurrence(defender, BattleTrigger.DAMAGE_AFTER)
+
+        assertEquals(2, state.sideCount(Side.ATTACKER, BattleTrigger.DAMAGE_AFTER))
+        assertEquals(1, state.sideCount(Side.DEFENDER, BattleTrigger.DAMAGE_AFTER))
+    }
+
+    @Test
+    fun `threshold generations are consumed once per owner and threshold`() {
+        val state = SkillRuntimeState()
+
+        assertEquals(false, state.consumeThreshold(refA, "damage", count = 2, threshold = 3))
+        assertEquals(true, state.consumeThreshold(refA, "damage", count = 3, threshold = 3))
+        assertEquals(false, state.consumeThreshold(refA, "damage", count = 4, threshold = 3))
+        assertEquals(true, state.consumeThreshold(refA, "damage", count = 6, threshold = 3))
+        assertEquals(false, state.consumeThreshold(refA, "damage", count = 6, threshold = 3))
+        assertEquals(true, state.consumeThreshold(refB, "damage", count = 3, threshold = 3))
+    }
+
     @Suppress("DEPRECATION")
     @Test
     fun `recordTrigger remains a compatibility alias for the explicit battle occurrence contract`() {

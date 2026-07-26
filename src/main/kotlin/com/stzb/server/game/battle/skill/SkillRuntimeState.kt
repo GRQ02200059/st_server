@@ -1,6 +1,7 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.Side
 
 data class SkillExecutionFrame(
     val skillId: Int,
@@ -14,6 +15,8 @@ class SkillRuntimeState {
     private val attemptCounts = mutableMapOf<RuntimeKey, Int>()
     private val lastAttemptRounds = mutableMapOf<RuntimeKey, Int>()
     private val triggerCounts = mutableMapOf<TriggerKey, Int>()
+    private val sideTriggerCounts = mutableMapOf<SideTriggerKey, Int>()
+    private val consumedThresholdGenerations = mutableMapOf<ThresholdKey, Int>()
     private val preparations = mutableListOf<PreparedSkill>()
     private val delayedEffects = mutableListOf<DelayedEffect>()
     private val callStack = ArrayDeque<Int>()
@@ -63,7 +66,30 @@ class SkillRuntimeState {
         val key = TriggerKey(source, trigger)
         val updated = count(source, trigger) + 1
         triggerCounts[key] = updated
+        val sideKey = SideTriggerKey(source.side, trigger)
+        sideTriggerCounts[sideKey] = sideCount(source.side, trigger) + 1
         return updated
+    }
+
+    fun sideCount(side: Side, trigger: BattleTrigger): Int =
+        sideTriggerCounts[SideTriggerKey(side, trigger)] ?: 0
+
+    fun consumeThreshold(
+        owner: BattleHeroRef,
+        namespace: String,
+        count: Int,
+        threshold: Int,
+    ): Boolean {
+        require(namespace.isNotBlank()) { "Threshold namespace must not be blank" }
+        require(count >= 0) { "Threshold count must be non-negative: $count" }
+        require(threshold > 0) { "Threshold must be positive: $threshold" }
+        val generation = count / threshold
+        if (generation <= 0) return false
+        val key = ThresholdKey(owner, namespace, threshold)
+        val consumed = consumedThresholdGenerations[key] ?: 0
+        if (generation <= consumed) return false
+        consumedThresholdGenerations[key] = generation
+        return true
     }
 
     @Deprecated(
@@ -179,6 +205,17 @@ class SkillRuntimeState {
     private data class TriggerKey(
         val source: BattleHeroRef,
         val trigger: BattleTrigger,
+    )
+
+    private data class SideTriggerKey(
+        val side: Side,
+        val trigger: BattleTrigger,
+    )
+
+    private data class ThresholdKey(
+        val owner: BattleHeroRef,
+        val namespace: String,
+        val threshold: Int,
     )
 
     companion object {
