@@ -640,6 +640,10 @@ private class BuiltInMarkerConditionPlugin(
         rule: SkillEffectRule,
     ): List<SkillCondition> = listOf(
         when (code.value) {
+            320000301 -> SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
+                value = 20000301,
+            )
             321001701 -> SkillCondition.TargetPredicate(
                 SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
                 value = 21001701,
@@ -665,7 +669,7 @@ private fun builtInMarkerConditionPlugins(
         .flatMap(::conditionCodes)
         .filter {
             it.field == SkillConditionField.CAST_CONDITION &&
-                it.value in setOf(121002401, 321001701, 421001701)
+                it.value in setOf(320000301, 121002401, 321001701, 421001701)
         }
         .filterNot(overridden::contains)
         .toSet()
