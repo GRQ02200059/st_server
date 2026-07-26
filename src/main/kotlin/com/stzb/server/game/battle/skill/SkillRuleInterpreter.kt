@@ -29,9 +29,14 @@ data class SkillExecutionDiagnostic(
     val skillId: Int,
     val detailId: Int?,
     val effectId: Int?,
-    val dependencyPath: List<Int>,
+    val trigger: BattleTrigger,
+    val fullPath: List<SkillExecutionFrame>,
+    private val skillDependencyPath: List<Int> = fullPath.map(SkillExecutionFrame::skillId),
     val reason: String,
-)
+) {
+    val dependencyPath: List<Int>
+        get() = skillDependencyPath
+}
 
 data class SkillExecutionResult(
     val stateChanges: List<BattleStateChange>,
@@ -123,24 +128,49 @@ class SkillRecursionException(
     "$reason: ${dependencyPath.joinToString(" -> ")}",
 )
 
-class SkillRuleInterpreter(
+class SkillDetailRecursionException(
+    val fullPath: List<SkillExecutionFrame>,
+    reason: String,
+) : IllegalStateException(
+    "$reason: ${fullPath.joinToString(" -> ")}",
+)
+
+private enum class InterpreterFailureMode {
+    STRICT,
+    SAFE,
+}
+
+class SkillRuleInterpreter private constructor(
     private val graph: SkillRuleGraph,
     private val registry: BattleEffectRegistry,
-    private val conditionInterpreter: PendingSkillConditionInterpreter =
-        StrictPendingConditionInterpreter(),
+    private val conditionInterpreter: PendingSkillConditionInterpreter,
+    private val failureMode: InterpreterFailureMode,
+    private val diagnosticSink: (SkillExecutionDiagnostic) -> Unit,
 ) {
+    constructor(
+        graph: SkillRuleGraph,
+        registry: BattleEffectRegistry,
+        conditionInterpreter: PendingSkillConditionInterpreter = StrictPendingConditionInterpreter(),
+    ) : this(
+        graph,
+        registry,
+        conditionInterpreter,
+        InterpreterFailureMode.STRICT,
+        {},
+    )
+
     fun execute(
         skillId: Int,
         trigger: BattleTrigger,
         context: SkillBattleContext,
     ): SkillExecutionResult =
-        executeSkill(skillId, trigger, context, probabilityResolved = false)
+        executeSkill(skillId, trigger, context, ChildProbabilityOwnership.CONFIGURED_CHILD)
 
     private fun executeSkill(
         skillId: Int,
         trigger: BattleTrigger,
         parentContext: SkillBattleContext,
-        probabilityResolved: Boolean,
+        probabilityOwnership: ChildProbabilityOwnership,
     ): SkillExecutionResult {
         val attemptedPath = parentContext.runtime.currentCallPath() + skillId
         val rule = graph.rule(skillId) ?: throw MissingSkillRuleException(attemptedPath)
@@ -160,10 +190,12 @@ class SkillRuleInterpreter(
                 currentSkillId = skillId,
                 trigger = trigger,
             )
-            parentContext.runtime.increment(context.source, trigger, skillId)
-            if (!probabilityResolved && !rollProbability(rule, context)) {
+            if (probabilityOwnership == ChildProbabilityOwnership.CONFIGURED_CHILD &&
+                !rollProbability(rule, context)
+            ) {
                 return SkillExecutionResult.EMPTY
             }
+            parentContext.runtime.recordSuccessfulExecution(context.source, trigger, skillId)
 
             var result = SkillExecutionResult.immutable(
                 stateChanges = emptyList(),
@@ -180,9 +212,7 @@ class SkillRuleInterpreter(
                 diagnostics = emptyList(),
             )
             rule.details.forEach { detail ->
-                if (conditionInterpreter.matches(detail, trigger, context)) {
-                    result += executeDetail(detail, context)
-                }
+                result += executeBranch(detail, context)
             }
             return result
         } finally {
@@ -190,26 +220,64 @@ class SkillRuleInterpreter(
         }
     }
 
+    private fun executeBranch(
+        detail: SkillEffectRule,
+        context: SkillBattleContext,
+    ): SkillExecutionResult =
+        try {
+            if (!conditionInterpreter.matches(detail, context.trigger, context)) {
+                SkillExecutionResult.EMPTY
+            } else {
+                executeDetail(detail, context)
+            }
+        } catch (error: Exception) {
+            if (failureMode == InterpreterFailureMode.STRICT || !isRecoverable(error)) throw error
+            diagnosticResult(detail, context, error)
+        }
+
     private fun executeDetail(
         detail: SkillEffectRule,
         context: SkillBattleContext,
+        preselectedTargets: List<BattleHeroRef>? = null,
+        valueOverride: TypedBattlePotency.Resolved? = null,
     ): SkillExecutionResult {
-        val execution = registry.execute(detail, context)
-        var result = SkillExecutionResult.immutable(
-            stateChanges = execution.stateChanges,
-            events = execution.events.map { BattleOutputEvent(context.rootSkillId, it) },
-            executedSkillIds = emptyList(),
-            diagnostics = emptyList(),
-        )
-        execution.stateChanges.forEach { change ->
-            result += when (change) {
-                is ExecuteChildSkillChange -> executeChildren(change, context)
-                is RetriggerSkillChange -> retrigger(change, context)
-                is TriggerReferencedEffectChange -> triggerReferencedEffect(change, context)
-                else -> SkillExecutionResult.EMPTY
-            }
+        val ownerSkillId = detail.detailId / 100
+        val frame = SkillExecutionFrame(ownerSkillId, detail.detailId)
+        val attempted = context.runtime.currentDetailPath() + frame
+        try {
+            context.runtime.enterDetail(frame)
+        } catch (error: IllegalStateException) {
+            throw SkillDetailRecursionException(
+                attempted,
+                error.message ?: "Skill detail recursion failure",
+            )
         }
-        return result
+        try {
+            val executionContext = context.copy(currentSkillId = ownerSkillId)
+            val execution = registry.execute(
+                rule = detail,
+                context = executionContext,
+                preselectedTargets = preselectedTargets,
+                valueOverride = valueOverride,
+            )
+            var result = SkillExecutionResult.immutable(
+                stateChanges = execution.stateChanges,
+                events = execution.events.map { BattleOutputEvent(context.rootSkillId, it) },
+                executedSkillIds = emptyList(),
+                diagnostics = emptyList(),
+            )
+            execution.stateChanges.forEach { change ->
+                result += when (change) {
+                    is ExecuteChildSkillChange -> executeChildren(change, executionContext)
+                    is RetriggerSkillChange -> retrigger(change, executionContext)
+                    is TriggerReferencedEffectChange -> triggerReferencedEffect(change, executionContext)
+                    else -> SkillExecutionResult.EMPTY
+                }
+            }
+            return result
+        } finally {
+            context.runtime.exitDetail(frame)
+        }
     }
 
     private fun executeChildren(
@@ -220,13 +288,77 @@ class SkillRuleInterpreter(
             val child = graph.rule(childSkillId) ?: throw MissingSkillRuleException(
                 context.runtime.currentCallPath() + childSkillId,
             )
-            aggregate + executeSkill(
-                skillId = childSkillId,
-                trigger = triggerFor(child.kind),
-                parentContext = context,
-                probabilityResolved = false,
-            )
+            aggregate + if (change.valueOverride == null && change.inheritedPreselectedTargets == null) {
+                executeSkill(
+                    skillId = childSkillId,
+                    trigger = triggerFor(child.kind),
+                    parentContext = context,
+                    probabilityOwnership = change.probabilityOwnership,
+                )
+            } else {
+                executeChildWithOverrides(child, change, context)
+            }
         }
+
+    private fun executeChildWithOverrides(
+        child: SkillRule,
+        change: ExecuteChildSkillChange,
+        parentContext: SkillBattleContext,
+    ): SkillExecutionResult {
+        val trigger = triggerFor(child.kind)
+        val attemptedPath = parentContext.runtime.currentCallPath() + child.skillId
+        try {
+            parentContext.runtime.enter(child.skillId)
+        } catch (error: IllegalStateException) {
+            throw SkillRecursionException(attemptedPath, error.message ?: "Skill recursion failure")
+        }
+        try {
+            val context = parentContext.copy(
+                currentSkillId = child.skillId,
+                trigger = trigger,
+            )
+            if (change.probabilityOwnership == ChildProbabilityOwnership.CONFIGURED_CHILD &&
+                !rollProbability(child, context)
+            ) {
+                return SkillExecutionResult.EMPTY
+            }
+            parentContext.runtime.recordSuccessfulExecution(context.source, trigger, child.skillId)
+            var result = SkillExecutionResult.immutable(
+                stateChanges = emptyList(),
+                events = listOf(
+                    SkillTriggered(
+                        round = context.round,
+                        source = context.source,
+                        rootSkillId = context.rootSkillId,
+                        skillId = child.skillId,
+                        trigger = trigger,
+                    ),
+                ),
+                executedSkillIds = listOf(child.skillId),
+                diagnostics = emptyList(),
+            )
+            child.details.forEach { detail ->
+                result += try {
+                    if (conditionInterpreter.matches(detail, trigger, context)) {
+                        executeDetail(
+                            detail = detail,
+                            context = context,
+                            preselectedTargets = change.inheritedPreselectedTargets,
+                            valueOverride = change.valueOverride,
+                        )
+                    } else {
+                        SkillExecutionResult.EMPTY
+                    }
+                } catch (error: Exception) {
+                    if (failureMode == InterpreterFailureMode.STRICT || !isRecoverable(error)) throw error
+                    diagnosticResult(detail, context, error)
+                }
+            }
+            return result
+        } finally {
+            parentContext.runtime.exit(child.skillId)
+        }
+    }
 
     private fun retrigger(
         change: RetriggerSkillChange,
@@ -234,23 +366,21 @@ class SkillRuleInterpreter(
     ): SkillExecutionResult {
         val maximum = change.maximumExecutions
         var result = SkillExecutionResult.EMPTY
-        change.selectedTargets.forEach targetLoop@{ target ->
+        change.selectedTargets.forEach { target ->
             val targetHero = requestHero(context, target)
             targetHero.skillIds
                 .asSequence()
                 .filter { graph.rule(it)?.kind == change.skillKind }
                 .forEach { skillId ->
-                    if (maximum != null &&
-                        context.runtime.count(target, triggerFor(change.skillKind), skillId) >= maximum
-                    ) {
-                        return@targetLoop
+                    val trigger = triggerFor(change.skillKind)
+                    if (maximum == null || context.runtime.count(target, trigger, skillId) < maximum) {
+                        result += executeSkill(
+                            skillId = skillId,
+                            trigger = trigger,
+                            parentContext = context.copy(source = target),
+                            probabilityOwnership = change.probabilityOwnership,
+                        )
                     }
-                    result += executeSkill(
-                        skillId = skillId,
-                        trigger = triggerFor(change.skillKind),
-                        parentContext = context.copy(source = target),
-                        probabilityResolved = true,
-                    )
                 }
         }
         return result
@@ -265,22 +395,80 @@ class SkillRuleInterpreter(
                 context.runtime.currentCallPath(),
                 change.referencedDetailId,
             )
-        val execution = registry.execute(detail, context)
-        var result = SkillExecutionResult.immutable(
-            stateChanges = execution.stateChanges,
-            events = execution.events.map { BattleOutputEvent(context.rootSkillId, it) },
-            executedSkillIds = emptyList(),
-            diagnostics = emptyList(),
+        return executeDetail(
+            detail = detail,
+            context = context,
+            preselectedTargets = change.selectedTargets,
+            valueOverride = change.valueOverride,
         )
-        execution.stateChanges.forEach { nested ->
-            result += when (nested) {
-                is ExecuteChildSkillChange -> executeChildren(nested, context)
-                is RetriggerSkillChange -> retrigger(nested, context)
-                is TriggerReferencedEffectChange -> triggerReferencedEffect(nested, context)
-                else -> SkillExecutionResult.EMPTY
+    }
+
+    private fun diagnosticResult(
+        detail: SkillEffectRule,
+        context: SkillBattleContext,
+        error: Exception,
+    ): SkillExecutionResult {
+        val fullPath = when (error) {
+            is SkillDetailRecursionException -> error.fullPath
+            else -> if (context.runtime.currentDetailPath().isEmpty()) {
+                listOf(SkillExecutionFrame(context.currentSkillId, detail.detailId))
+            } else {
+                context.runtime.currentDetailPath()
             }
         }
-        return result
+        val diagnostic = SkillExecutionDiagnostic(
+            code = when (error) {
+                is MissingSkillDetailException -> "MISSING_REFERENCED_DETAIL"
+                is MissingSkillRuleException -> "MISSING_CHILD_SKILL"
+                is SkillRecursionException -> "SKILL_RECURSION"
+                is SkillDetailRecursionException -> "DETAIL_RECURSION"
+                is UnsupportedPendingSkillConditionException -> "UNSUPPORTED_CONDITION"
+                is UnsupportedSkillRuleException -> error.diagnostic.code.name
+                is UnsupportedConfiguredBattleValueException -> error.diagnostic.code.name
+                else -> "INVALID_RULE"
+            },
+            skillId = context.currentSkillId,
+            detailId = detail.detailId,
+            effectId = detail.effectId,
+            trigger = context.trigger,
+            fullPath = Collections.unmodifiableList(ArrayList(fullPath)),
+            skillDependencyPath = Collections.unmodifiableList(
+                ArrayList(
+                    when (error) {
+                        is MissingSkillRuleException -> error.dependencyPath
+                        is SkillRecursionException -> error.dependencyPath
+                        else -> fullPath.map(SkillExecutionFrame::skillId)
+                    },
+                ),
+            ),
+            reason = error.message.orEmpty(),
+        )
+        logSafely(diagnostic)
+        return SkillExecutionResult.immutable(
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            listOf(diagnostic),
+        )
+    }
+
+    private fun isRecoverable(error: Exception): Boolean =
+        error is MissingSkillDetailException ||
+            error is MissingSkillRuleException ||
+            error is SkillRecursionException ||
+            error is SkillDetailRecursionException ||
+            error is UnsupportedPendingSkillConditionException ||
+            error is UnsupportedSkillRuleException ||
+            error is UnsupportedConfiguredBattleValueException ||
+            error is IllegalArgumentException ||
+            error is IllegalStateException
+
+    private fun logSafely(diagnostic: SkillExecutionDiagnostic) {
+        try {
+            diagnosticSink(diagnostic)
+        } catch (_: Exception) {
+            // Safe-mode diagnostics never replace branch execution.
+        }
     }
 
     private fun rollProbability(
@@ -326,4 +514,20 @@ class SkillRuleInterpreter(
             SkillKind.PURSUIT -> BattleTrigger.PURSUIT_ATTEMPT
             SkillKind.UNKNOWN -> throw IllegalArgumentException("Unsupported skill kind=$kind")
         }
+
+    companion object {
+        fun safe(
+            graph: SkillRuleGraph,
+            registry: BattleEffectRegistry,
+            conditionInterpreter: PendingSkillConditionInterpreter = StrictPendingConditionInterpreter(),
+            diagnosticSink: (SkillExecutionDiagnostic) -> Unit,
+        ): SkillRuleInterpreter =
+            SkillRuleInterpreter(
+                graph,
+                registry,
+                conditionInterpreter,
+                InterpreterFailureMode.SAFE,
+                diagnosticSink,
+            )
+    }
 }

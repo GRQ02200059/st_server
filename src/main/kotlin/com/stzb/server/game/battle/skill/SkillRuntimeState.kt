@@ -2,11 +2,19 @@ package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleHeroRef
 
+data class SkillExecutionFrame(
+    val skillId: Int,
+    val detailId: Int,
+) {
+    override fun toString(): String = "$skillId/$detailId"
+}
+
 class SkillRuntimeState {
     private val counts = mutableMapOf<RuntimeKey, Int>()
     private val preparations = mutableListOf<PreparedSkill>()
     private val delayedEffects = mutableListOf<DelayedEffect>()
     private val callStack = ArrayDeque<Int>()
+    private val detailCallStack = ArrayDeque<SkillExecutionFrame>()
     private var nextSequence = 0L
 
     fun count(source: BattleHeroRef, trigger: BattleTrigger, skillId: Int): Int =
@@ -18,6 +26,12 @@ class SkillRuntimeState {
         counts[key] = updated
         return updated
     }
+
+    fun recordSuccessfulExecution(
+        source: BattleHeroRef,
+        trigger: BattleTrigger,
+        skillId: Int,
+    ): Int = increment(source, trigger, skillId)
 
     fun prepare(skill: PreparedSkill): Boolean {
         if (preparations.any { it.source == skill.source && it.skillId == skill.skillId }) {
@@ -66,6 +80,27 @@ class SkillRuntimeState {
 
     fun currentCallPath(): List<Int> = callStack.toList()
 
+    fun enterDetail(frame: SkillExecutionFrame) {
+        val path = detailCallStack.toList()
+        check(frame !in path) {
+            "Skill detail call cycle: ${(path + frame).joinToString(" -> ")}"
+        }
+        check(detailCallStack.size < MAX_REFERENCE_DEPTH) {
+            "Skill detail path exceeds maximum reference depth $MAX_REFERENCE_DEPTH: " +
+                (path + frame).joinToString(" -> ")
+        }
+        detailCallStack.addLast(frame)
+    }
+
+    fun exitDetail(frame: SkillExecutionFrame) {
+        check(detailCallStack.lastOrNull() == frame) {
+            "Cannot exit detail $frame from call path ${detailCallStack.joinToString(" -> ")}"
+        }
+        detailCallStack.removeLast()
+    }
+
+    fun currentDetailPath(): List<SkillExecutionFrame> = detailCallStack.toList()
+
     private data class RuntimeKey(
         val source: BattleHeroRef,
         val trigger: BattleTrigger,
@@ -74,5 +109,6 @@ class SkillRuntimeState {
 
     companion object {
         const val MAX_CHILD_DEPTH = 16
+        const val MAX_REFERENCE_DEPTH = 16
     }
 }

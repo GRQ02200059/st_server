@@ -198,7 +198,7 @@ private class ControlEffectHandler(
         check(invocation.rule.effectId == ownedEffectId) {
             "Handler $ownedEffectId cannot execute effect=${invocation.rule.effectId}"
         }
-        val targets = targetSelector.compile(invocation.rule).select(invocation.context)
+        val targets = invocation.selectTargets(targetSelector)
         if (ownedEffectId == DAMAGE_REDIRECTION_ID) {
             if (targets.isEmpty()) return EffectExecution.EMPTY
             val bearer = invocation.context.battleView.heroes()

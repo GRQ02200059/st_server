@@ -63,6 +63,7 @@ class BattleEffectStore {
         target: BattleHeroRef,
         effectId: Int,
         source: BattleHeroRef? = null,
+        detailId: Int? = null,
     ): EffectLifecycleResult {
         val effects = active[target] ?: return lifecycle()
         val updated = mutableListOf<ActiveSkillEffect>()
@@ -71,6 +72,7 @@ class BattleEffectStore {
             .filter {
                 it.effectId == effectId &&
                     (source == null || it.source == source) &&
+                    (detailId == null || it.detailId == detailId) &&
                     (it.remainingHits != null || it.clearPerHit)
             }
             .toList()

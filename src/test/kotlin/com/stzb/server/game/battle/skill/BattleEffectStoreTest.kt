@@ -315,6 +315,42 @@ class BattleEffectStoreTest {
     }
 
     @Test
+    fun `hit consumption can atomically qualify the exact detail`() {
+        val store = BattleEffectStore()
+        store.apply(
+            effect(
+                effectId = 511,
+                detailId = 1001,
+                conflict = 0,
+                remainingRounds = null,
+                remainingHits = 2,
+            ),
+        )
+        store.apply(
+            effect(
+                effectId = 511,
+                detailId = 1002,
+                conflict = 0,
+                remainingRounds = null,
+                remainingHits = 2,
+            ),
+        )
+
+        val result = store.consumeHit(
+            target = target,
+            effectId = 511,
+            source = source,
+            detailId = 1002,
+        )
+
+        assertEquals(listOf(1002), result.updated.map { it.detailId })
+        assertEquals(
+            mapOf(1001 to 2, 1002 to 1),
+            store.effectsFor(target).associate { it.detailId to it.remainingHits },
+        )
+    }
+
+    @Test
     fun `conflict identity includes category group target and source skill kind`() {
         val store = BattleEffectStore()
         store.apply(effect())

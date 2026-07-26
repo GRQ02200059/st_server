@@ -422,7 +422,7 @@ class DefaultBattleValueCalculator(
         return BattleDamageCalculator.physical(
             source = source,
             target = targetHero,
-            ratePercent = damageRate(invocation.rule, source),
+            ratePercent = damageRate(invocation, source),
             attributeRandomTenths = 30 + invocation.context.random.nextInt(10),
             origin = invocation.damageOrigin(),
         )
@@ -445,7 +445,7 @@ class DefaultBattleValueCalculator(
         return BattleDamageCalculator.strategy(
             source = source,
             target = targetHero,
-            ratePercent = damageRate(invocation.rule, source),
+            ratePercent = damageRate(invocation, source),
             ongoing = ongoing,
             origin = invocation.damageOrigin(),
             tags = tags,
@@ -455,15 +455,17 @@ class DefaultBattleValueCalculator(
     override fun recovery(invocation: EffectInvocation): Int {
         val source = invocation.liveHero(invocation.context.source)
         val base = (source.troops * 300.0 / (3_500 + source.troops)).roundToInt()
-        val rate = damageRate(invocation.rule, source) / 100.0
+        val rate = damageRate(invocation, source) / 100.0
         return (base * rate).toInt().coerceAtLeast(0)
     }
 
     private fun selectedTarget(invocation: EffectInvocation): BattleHeroRef =
-        targetSelector.compile(invocation.rule).select(invocation.context).firstOrNull()
+        invocation.selectTargets(targetSelector).firstOrNull()
             ?: error("No live target for detail=${invocation.rule.detailId}")
 
-    private fun damageRate(rule: SkillEffectRule, source: BattleHero): Int {
+    private fun damageRate(invocation: EffectInvocation, source: BattleHero): Int {
+        invocation.valueOverride?.let { return it.value.coerceAtLeast(1) }
+        val rule = invocation.rule
         val raw = rule.raw
         val base = raw.constantParam.toDouble()
         val rate = if (raw.intelParam == 0) {
@@ -518,7 +520,7 @@ private class CoreEffectHandler(
         check(invocation.rule.effectId == ownedEffectId) {
             "Handler $ownedEffectId cannot execute effect=${invocation.rule.effectId}"
         }
-        val targets = targetSelector.compile(invocation.rule).select(invocation.context)
+        val targets = invocation.selectTargets(targetSelector)
         val changes = targets.flatMap { target ->
             blockedChange(invocation, target)?.let(::listOf)
                 ?: changesForTarget(invocation, target)
@@ -532,7 +534,8 @@ private class CoreEffectHandler(
     ): List<BattleStateChange> {
         val effectId = invocation.rule.effectId
         val sourceHero = invocation.liveHero(invocation.context.source)
-        val potency = calculator.effectValue(invocation.rule, sourceHero).requireResolved(invocation)
+        val potency = invocation.valueOverride
+            ?: calculator.effectValue(invocation.rule, sourceHero).requireResolved(invocation)
         return when (effectId) {
             in 101..106 -> listOf(statChange(invocation, target, potency, increase = true))
             in 201..206 -> listOf(statChange(invocation, target, potency, increase = false))

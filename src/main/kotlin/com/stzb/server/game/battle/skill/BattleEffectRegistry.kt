@@ -62,6 +62,9 @@ data class EffectInvocation(
     val rule: SkillEffectRule,
     val context: SkillBattleContext,
     val callPath: List<Int>,
+    val detailCallPath: List<SkillExecutionFrame> = emptyList(),
+    val preselectedTargets: List<com.stzb.server.game.battle.BattleHeroRef>? = null,
+    val valueOverride: TypedBattlePotency.Resolved? = null,
 )
 
 data class EffectExecution(
@@ -124,11 +127,13 @@ class UnsupportedConfiguredBattleValueException(
 class BattleEffectRegistry private constructor(
     declarations: Map<Int, EffectDeclaration>,
     registrations: Map<Int, EffectHandlerRegistration>,
+    details: Map<Int, SkillEffectRule>,
     private val failureMode: FailureMode,
     private val logger: (BattleEffectDiagnostic) -> Unit,
 ) {
     private val declarations: Map<Int, EffectDeclaration> = immutableMap(declarations)
     private val registrations: Map<Int, EffectHandlerRegistration> = immutableMap(registrations)
+    private val details: Map<Int, SkillEffectRule> = immutableMap(details)
     private val declaredIds: Set<Int> = immutableSet(this.declarations.keys)
     private val implementedIds: Set<Int> = immutableSet(
         this.registrations.values
@@ -144,6 +149,8 @@ class BattleEffectRegistry private constructor(
 
     fun implementationSemanticId(effectId: Int): String? =
         registrations[effectId]?.handler?.semanticId
+
+    fun detail(detailId: Int): SkillEffectRule? = details[detailId]
 
     fun register(vararg registrations: EffectHandlerRegistration): BattleEffectRegistry {
         val repeatedIds = registrations
@@ -174,6 +181,7 @@ class BattleEffectRegistry private constructor(
         return BattleEffectRegistry(
             declarations = declarations,
             registrations = this.registrations + registrations.associateBy { it.effectId },
+            details = details,
             failureMode = failureMode,
             logger = logger,
         )
@@ -182,12 +190,17 @@ class BattleEffectRegistry private constructor(
     fun execute(
         rule: SkillEffectRule,
         context: SkillBattleContext,
+        preselectedTargets: List<com.stzb.server.game.battle.BattleHeroRef>? = null,
+        valueOverride: TypedBattlePotency.Resolved? = null,
     ): EffectExecution {
         val callPath = invocationCallPath(context)
         val invocation = EffectInvocation(
             rule = rule,
             context = context,
             callPath = immutableList(callPath),
+            detailCallPath = immutableList(context.runtime.currentDetailPath()),
+            preselectedTargets = preselectedTargets?.let(::immutableList),
+            valueOverride = valueOverride,
         )
         val handler = registrations[rule.effectId]?.handler
         if (handler != null) {
@@ -294,6 +307,7 @@ class BattleEffectRegistry private constructor(
             return BattleEffectRegistry(
                 declarations = declarations,
                 registrations = emptyMap(),
+                details = graph.details.associateBy(SkillEffectRule::detailId),
                 failureMode = failureMode,
                 logger = logger,
             )
@@ -317,8 +331,9 @@ fun BattleEffectRegistry.registerControlEffects(
 
 fun BattleEffectRegistry.registerMetaEffects(
     targetSelector: SkillTargetSelector = SkillTargetSelector(),
+    calculator: BattleValueCalculator = DefaultBattleValueCalculator(),
 ): BattleEffectRegistry {
-    val registrations = MetaEffectHandlers.registrations(targetSelector)
+    val registrations = MetaEffectHandlers.registrations(targetSelector, calculator, ::detail)
         .filter { it.effectId in declaredEffectIds() }
         .toTypedArray()
     return register(*registrations)
@@ -332,3 +347,8 @@ private fun <T> immutableList(values: Collection<T>): List<T> =
 
 private fun <T> immutableSet(values: Collection<T>): Set<T> =
     Collections.unmodifiableSet(LinkedHashSet(values))
+
+internal fun EffectInvocation.selectTargets(
+    targetSelector: SkillTargetSelector,
+): List<com.stzb.server.game.battle.BattleHeroRef> =
+    preselectedTargets ?: targetSelector.compile(rule).select(context)
