@@ -281,7 +281,13 @@ class DefaultCompleteSkillEngine private constructor(
             specialPlugins.pluginFor(skillId)?.takeIf {
                 trigger == BattleTrigger.BATTLE_COMMAND
             }?.let { plugin ->
-                return@fold result + pluginTriggeredResult(skillId, trigger, skillContext, plugin)
+                val pluginResult = pluginTriggeredResult(skillId, trigger, skillContext, plugin)
+                if (plugin.replacesConfiguredExecution) {
+                    return@fold result + pluginResult
+                }
+                return@fold result +
+                    interpreter.execute(skillId, trigger, skillContext) +
+                    pluginResult
             }
             val skillResult = interpreter.execute(skillId, trigger, skillContext)
             result + skillResult

@@ -99,10 +99,50 @@ class SkillTargetSelectorTest {
 
         assertEquals(
             listOf(source),
-            select(rule(attackType = 11, selectType = 0, effectBuffType = 2), context),
+            select(
+                rule(
+                    detailId = 20000101,
+                    attackType = 11,
+                    selectType = 0,
+                    effectBuffType = 2,
+                ),
+                context,
+            ),
         )
         assertTrue(
-            select(rule(attackType = 11, selectType = 0, effectBuffType = 1), context).isEmpty(),
+            select(
+                rule(
+                    detailId = 20000101,
+                    attackType = 11,
+                    selectType = 0,
+                    effectBuffType = 1,
+                ),
+                context,
+            ).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `generic beneficial other ally selector does not fall back to source`() {
+        val context = context(
+            view(
+                states = mapOf(
+                    source to state(),
+                    enemyBase to state(),
+                ),
+            ),
+        )
+
+        assertTrue(
+            select(
+                rule(
+                    detailId = 99999901,
+                    attackType = 11,
+                    selectType = 0,
+                    effectBuffType = 2,
+                ),
+                context,
+            ).isEmpty(),
         )
     }
 
@@ -543,6 +583,7 @@ class SkillTargetSelectorTest {
     ) = SkillBattleHeroMetadata(gender, troopType, categories, country)
 
     private fun rule(
+        detailId: Int = 1,
         attackType: Int = 43,
         targetType: Int = 0,
         selectType: Int = 0,
@@ -553,11 +594,11 @@ class SkillTargetSelectorTest {
         skillHitRange: Int? = null,
         effectBuffType: Int = 1,
     ) = SkillEffectRule(
-        detailId = 1,
+        detailId = detailId,
         effectId = 301,
         childSkillIds = emptySet(),
         raw = SkillDetailConfig(
-            detailId = 1,
+            detailId = detailId,
             effectId = 301,
             attackType = attackType,
             targetType = targetType,

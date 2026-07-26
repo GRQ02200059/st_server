@@ -38,6 +38,11 @@ class SkillTimingTest {
         val context = context(random = random)
 
         val started = fixture.coordinator.attempt(10, context)
+        assertEquals(
+            0,
+            fixture.runtime.count(attacker, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 10),
+            "starting preparation is not a successful execution",
+        )
         selected = attacker
         val completed = fixture.coordinator.onRound(context.copy(round = 2))
 
@@ -88,6 +93,10 @@ class SkillTimingTest {
 
         val cancelledFixture = fixture(prepareRounds = 2)
         cancelledFixture.coordinator.attempt(10, context)
+        assertEquals(
+            0,
+            cancelledFixture.runtime.count(attacker, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 10),
+        )
         val cancelled = cancelledFixture.coordinator.cancelPreparations(
             attacker,
             round = 2,
@@ -98,6 +107,11 @@ class SkillTimingTest {
         assertTrue(
             cancelledFixture.coordinator.onRound(context.copy(round = 3))
                 .events.none { it is SkillTimingEvent.PreparationCompleted },
+        )
+        assertEquals(
+            0,
+            cancelledFixture.runtime.count(attacker, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 10),
+            "cancelled preparation must never consume a successful execution count",
         )
     }
 
@@ -163,7 +177,7 @@ class SkillTimingTest {
         assertIs<SkillPreparationRejectedChange>(duplicate.stateChanges.single())
         assertEquals(1, random.calls)
         assertEquals(1, fixture.runtime.attemptCount(attacker, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 10))
-        assertEquals(1, fixture.runtime.count(attacker, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 10))
+        assertEquals(0, fixture.runtime.count(attacker, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 10))
 
         fixture.coordinator.cancelPreparations(attacker, round = 2, reason = PreparationCancelReason.CLEANSE)
         val reduced = fixture.coordinator.attempt(
@@ -187,6 +201,7 @@ class SkillTimingTest {
         )
         assertEquals(listOf(10), immediate.executedSkillIds)
         assertTrue(immediate.events.none { it is SkillPreparationStartedEvent })
+        assertEquals(1, fixture.runtime.count(attacker, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 10))
     }
 
     @Test

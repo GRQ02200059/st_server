@@ -23,6 +23,24 @@ DONE for execution-plugin migration; conditioned-row semantics remain explicit T
 - Added hit-limited damage modifier lifecycle support so the two-hit reduction
   expires after exactly two matching active-skill hits.
 
+## Review Fixes
+
+- Prepared active skills now record a successful execution only when preparation
+  completes. Starting or cancelling preparation does not consume an execution
+  count; immediate active skills still record at execution time. This also makes
+  `200036` layers correspond to completed active casts only.
+- `200036` effect `352` now reuses `DefaultBattleValueCalculator` with the exact
+  configured details `20003625/20003636`: `constant=16`, `intel_param=15`,
+  strategy baseline `80`. Strategy `80` yields `16%`; strategy `180` yields `18%`.
+- The beneficial `attack_type=11` solo fallback is restricted to the confirmed
+  `20000101/20000102` details. Other beneficial other-ally selectors no longer
+  silently target the caster.
+- Execution coverage now uses an explicit non-declarative ownership catalog and
+  each plugin declares `replacesConfiguredExecution`. The engine routing and
+  report share that policy: replacement plugins bypass configured execution;
+  non-replacement plugins expose a duplicate path and are reported as both
+  missing required replacement ownership and duplicate execution.
+
 ## Coverage Truth
 
 - Required execution plugin IDs: `1` (`200036`).
@@ -57,7 +75,7 @@ Battle and skill matrix:
 Forced full suite:
 
 ```text
-471 tests, 0 failures, 0 errors, 0 skipped
+474 tests, 0 failures, 0 errors, 0 skipped
 BUILD SUCCESSFUL
 ```
 

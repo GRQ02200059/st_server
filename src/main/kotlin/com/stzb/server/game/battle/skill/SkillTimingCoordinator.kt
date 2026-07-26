@@ -228,7 +228,6 @@ class CompleteTimingCoordinator(
         if (!interpreter.probabilitySucceeds(skillId, timingContext.trigger, timingContext)) {
             return SkillExecutionResult.EMPTY
         }
-        runtime.recordSuccessfulExecution(timingContext.source, timingContext.trigger, skillId)
         val snapshot = PreparedSkill(
             source = timingContext.source,
             rootSkillId = timingContext.rootSkillId.takeIf { it != 0 } ?: skillId,
@@ -239,6 +238,7 @@ class CompleteTimingCoordinator(
             lockedTargets = options.lockedTargets?.let { Collections.unmodifiableList(it.toList()) },
         )
         if (effectivePreparation == 0) {
+            runtime.recordSuccessfulExecution(timingContext.source, timingContext.trigger, skillId)
             return interpreter.executeAccepted(snapshot, timingContext)
         }
         if (!runtime.prepare(snapshot)) {
@@ -296,6 +296,7 @@ class CompleteTimingCoordinator(
         }
         var aggregate = SkillExecutionResult.EMPTY
         runtime.duePreparations(context.round, source).forEach { snapshot ->
+            runtime.recordSuccessfulExecution(snapshot.source, snapshot.trigger, snapshot.skillId)
             runtime.suppressAttemptForRound(
                 snapshot.source,
                 snapshot.trigger,

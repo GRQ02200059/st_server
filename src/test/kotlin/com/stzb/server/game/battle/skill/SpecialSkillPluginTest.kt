@@ -71,6 +71,31 @@ class SpecialSkillPluginTest {
     }
 
     @Test
+    fun `coverage reports a plugin that does not replace configured execution as missing and duplicate`() {
+        val graph = SkillRuleCatalog.build(SkillScopeCatalog.loadDefault(), config)
+        val conditions = SkillConditionInterpreter(graph)
+        val misconfigured = SpecialSkillPluginRegistry(
+            listOf(
+                stubExecutionPlugin(
+                    pluginId = "misconfigured.200036",
+                    ids = setOf(200036),
+                    replacesConfiguredExecution = false,
+                ),
+            ),
+        )
+
+        val report = SkillCoverageReport.generate(
+            graph = graph,
+            conditionInterpreter = conditions,
+            executionPlugins = misconfigured,
+            ownershipCatalog = SkillExecutionOwnershipCatalog(setOf(200036)),
+        )
+
+        assertEquals(setOf(200036), report.missingPluginSkillIds)
+        assertEquals(setOf(200036), report.duplicateExecutionSkillIds)
+    }
+
+    @Test
     fun `fuwangyikou grants front and middle two active damage reductions`() {
         val fixture = fixture()
         val plugin = ConfiguredSpecialSkillPlugins.registry(config).pluginFor(200036)!!
@@ -94,6 +119,29 @@ class SpecialSkillPluginTest {
             assertEquals(200036, it.skillId)
             assertEquals(352, it.effectId)
         }
+    }
+
+    @Test
+    fun `fuwangyikou damage reduction uses configured strategy scaling`() {
+        fun reductionsAtStrategy(strategy: Int): Set<Int> {
+            val fixture = fixture(ownerStrategy = strategy)
+            return ConfiguredSpecialSkillPlugins.registry(config)
+                .pluginFor(200036)!!
+                .execute(
+                    SpecialSkillInvocation(
+                        phase = SpecialSkillPhase.BATTLE_PREPARE,
+                        owner = fixture.owner,
+                        actor = fixture.owner,
+                        context = fixture.context,
+                    ),
+                )
+                .stateChanges
+                .filterIsInstance<DamageModifierChange>()
+                .mapTo(linkedSetOf()) { it.percent }
+        }
+
+        assertEquals(setOf(-16), reductionsAtStrategy(80))
+        assertEquals(setOf(-18), reductionsAtStrategy(180))
     }
 
     @Test
@@ -206,11 +254,11 @@ class SpecialSkillPluginTest {
         assertTrue(capped.stateChanges.isEmpty(), "the sixth successful active skill must not stack")
     }
 
-    private fun fixture(): Fixture {
+    private fun fixture(ownerStrategy: Int = 100): Fixture {
         val request = BattleRequest(
             attacker = BattleTeam(
                 listOf(
-                    hero(100036, 0, listOf(200036)),
+                    hero(100036, 0, listOf(200036), strategy = ownerStrategy),
                     hero(100001, 1),
                     hero(100002, 2),
                 ),
@@ -246,10 +294,11 @@ class SpecialSkillPluginTest {
         id: Int,
         position: Int,
         skills: List<Int> = emptyList(),
+        strategy: Int = 100,
     ) = BattleHero(
         id = BattleHeroId(id),
         position = position,
-        stats = BattleStats(100, 100, 100, 100, 0, 5),
+        stats = BattleStats(100, 100, strategy, 100, 0, 5),
         troops = 1_000,
         skillIds = skills,
     )
@@ -257,9 +306,11 @@ class SpecialSkillPluginTest {
     private fun stubExecutionPlugin(
         pluginId: String,
         ids: Set<Int>,
+        replacesConfiguredExecution: Boolean = true,
     ) = object : SkillExecutionPlugin {
         override val id: String = pluginId
         override val skillIds: Set<Int> = ids
+        override val replacesConfiguredExecution: Boolean = replacesConfiguredExecution
         override fun execute(invocation: SpecialSkillInvocation): SkillExecutionResult =
             SkillExecutionResult.EMPTY
     }

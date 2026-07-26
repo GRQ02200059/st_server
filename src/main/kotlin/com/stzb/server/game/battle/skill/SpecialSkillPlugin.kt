@@ -21,6 +21,7 @@ data class SpecialSkillInvocation(
 interface SkillExecutionPlugin {
     val id: String
     val skillIds: Set<Int>
+    val replacesConfiguredExecution: Boolean
 
     fun execute(invocation: SpecialSkillInvocation): SkillExecutionResult
 }
@@ -54,4 +55,14 @@ class SpecialSkillPluginRegistry(
 
     fun ownedSkillIds(): Set<Int> =
         Collections.unmodifiableSet(LinkedHashSet(bySkillId.keys))
+}
+
+data class SkillExecutionOwnershipCatalog(
+    val requiredNonDeclarativeSkillIds: Set<Int>,
+) {
+    init {
+        require(requiredNonDeclarativeSkillIds.all { it > 0 }) {
+            "non-declarative execution skill IDs must be positive"
+        }
+    }
 }

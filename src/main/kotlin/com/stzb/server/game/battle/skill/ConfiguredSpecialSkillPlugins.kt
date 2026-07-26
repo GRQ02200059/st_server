@@ -1,12 +1,14 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleConfigRepository
+import com.stzb.server.game.battle.BattleHero
+import com.stzb.server.game.battle.BattleHeroId
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.DamageOrigin
 import com.stzb.server.game.battle.SkillKind
 
 object ConfiguredSpecialSkillPlugins {
-    val requiredSkillIds: Set<Int> = setOf(200036)
+    val ownershipCatalog = SkillExecutionOwnershipCatalog(setOf(200036))
 
     fun registry(config: BattleConfigRepository): SpecialSkillPluginRegistry =
         SpecialSkillPluginRegistry(listOf(FuWangYiKouPlugin(config)))
@@ -17,8 +19,14 @@ private class FuWangYiKouPlugin(
 ) : SkillExecutionPlugin {
     override val id: String = "skill.$SKILL_ID"
     override val skillIds: Set<Int> = setOf(SKILL_ID)
+    override val replacesConfiguredExecution: Boolean = true
 
     private val rules = config.skillDetails(SKILL_ID).associateBy { it.detailId }
+    private val valueRules = SkillRuleCatalog.build(
+        SkillScope(fiveStarInitialSkillIds = setOf(SKILL_ID), learnableSaSkillIds = emptySet()),
+        config,
+    ).rule(SKILL_ID)!!.details.associateBy { it.detailId }
+    private val valueCalculator = DefaultBattleValueCalculator()
 
     override fun execute(invocation: SpecialSkillInvocation): SkillExecutionResult {
         val changes = when (invocation.phase) {
@@ -50,13 +58,33 @@ private class FuWangYiKouPlugin(
                 school = null,
                 origin = DamageOrigin.ACTIVE,
                 tag = null,
-                percent = -detail.constantParam,
+                percent = -configuredReduction(
+                    requireNotNull(valueRules[detailId]) { "Missing $id value rule=$detailId" },
+                    invocation.context.battleView.state(invocation.owner),
+                ),
                 durationRounds = BATTLE_DURATION,
                 skillId = SKILL_ID,
                 effectId = detail.effectId,
                 detailId = detailId,
                 availableHits = detail.availableHit,
             )
+        }
+    }
+
+    private fun configuredReduction(
+        rule: SkillEffectRule,
+        ownerState: SkillBattleHeroState?,
+    ): Int {
+        val source = requireNotNull(ownerState) { "Missing live state for $id owner" }
+        val hero = BattleHero(
+            id = BattleHeroId(0),
+            position = 0,
+            stats = source.stats,
+            troops = source.troops,
+        )
+        return when (val potency = valueCalculator.effectValue(rule, hero)) {
+            is TypedBattlePotency.Resolved -> potency.value
+            is TypedBattlePotency.Deferred -> error(potency.diagnostic)
         }
     }
 

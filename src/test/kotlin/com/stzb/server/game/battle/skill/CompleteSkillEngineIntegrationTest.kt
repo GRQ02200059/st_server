@@ -128,6 +128,10 @@ class CompleteSkillEngineIntegrationTest {
                 trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
             ),
         )
+        assertEquals(
+            0,
+            engine.state.runtime.count(actor, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 200031),
+        )
         val attackBeforeCompletion = engine.liveHero(actor).stats.attack
         val strategyBeforeCompletion = engine.liveHero(actor).stats.strategy
 
@@ -144,6 +148,65 @@ class CompleteSkillEngineIntegrationTest {
 
         assertEquals(attackBeforeCompletion + 11, engine.liveHero(actor).stats.attack)
         assertEquals(strategyBeforeCompletion + 13, engine.liveHero(actor).stats.strategy)
+        assertEquals(
+            1,
+            engine.state.runtime.count(actor, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 200031),
+        )
+    }
+
+    @Test
+    fun `cancelled prepared active never consumes fuwangyikou layer`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100036, 100, listOf(200036), position = 0),
+                    hero(100001, 200, listOf(200031), position = 2),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10))),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 0
+        }
+        val actor = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 2
+        }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 200036,
+            currentSkillId = 200036,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+        val attackBefore = engine.liveHero(actor).stats.attack
+        engine.trigger(
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context.copy(
+                source = actor,
+                round = 1,
+                rootSkillId = 200031,
+                currentSkillId = 200031,
+                trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            ),
+        )
+        engine.state.runtime.interruptPreparations(actor)
+        engine.trigger(
+            BattleTrigger.ACTION_BEFORE,
+            context.copy(source = actor, round = 2, trigger = BattleTrigger.ACTION_BEFORE),
+        )
+
+        assertEquals(attackBefore, engine.liveHero(actor).stats.attack)
+        assertEquals(
+            0,
+            engine.state.runtime.count(actor, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 200031),
+        )
     }
 
     @Test

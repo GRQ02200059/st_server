@@ -378,6 +378,7 @@ class DefaultBattleValueCalculator(
                     31, 311, 31111, 31112 -> 100.0
                     else -> when (rule.detailId) {
                         20000101 -> 100.0
+                        20003625, 20003636 -> 1.0
                         in 20002301..20002304 -> 1_000_000.0
                         else -> return deferred(rule, configured)
                     }

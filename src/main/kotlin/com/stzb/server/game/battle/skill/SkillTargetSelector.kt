@@ -40,7 +40,10 @@ class SkillTargetSelector {
         val view = context.battleView
         var candidates = seedCandidates(raw.selectType, raw.attackType, context)
             .ifEmpty {
-                if (raw.attackType % 1000 == 11 && rule.effectBuffType == BENEFICIAL_BUFF_TYPE) {
+                if (rule.detailId in SOLO_SELF_FALLBACK_DETAILS &&
+                    raw.attackType % 1000 == 11 &&
+                    rule.effectBuffType == BENEFICIAL_BUFF_TYPE
+                ) {
                     listOf(context.source)
                 } else {
                     emptyList()
@@ -325,6 +328,7 @@ class SkillTargetSelector {
         val ATTACK_TYPES = setOf(0, 11, 13, 21, 23, 24, 41, 43, 81, 94, 95, 96, 97, 98, 99, 113)
         const val MAX_RANDOM_GROUP_SIZE = 2
         const val BENEFICIAL_BUFF_TYPE = 2
+        val SOLO_SELF_FALLBACK_DETAILS = setOf(20000101, 20000102)
 
         val CLIENT_POSITION_ORDER = compareBy<BattleHeroRef> {
             when (it.side) {
