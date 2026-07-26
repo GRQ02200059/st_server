@@ -109,6 +109,15 @@ class CompleteTimingCoordinator(
         options: TimingAttemptOptions = TimingAttemptOptions(),
     ): SkillExecutionResult {
         val timingContext = context.copy(runtime = runtime)
+        if (timingContext.round <= 0) {
+            return invalid(
+                context = timingContext,
+                skillId = skillId,
+                detailId = null,
+                specification = context,
+                reason = "round must be positive: ${timingContext.round}",
+            )
+        }
         val rule = graph.rule(skillId) ?: return diagnostic(
             context = timingContext,
             skillId = skillId,
@@ -124,6 +133,24 @@ class CompleteTimingCoordinator(
                     options.preparationReductionRounds,
             )
         }
+        val effectivePreparationLong = (
+            rule.prepareRounds.toLong() - options.preparationReductionRounds.toLong()
+            ).coerceAtLeast(0)
+        val readyRoundLong = timingContext.round.toLong() + effectivePreparationLong
+        if (effectivePreparationLong > Int.MAX_VALUE.toLong() ||
+            readyRoundLong !in 1..Int.MAX_VALUE.toLong()
+        ) {
+            return invalid(
+                context = timingContext,
+                skillId = skillId,
+                detailId = null,
+                specification = options,
+                reason = "Preparation timing is outside Int range: round=${timingContext.round} " +
+                    "effectivePreparation=$effectivePreparationLong readyRound=$readyRoundLong",
+            )
+        }
+        val effectivePreparation = effectivePreparationLong.toInt()
+        val readyRound = readyRoundLong.toInt()
         if (runtime.isPreparing(timingContext.source, skillId)) {
             return result(
                 changes = listOf(
@@ -134,8 +161,7 @@ class CompleteTimingCoordinator(
                             skillId = skillId,
                             trigger = timingContext.trigger,
                             startedRound = timingContext.round,
-                            readyRound = timingContext.round +
-                                (rule.prepareRounds - options.preparationReductionRounds).coerceAtLeast(0),
+                            readyRound = readyRound,
                             lockedTargets = options.lockedTargets,
                         ),
                     ),
@@ -165,15 +191,13 @@ class CompleteTimingCoordinator(
             return SkillExecutionResult.EMPTY
         }
         runtime.recordSuccessfulExecution(timingContext.source, timingContext.trigger, skillId)
-        val effectivePreparation = (rule.prepareRounds - options.preparationReductionRounds)
-            .coerceAtLeast(0)
         val snapshot = PreparedSkill(
             source = timingContext.source,
             rootSkillId = timingContext.rootSkillId.takeIf { it != 0 } ?: skillId,
             skillId = skillId,
             trigger = timingContext.trigger,
             startedRound = timingContext.round,
-            readyRound = timingContext.round + effectivePreparation,
+            readyRound = readyRound,
             lockedTargets = options.lockedTargets?.let { Collections.unmodifiableList(it.toList()) },
         )
         if (effectivePreparation == 0) {
@@ -267,10 +291,12 @@ class CompleteTimingCoordinator(
         currentRound: Int,
         currentHit: Int,
     ): SkillExecutionResult {
-        val timing = timingOf(change) ?: return diagnostic(
+        val timing = timingOf(change) ?: return invalid(
             trigger = BattleTrigger.ACTION_AFTER,
             skillId = skillIdOf(change),
             detailId = detailIdOf(change),
+            rootSkillId = rootSkillIdOf(change),
+            specification = change,
             reason = "Unsupported scheduled change=${change::class.simpleName}",
         )
         val (delayRound, delayHit, snapshot) = timing
@@ -399,6 +425,9 @@ class CompleteTimingCoordinator(
 
     private fun detailIdOf(change: BattleStateChange): Int? =
         (change as? ScheduledTimingChange)?.snapshot?.detailId
+
+    private fun rootSkillIdOf(change: BattleStateChange): Int? =
+        (change as? ScheduledTimingChange)?.snapshot?.rootSkillId
 
     private fun diagnostic(
         context: SkillBattleContext,

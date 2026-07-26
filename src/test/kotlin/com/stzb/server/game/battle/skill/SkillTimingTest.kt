@@ -385,6 +385,77 @@ class SkillTimingTest {
         assertEquals(0, fixture.runtime.delayedCount())
     }
 
+    @Test
+    fun `unsupported enqueue is strict or safely diagnosed without queue mutation`() {
+        val unsupported = TimingMarkerChange(77)
+        val strict = fixture()
+
+        val error = assertFailsWith<InvalidSkillTimingException> {
+            strict.coordinator.enqueue(unsupported, currentRound = 1, currentHit = 0)
+        }
+        assertEquals(unsupported, error.specification)
+        assertTrue(error.reason.contains("Unsupported scheduled change"))
+        assertEquals(0, strict.runtime.delayedCount())
+
+        val diagnostics = mutableListOf<SkillExecutionDiagnostic>()
+        val safe = fixture(safeTiming = true, diagnosticSink = diagnostics::add)
+        val result = safe.coordinator.enqueue(unsupported, currentRound = 1, currentHit = 0)
+
+        assertEquals("INVALID_TIMING", result.diagnostics.single().code)
+        assertTrue(result.diagnostics.single().reason.contains("TimingMarkerChange"))
+        assertEquals(result.diagnostics, diagnostics)
+        assertEquals(0, safe.runtime.delayedCount())
+    }
+
+    @Test
+    fun `invalid attempt round and ready overflow are strict and atomic`() {
+        val nonpositiveRandom = CountingRandom(0)
+        val nonpositive = fixture(prepareRounds = 1)
+        assertFailsWith<InvalidSkillTimingException> {
+            nonpositive.coordinator.attempt(10, context(nonpositiveRandom).copy(round = 0))
+        }
+        assertAttemptStateUnchanged(nonpositive, nonpositiveRandom)
+
+        val overflowRandom = CountingRandom(0)
+        val overflow = fixture(prepareRounds = 1)
+        assertFailsWith<InvalidSkillTimingException> {
+            overflow.coordinator.attempt(
+                10,
+                context(overflowRandom).copy(round = Int.MAX_VALUE),
+            )
+        }
+        assertAttemptStateUnchanged(overflow, overflowRandom)
+    }
+
+    @Test
+    fun `safe invalid attempts diagnose and skip every mutation`() {
+        val diagnostics = mutableListOf<SkillExecutionDiagnostic>()
+        val random = CountingRandom(0)
+        val fixture = fixture(
+            prepareRounds = 1,
+            safeTiming = true,
+            diagnosticSink = diagnostics::add,
+        )
+
+        val nonpositive = fixture.coordinator.attempt(10, context(random).copy(round = 0))
+        val overflow = fixture.coordinator.attempt(
+            10,
+            context(random).copy(round = Int.MAX_VALUE),
+        )
+
+        assertEquals("INVALID_TIMING", nonpositive.diagnostics.single().code)
+        assertEquals("INVALID_TIMING", overflow.diagnostics.single().code)
+        assertEquals(2, diagnostics.size)
+        assertAttemptStateUnchanged(fixture, random)
+    }
+
+    private fun assertAttemptStateUnchanged(fixture: Fixture, random: CountingRandom) {
+        assertEquals(0, random.calls)
+        assertEquals(0, fixture.runtime.attemptCount(attacker, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 10))
+        assertEquals(0, fixture.runtime.count(attacker, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 10))
+        assertTrue(fixture.runtime.preparedSkills().isEmpty())
+    }
+
     private fun SkillExecutionResult.markerIds(): List<Int> =
         stateChanges.filterIsInstance<TimingMarkerChange>().map { it.id }
 
