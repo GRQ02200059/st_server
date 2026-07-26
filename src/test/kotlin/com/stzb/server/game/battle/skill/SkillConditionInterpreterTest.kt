@@ -79,6 +79,7 @@ class SkillConditionInterpreterTest {
             code.value in setOf(
                 -80, -70, 70, 80, -14, 14, 16,
                 100003, 100010, 100479, 100661,
+                1, 2, -2, 13, 19,
             ) ||
             code.field == SkillConditionField.CAST_CONDITION &&
             code.value in setOf(104, 203, 205, 207, 303) ||
@@ -129,9 +130,8 @@ class SkillConditionInterpreterTest {
             interpreter.compile(graph.detail(20000802)).conditions,
         )
         assertEquals(
-            SpecialConditionRequirement(
-                SkillConditionCode(200248, SkillConditionField.PRECONDITION, 19),
-                "skill.200248",
+            SkillCondition.FormationRoster(
+                SkillCondition.FormationRoster.Kind.DISTINCT_BASE_ATTACK_RANGE,
             ),
             interpreter.compile(graph.detail(20024801)).conditions.single(),
         )
@@ -274,6 +274,108 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.TargetPredicate(SkillCondition.TargetPredicate.Kind.HAS_HEX),
             interpreter.compile(graph.detail(20079534)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `verified formation preconditions compile to exact roster semantics`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.FormationRoster(
+                SkillCondition.FormationRoster.Kind.SAME_COUNTRY,
+            ),
+            interpreter.compile(graph.detail(20078403)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.FormationRoster(
+                SkillCondition.FormationRoster.Kind.SAME_TROOP_TYPE,
+            ),
+            interpreter.compile(graph.detail(20078901)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.FormationRoster(
+                SkillCondition.FormationRoster.Kind.SAME_TROOP_TYPE,
+                negated = true,
+            ),
+            interpreter.compile(graph.detail(20078902)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.FormationRoster(
+                SkillCondition.FormationRoster.Kind.DISTINCT_COUNTRY,
+            ),
+            interpreter.compile(graph.detail(20096401)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.FormationRoster(
+                SkillCondition.FormationRoster.Kind.DISTINCT_BASE_ATTACK_RANGE,
+            ),
+            interpreter.compile(graph.detail(20024801)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `formation preconditions require complete friendly formation and exact metadata`() {
+        val sameCountryDistinctRanges = view(
+            sourceState = state(attackRange = 1),
+            additionalStates = mapOf(
+                ALLY_MIDDLE to state(attackRange = 2),
+                ALLY_FRONT to state(attackRange = 3),
+            ),
+            metadata = mapOf(
+                SOURCE to metadata(country = 1, troopType = SkillTroopType.INFANTRY),
+                ALLY_MIDDLE to metadata(country = 1, troopType = SkillTroopType.INFANTRY),
+                ALLY_FRONT to metadata(country = 1, troopType = SkillTroopType.INFANTRY),
+                TARGET to metadata(country = 2, troopType = SkillTroopType.CAVALRY),
+            ),
+        )
+        val distinctCountries = view(
+            additionalStates = mapOf(ALLY_MIDDLE to state(), ALLY_FRONT to state()),
+            metadata = mapOf(
+                SOURCE to metadata(country = 1),
+                ALLY_MIDDLE to metadata(country = 2),
+                ALLY_FRONT to metadata(country = 3),
+                TARGET to metadata(country = 4),
+            ),
+        )
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertTrue(
+            interpreter.matches(
+                graph.detail(20078403),
+                trigger(),
+                context(view = sameCountryDistinctRanges),
+            ),
+        )
+        assertTrue(
+            interpreter.matches(
+                graph.detail(20078901),
+                trigger(),
+                context(view = sameCountryDistinctRanges),
+            ),
+        )
+        assertFalse(
+            interpreter.matches(
+                graph.detail(20078902),
+                trigger(),
+                context(view = sameCountryDistinctRanges),
+            ),
+        )
+        assertTrue(
+            interpreter.matches(
+                graph.detail(20024801),
+                trigger(),
+                context(view = sameCountryDistinctRanges),
+            ),
+        )
+        assertTrue(
+            interpreter.matches(
+                graph.detail(20096401),
+                trigger(),
+                context(view = distinctCountries),
+            ),
         )
     }
 
@@ -863,39 +965,55 @@ class SkillConditionInterpreterTest {
         troops: Int = 100,
         maxTroops: Int = 100,
         statuses: Set<BattleStatus> = emptySet(),
+        attackRange: Int = 5,
     ): SkillBattleHeroState =
         SkillBattleHeroState(
-            stats = STATS,
+            stats = STATS.copy(hitRange = attackRange),
             troops = troops,
             maxTroops = maxTroops,
             statuses = statuses,
             morale = 100,
-            attackRange = 5,
+            attackRange = attackRange,
         )
 
     private fun view(
         sourceState: SkillBattleHeroState = state(),
         targetState: SkillBattleHeroState = state(),
         effects: Map<BattleHeroRef, Set<Int>> = emptyMap(),
+        additionalStates: Map<BattleHeroRef, SkillBattleHeroState> = emptyMap(),
+        metadata: Map<BattleHeroRef, SkillBattleHeroMetadata> = emptyMap(),
     ): SkillBattleView =
         ConditionBattleView(
-            states = mapOf(SOURCE to sourceState, TARGET to targetState),
+            states = mapOf(SOURCE to sourceState, TARGET to targetState) + additionalStates,
             currentTargets = mapOf(SOURCE to TARGET),
             effects = effects,
+            metadata = metadata,
         )
+
+    private fun metadata(
+        country: Int,
+        troopType: SkillTroopType = SkillTroopType.INFANTRY,
+    ) = SkillBattleHeroMetadata(
+        gender = SkillHeroGender.UNKNOWN,
+        troopType = troopType,
+        country = country,
+    )
 
     private class ConditionBattleView(
         private val states: Map<BattleHeroRef, SkillBattleHeroState>,
         private val currentTargets: Map<BattleHeroRef, BattleHeroRef>,
         private val effects: Map<BattleHeroRef, Set<Int>>,
+        private val metadata: Map<BattleHeroRef, SkillBattleHeroMetadata>,
     ) : SkillBattleView {
-        override val capabilities: Set<SkillBattleViewCapability> = setOf(
-            SkillBattleViewCapability.HERO_ROSTER,
-            SkillBattleViewCapability.ENTRY_STATE,
-            SkillBattleViewCapability.LIVE_STATE,
-            SkillBattleViewCapability.TARGET_HISTORY,
-            SkillBattleViewCapability.ACTIVE_EFFECTS,
-        )
+        override val capabilities: Set<SkillBattleViewCapability> = buildSet {
+            add(SkillBattleViewCapability.HERO_ROSTER)
+            add(SkillBattleViewCapability.ENTRY_STATE)
+            add(SkillBattleViewCapability.LIVE_STATE)
+            add(SkillBattleViewCapability.TARGET_HISTORY)
+            add(SkillBattleViewCapability.ACTIVE_EFFECTS)
+            add(SkillBattleViewCapability.NORMAL_ATTACK_RANGE)
+            if (metadata.isNotEmpty()) add(SkillBattleViewCapability.HERO_METADATA)
+        }
 
         override fun heroes(): List<BattleHeroRef> = states.keys.toList()
 
@@ -903,7 +1021,7 @@ class SkillConditionInterpreterTest {
 
         override fun state(ref: BattleHeroRef): SkillBattleHeroState? = states[ref]
 
-        override fun metadata(ref: BattleHeroRef): SkillBattleHeroMetadata? = null
+        override fun metadata(ref: BattleHeroRef): SkillBattleHeroMetadata? = metadata[ref]
 
         override fun accumulatedDamageDealt(ref: BattleHeroRef): Int = 0
 
@@ -937,6 +1055,8 @@ class SkillConditionInterpreterTest {
 
     private companion object {
         val SOURCE = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(100003))
+        val ALLY_MIDDLE = BattleHeroRef(Side.ATTACKER, 1, BattleHeroId(100011))
+        val ALLY_FRONT = BattleHeroRef(Side.ATTACKER, 2, BattleHeroId(100012))
         val TARGET = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(100010))
         val STATS = BattleStats(100, 100, 100, 100, 100, 5)
 

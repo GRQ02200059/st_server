@@ -97,6 +97,18 @@ sealed interface SkillCondition {
         val value: Int,
     ) : SkillCondition
 
+    data class FormationRoster(
+        val kind: Kind,
+        val negated: Boolean = false,
+    ) : SkillCondition {
+        enum class Kind {
+            SAME_COUNTRY,
+            SAME_TROOP_TYPE,
+            DISTINCT_COUNTRY,
+            DISTINCT_BASE_ATTACK_RANGE,
+        }
+    }
+
     data class HasEffect(
         val subject: Subject,
         val effectId: Int,
@@ -165,6 +177,7 @@ class CompiledSkillCondition internal constructor(
                 is SkillCondition.RoundRange -> context.round in condition.first..condition.last
                 is SkillCondition.TroopRatio -> matchesTroopRatio(condition, context)
                 is SkillCondition.AttackRange -> matchesAttackRange(condition, context)
+                is SkillCondition.FormationRoster -> matchesFormationRoster(condition, context)
                 is SkillCondition.HasEffect -> matchesEffect(condition, context)
                 is SkillCondition.HasStatus -> matchesStatus(condition, context)
                 is SkillCondition.TriggerCount -> matchesTriggerCount(condition, context)
@@ -197,6 +210,51 @@ class CompiledSkillCondition internal constructor(
         }
         val range = context.battleView.currentAttackRange(context.source) ?: return false
         return condition.comparison.matches(range.toLong(), condition.value.toLong())
+    }
+
+    private fun matchesFormationRoster(
+        condition: SkillCondition.FormationRoster,
+        context: SkillBattleContext,
+    ): Boolean {
+        if (SkillBattleViewCapability.HERO_ROSTER !in context.battleView.capabilities) return false
+        val formation = context.battleView.heroes()
+            .filter { it.side == context.source.side }
+        if (formation.size != FORMATION_HERO_COUNT) return false
+        val matches = when (condition.kind) {
+            SkillCondition.FormationRoster.Kind.SAME_COUNTRY -> {
+                if (SkillBattleViewCapability.HERO_METADATA !in context.battleView.capabilities) {
+                    return false
+                }
+                formation.map { context.battleView.metadata(it)?.country ?: return false }
+                    .distinct()
+                    .size == 1
+            }
+            SkillCondition.FormationRoster.Kind.SAME_TROOP_TYPE -> {
+                if (SkillBattleViewCapability.HERO_METADATA !in context.battleView.capabilities) {
+                    return false
+                }
+                formation.map { context.battleView.metadata(it)?.troopType ?: return false }
+                    .distinct()
+                    .size == 1
+            }
+            SkillCondition.FormationRoster.Kind.DISTINCT_COUNTRY -> {
+                if (SkillBattleViewCapability.HERO_METADATA !in context.battleView.capabilities) {
+                    return false
+                }
+                formation.map { context.battleView.metadata(it)?.country ?: return false }
+                    .distinct()
+                    .size == FORMATION_HERO_COUNT
+            }
+            SkillCondition.FormationRoster.Kind.DISTINCT_BASE_ATTACK_RANGE -> {
+                if (SkillBattleViewCapability.ENTRY_STATE !in context.battleView.capabilities) {
+                    return false
+                }
+                formation.map { context.battleView.entryState(it)?.stats?.hitRange ?: return false }
+                    .distinct()
+                    .size == FORMATION_HERO_COUNT
+            }
+        }
+        return if (condition.negated) !matches else matches
     }
 
     private fun matchesEffect(
@@ -314,6 +372,9 @@ class SkillConditionInterpreter(
         builtInAttackRangeConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInFormationConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -385,6 +446,59 @@ class SkillConditionInterpreter(
         val precondition: Int,
         val condition: Int,
     )
+}
+
+private class BuiltInFormationConditionPlugin(
+    override val id: String,
+    ownedConditions: Set<SkillConditionCode>,
+) : SpecialSkillPlugin {
+    override val ownedConditions: Set<SkillConditionCode> =
+        Collections.unmodifiableSet(LinkedHashSet(ownedConditions))
+
+    override fun compile(
+        code: SkillConditionCode,
+        rule: SkillEffectRule,
+    ): List<SkillCondition> =
+        listOf(
+            when (code.value) {
+                1 -> SkillCondition.FormationRoster(
+                    SkillCondition.FormationRoster.Kind.SAME_COUNTRY,
+                )
+                2 -> SkillCondition.FormationRoster(
+                    SkillCondition.FormationRoster.Kind.SAME_TROOP_TYPE,
+                )
+                -2 -> SkillCondition.FormationRoster(
+                    SkillCondition.FormationRoster.Kind.SAME_TROOP_TYPE,
+                    negated = true,
+                )
+                13 -> SkillCondition.FormationRoster(
+                    SkillCondition.FormationRoster.Kind.DISTINCT_COUNTRY,
+                )
+                19 -> SkillCondition.FormationRoster(
+                    SkillCondition.FormationRoster.Kind.DISTINCT_BASE_ATTACK_RANGE,
+                )
+                else -> error("Unsupported formation condition $code")
+            },
+        )
+}
+
+private fun builtInFormationConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter {
+            it.field == SkillConditionField.PRECONDITION &&
+                it.value in FORMATION_PRECONDITIONS
+        }
+        .filterNot(overridden::contains)
+        .toSet()
+    return if (codes.isEmpty()) {
+        emptyList()
+    } else {
+        listOf(BuiltInFormationConditionPlugin("builtin.formation", codes))
+    }
 }
 
 private class BuiltInAttackRangeConditionPlugin(
@@ -664,6 +778,8 @@ private val TROOP_RATIO_CONDITIONS = setOf(1030, 1050, 1060, 1070, 1080, 1090, 2
 private val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 7001, 18306)
 private val MORALE_TARGET_CONDITIONS = setOf(20160)
 private val ATTACK_RANGE_CONDITIONS = setOf(32002, 32011)
+private val FORMATION_PRECONDITIONS = setOf(1, 2, -2, 13, 19)
+private const val FORMATION_HERO_COUNT = 3
 
 private fun defaultPendingPlugins(
     graph: SkillRuleGraph,
