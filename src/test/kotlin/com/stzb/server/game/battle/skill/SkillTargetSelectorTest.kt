@@ -395,6 +395,51 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `effect and morale cast conditions retain only matching candidates`() {
+        val states = defaultStates().toMutableMap().apply {
+            put(enemyBase, state(morale = 101, statuses = setOf(BattleStatus.HEX)))
+            put(enemyMiddle, state(morale = 100))
+            put(enemyFront, state(morale = 99))
+        }
+        val context = context(
+            view(
+                states = states,
+                sourceRange = 5,
+                activeEffects = mapOf(enemyMiddle to setOf(207)),
+            ),
+        )
+
+        assertEquals(
+            listOf(enemyMiddle),
+            select(rule(selectType = 34, castCondition = 6207), context),
+        )
+        assertEquals(
+            listOf(enemyBase),
+            select(rule(selectType = 34, castCondition = 6306), context),
+        )
+        assertEquals(
+            listOf(enemyBase),
+            select(rule(selectType = 34, castCondition = 11099), context),
+        )
+        assertEquals(
+            listOf(enemyFront, enemyMiddle),
+            select(rule(selectType = 34, castCondition = 12100), context),
+        )
+        assertEquals(
+            listOf(enemyMiddle),
+            select(rule(selectType = 34, castCondition = 11079), context),
+        )
+        assertEquals(
+            listOf(enemyFront),
+            select(rule(selectType = 34, castCondition = 12080), context),
+        )
+        assertEquals(
+            listOf(enemyMiddle),
+            select(rule(selectType = 34, castCondition = 14100), context),
+        )
+    }
+
+    @Test
     fun `minimum and maximum selectors use live troops and four combat stats`() {
         val states = defaultStates().toMutableMap().apply {
             put(enemyBase, state(troops = 300, attack = 80, defense = 10, strategy = 70, speed = 40))

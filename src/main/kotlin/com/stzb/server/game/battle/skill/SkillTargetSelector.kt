@@ -344,6 +344,8 @@ class SkillTargetSelector {
             4013 -> BattleStatus.CONFUSION in statuses || BERSERK_EFFECT_IDS.any {
                 it in context.battleView.activeEffectIds(target)
             }
+            6207 -> RECOVERY_BLOCK_EFFECT_ID in context.battleView.activeEffectIds(target)
+            6306 -> BattleStatus.HEX in statuses
             7001 -> statuses.any(ONGOING_DAMAGE_STATUSES::contains)
             18306 -> BattleStatus.HEX in statuses
             else -> error("Unsupported status target condition=$statusCondition")
@@ -368,6 +370,10 @@ class SkillTargetSelector {
             2434 -> targetStats.speed >= sourceStats.speed
             3103 -> targetStats.attack >= targetStats.strategy
             3123 -> targetStats.strategy > targetStats.attack
+            11079, 14100 -> morale(target, context) == HIGH_MORALE_THRESHOLD
+            11099 -> morale(target, context) > HIGH_MORALE_THRESHOLD
+            12080 -> morale(target, context) < HIGH_MORALE_THRESHOLD
+            12100 -> morale(target, context) <= HIGH_MORALE_THRESHOLD
             else -> error("Unsupported attribute cast condition=$castCondition")
         }
     }
@@ -425,14 +431,17 @@ class SkillTargetSelector {
         const val FRONT_POSITION = 2
         val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
         val TROOP_RATIO_CONDITIONS = setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
-        val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 4003, 4013, 7001, 18306)
-        val ATTRIBUTE_TARGET_CAST_CONDITIONS = setOf(2313, 2414, 2434, 3103, 3123)
+        val STATUS_TARGET_CONDITIONS =
+            setOf(500, 4000, 4003, 4013, 6207, 6306, 7001, 18306)
+        val ATTRIBUTE_TARGET_CAST_CONDITIONS =
+            setOf(2313, 2414, 2434, 3103, 3123, 11079, 11099, 12080, 12100, 14100)
         val SPECIAL_TROOP_CATEGORIES = setOf(
             SkillTroopCategory.BARBARIAN,
             SkillTroopCategory.RATTAN_ARMOR,
             SkillTroopCategory.ELEPHANT,
         )
         const val HIGH_MORALE_THRESHOLD = 100
+        const val RECOVERY_BLOCK_EFFECT_ID = 207
         val CONTROL_STATUSES = setOf(
             BattleStatus.CONFUSION,
             BattleStatus.HESITATION,

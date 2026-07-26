@@ -78,6 +78,8 @@ sealed interface SkillCondition {
             HAS_BERSERK,
             SPEED_LOWER_THAN_SOURCE,
             SPEED_NOT_LOWER_THAN_SOURCE,
+            HAS_RECOVERY_BLOCK,
+            MORALE_EQUAL,
         }
     }
 
@@ -546,6 +548,28 @@ private class BuiltInAttributeConditionPlugin(
                 4013 -> SkillCondition.TargetPredicate(
                     SkillCondition.TargetPredicate.Kind.HAS_CONFUSION_OR_BERSERK,
                 )
+                6207 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.HAS_RECOVERY_BLOCK,
+                )
+                6306 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.HAS_HEX,
+                )
+                11079, 14100 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.MORALE_EQUAL,
+                    100,
+                )
+                11099 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.MORALE_ABOVE,
+                    100,
+                )
+                12080 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.MORALE_BELOW,
+                    100,
+                )
+                12100 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.MORALE_AT_OR_BELOW,
+                    100,
+                )
                 else -> error("Unsupported attribute condition $code")
             },
         )
@@ -926,7 +950,10 @@ private val MORALE_TARGET_CONDITIONS = setOf(20160)
 private val ATTACK_RANGE_CONDITIONS = setOf(32002, 32011)
 private val FORMATION_PRECONDITIONS = setOf(1, 2, -2, 13, 19)
 private val ATTRIBUTE_CAST_CONDITIONS =
-    setOf(1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013)
+    setOf(
+        1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013,
+        6207, 6306, 11079, 11099, 12080, 12100, 14100,
+    )
 private const val FORMATION_HERO_COUNT = 3
 
 private fun defaultPendingPlugins(

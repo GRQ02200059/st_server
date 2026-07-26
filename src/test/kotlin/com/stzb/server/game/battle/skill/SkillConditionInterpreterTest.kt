@@ -85,6 +85,7 @@ class SkillConditionInterpreterTest {
             code.value in setOf(
                 104, 203, 205, 207, 303,
                 1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013,
+                6207, 6306, 11079, 11099, 12080, 12100, 14100,
             ) ||
             code.field == SkillConditionField.CONDITION &&
             code.value in setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060) ||
@@ -98,19 +99,6 @@ class SkillConditionInterpreterTest {
         val graph = realGraph()
         val interpreter = SkillConditionInterpreter(graph)
 
-        assertEquals(
-            listOf(
-                SpecialConditionRequirement(
-                    SkillConditionCode(
-                        200024,
-                        SkillConditionField.CAST_CONDITION,
-                        6207,
-                    ),
-                    "skill.200024",
-                ),
-            ),
-            interpreter.compile(graph.detail(20002402)).conditions,
-        )
         assertEquals(
             listOf(
                 SpecialConditionRequirement(
@@ -412,6 +400,44 @@ class SkillConditionInterpreterTest {
             ),
             interpreter.compile(graph.detail(20000301)).conditions.single(),
         )
+    }
+
+    @Test
+    fun `verified effect and morale cast conditions compile as target predicates`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+        val expected = mapOf(
+            20002402 to SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_RECOVERY_BLOCK,
+            ),
+            20079602 to SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_HEX,
+            ),
+            21098101 to SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.MORALE_ABOVE,
+                100,
+            ),
+            21098103 to SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.MORALE_AT_OR_BELOW,
+                100,
+            ),
+            21167701 to SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.MORALE_EQUAL,
+                100,
+            ),
+            21167702 to SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.MORALE_BELOW,
+                100,
+            ),
+            21067701 to SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.MORALE_EQUAL,
+                100,
+            ),
+        )
+
+        expected.forEach { (detailId, predicate) ->
+            assertTrue(predicate in interpreter.compile(graph.detail(detailId)).conditions)
+        }
     }
 
     @Test
@@ -822,7 +848,7 @@ class SkillConditionInterpreterTest {
 
     @Test
     fun `unresolved plugin requirement throws in strict mode and becomes safe diagnostic`() {
-        val detail = effectRule(20000301, castCondition = 6207)
+        val detail = effectRule(20000301, castCondition = 420000802)
         val graph = graph(rule(200003, detail))
         val context = context(skillId = 200003)
         val registry = BattleEffectRegistry.strict(graph).registerMetaEffects()
@@ -834,7 +860,7 @@ class SkillConditionInterpreterTest {
                 context,
             )
         }
-        assertTrue(strictError.message.orEmpty().contains("cast_condition=6207"))
+        assertTrue(strictError.message.orEmpty().contains("cast_condition=420000802"))
 
         val safeContext = context(skillId = 200003)
         val safeResult = SkillRuleInterpreter.safe(
@@ -848,7 +874,7 @@ class SkillConditionInterpreterTest {
         )
 
         assertEquals("UNSUPPORTED_CONDITION", safeResult.diagnostics.single().code)
-        assertTrue(safeResult.diagnostics.single().reason.contains("cast_condition=6207"))
+        assertTrue(safeResult.diagnostics.single().reason.contains("cast_condition=420000802"))
         assertTrue(safeResult.stateChanges.isEmpty())
     }
 
