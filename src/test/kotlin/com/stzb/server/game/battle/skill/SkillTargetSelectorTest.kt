@@ -293,6 +293,59 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `morale band preconditions split high from normal or low morale`() {
+        val states = defaultStates().toMutableMap().apply {
+            put(enemyBase, state(morale = 101))
+            put(enemyMiddle, state(morale = 100))
+            put(enemyFront, state(morale = 99))
+        }
+        val context = context(view(states = states, sourceRange = 5))
+
+        assertEquals(
+            listOf(enemyBase),
+            select(rule(selectType = 34, precondition = 2099), context),
+        )
+        assertEquals(
+            listOf(enemyFront, enemyMiddle),
+            select(rule(selectType = 34, precondition = 3100), context),
+        )
+    }
+
+    @Test
+    fun `special troop preconditions include barbarian rattan and elephant categories`() {
+        val metadata = allRefs().associateWith {
+            when (it) {
+                enemyBase -> metadata(
+                    SkillHeroGender.MALE,
+                    SkillTroopType.INFANTRY,
+                    categories = setOf(SkillTroopCategory.RATTAN_ARMOR),
+                )
+                enemyMiddle -> metadata(
+                    SkillHeroGender.MALE,
+                    SkillTroopType.CAVALRY,
+                    categories = setOf(SkillTroopCategory.ELEPHANT),
+                )
+                enemyFront -> metadata(
+                    SkillHeroGender.MALE,
+                    SkillTroopType.CAVALRY,
+                    categories = setOf(SkillTroopCategory.BARBARIAN),
+                )
+                else -> metadata(SkillHeroGender.MALE, SkillTroopType.INFANTRY)
+            }
+        }
+        val context = context(view(metadata = metadata, sourceRange = 5))
+
+        assertEquals(
+            listOf(enemyFront, enemyMiddle, enemyBase),
+            select(rule(selectType = 34, precondition = 6000), context),
+        )
+        assertEquals(
+            emptyList(),
+            select(rule(selectType = 34, precondition = -6000), context),
+        )
+    }
+
+    @Test
     fun `minimum and maximum selectors use live troops and four combat stats`() {
         val states = defaultStates().toMutableMap().apply {
             put(enemyBase, state(troops = 300, attack = 80, defense = 10, strategy = 70, speed = 40))

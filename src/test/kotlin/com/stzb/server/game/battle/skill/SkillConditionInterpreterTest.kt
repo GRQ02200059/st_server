@@ -79,7 +79,7 @@ class SkillConditionInterpreterTest {
             code.value in setOf(
                 -80, -70, 70, 80, -14, 14, 16,
                 100003, 100010, 100479, 100661,
-                1, 2, -2, 13, 19,
+                1, 2, -2, 13, 19, 2099, 3100, 6000, -6000,
             ) ||
             code.field == SkillConditionField.CAST_CONDITION &&
             code.value in setOf(104, 203, 205, 207, 303) ||
@@ -312,6 +312,39 @@ class SkillConditionInterpreterTest {
                 SkillCondition.FormationRoster.Kind.DISTINCT_BASE_ATTACK_RANGE,
             ),
             interpreter.compile(graph.detail(20024801)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `verified morale band and special troop preconditions compile as target predicates`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.MORALE_ABOVE,
+                100,
+            ),
+            interpreter.compile(graph.detail(20070705)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.MORALE_AT_OR_BELOW,
+                100,
+            ),
+            interpreter.compile(graph.detail(20076202)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.SPECIAL_TROOP_CATEGORY,
+            ),
+            interpreter.compile(graph.detail(20029713)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.NOT_SPECIAL_TROOP_CATEGORY,
+            ),
+            interpreter.compile(graph.detail(20029751)).conditions.single(),
         )
     }
 

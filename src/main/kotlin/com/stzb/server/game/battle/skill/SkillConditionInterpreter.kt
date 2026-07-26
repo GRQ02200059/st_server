@@ -68,6 +68,10 @@ sealed interface SkillCondition {
             HAS_ONGOING_DAMAGE_STATUS,
             MORALE_BELOW,
             HAS_HEX,
+            MORALE_ABOVE,
+            MORALE_AT_OR_BELOW,
+            SPECIAL_TROOP_CATEGORY,
+            NOT_SPECIAL_TROOP_CATEGORY,
         }
     }
 
@@ -728,6 +732,20 @@ private class BuiltInTargetConditionPlugin(
                 16 -> SkillCondition.TargetPredicate(
                     SkillCondition.TargetPredicate.Kind.FRONT_POSITION,
                 )
+                2099 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.MORALE_ABOVE,
+                    100,
+                )
+                3100 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.MORALE_AT_OR_BELOW,
+                    100,
+                )
+                6000 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.SPECIAL_TROOP_CATEGORY,
+                )
+                -6000 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.NOT_SPECIAL_TROOP_CATEGORY,
+                )
                 else -> error("Unsupported built-in target condition $code")
             },
         )
@@ -770,7 +788,7 @@ private class PendingSpecialSkillPlugin(
         listOf(SpecialConditionRequirement(code, id))
 }
 
-private val TARGET_PRECONDITIONS = setOf(-80, -70, 70, 80)
+private val TARGET_PRECONDITIONS = setOf(-6000, -80, -70, 70, 80, 2099, 3100, 6000)
 private val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
 private val POSITION_PRECONDITIONS = setOf(-14, 14, 16)
 private val ROUND_CONDITIONS = setOf(104, 203, 205, 207, 303)

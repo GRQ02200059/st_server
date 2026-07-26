@@ -257,8 +257,25 @@ class SkillTargetSelector {
             14 -> target.position == BASE_POSITION
             -14 -> target.position != BASE_POSITION
             16 -> target.position == FRONT_POSITION
+            2099 -> morale(target, context) > HIGH_MORALE_THRESHOLD
+            3100 -> morale(target, context) <= HIGH_MORALE_THRESHOLD
+            6000 -> hasSpecialTroopCategory(target, context)
+            -6000 -> !hasSpecialTroopCategory(target, context)
             else -> true
         }
+
+    private fun hasSpecialTroopCategory(
+        target: BattleHeroRef,
+        context: SkillBattleContext,
+    ): Boolean {
+        require(SkillBattleViewCapability.HERO_METADATA in context.battleView.capabilities) {
+            "precondition=${context.currentSkillId} requires live hero metadata"
+        }
+        val metadata = requireNotNull(context.battleView.metadata(target)) {
+            "Missing live hero metadata for $target"
+        }
+        return metadata.troopCategories.any(SPECIAL_TROOP_CATEGORIES::contains)
+    }
 
     private fun morale(
         ref: BattleHeroRef,
@@ -380,6 +397,12 @@ class SkillTargetSelector {
         val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
         val TROOP_RATIO_CONDITIONS = setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
         val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 7001, 18306)
+        val SPECIAL_TROOP_CATEGORIES = setOf(
+            SkillTroopCategory.BARBARIAN,
+            SkillTroopCategory.RATTAN_ARMOR,
+            SkillTroopCategory.ELEPHANT,
+        )
+        const val HIGH_MORALE_THRESHOLD = 100
         val CONTROL_STATUSES = setOf(
             BattleStatus.CONFUSION,
             BattleStatus.HESITATION,
