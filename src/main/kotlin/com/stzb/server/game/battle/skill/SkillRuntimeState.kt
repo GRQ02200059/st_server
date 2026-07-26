@@ -122,6 +122,9 @@ class SkillRuntimeState {
         return marker.value
     }
 
+    fun removeMarker(target: BattleHeroRef, detailId: Int): Boolean =
+        markers.remove(MarkerKey(target, detailId)) != null
+
     @Deprecated(
         message = "Use recordBattleTriggerOccurrence to make explicit that callers record battle events",
         replaceWith = ReplaceWith("recordBattleTriggerOccurrence(source, trigger)"),

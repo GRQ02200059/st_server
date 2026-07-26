@@ -108,6 +108,18 @@ class SkillRuntimeStateTest {
     }
 
     @Test
+    fun `detail marker can be consumed without affecting another target`() {
+        val state = SkillRuntimeState()
+        state.recordMarker(refA, 21002401, 0, appliedRound = 1, durationRounds = 2)
+        state.recordMarker(refB, 21002401, 0, appliedRound = 1, durationRounds = 2)
+
+        assertTrue(state.removeMarker(refA, 21002401))
+
+        assertEquals(false, state.hasMarker(refA, 21002401, round = 1))
+        assertTrue(state.hasMarker(refB, 21002401, round = 1))
+    }
+
+    @Test
     fun `threshold generations are consumed once per owner and threshold`() {
         val state = SkillRuntimeState()
 

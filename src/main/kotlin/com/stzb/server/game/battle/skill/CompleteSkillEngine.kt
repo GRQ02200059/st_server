@@ -599,7 +599,12 @@ class DefaultCompleteSkillEngine private constructor(
                 is BattleStatChange -> {
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 }
-                is ClearReferencedEffectChange,
+                is ClearReferencedEffectChange -> {
+                    if (change.referencedEffectId == 77) {
+                        state.runtime.removeMarker(change.target, change.referencedDetailId)
+                    }
+                    events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
+                }
                 is ReduceReferencedEffectUseChange,
                 -> events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 else -> events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
