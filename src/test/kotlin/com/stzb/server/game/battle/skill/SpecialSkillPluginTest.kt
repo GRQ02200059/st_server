@@ -57,7 +57,9 @@ class SpecialSkillPluginTest {
                 it.value in setOf(
                     -80, -70, 70, 80, -14, 14, 16,
                     100003, 100010, 100479, 100661,
-                )
+                ) ||
+                it.field == SkillConditionField.CAST_CONDITION &&
+                it.value in setOf(104, 203, 205, 207, 303)
         }
         assertEquals(
             (ScopedConditionCodeCatalog.codes - resolvedTargetCodes)

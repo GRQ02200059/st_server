@@ -275,6 +275,9 @@ class SkillConditionInterpreter(
         builtInTargetConditionPlugins(graph, custom.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInRoundConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -346,6 +349,45 @@ class SkillConditionInterpreter(
         val precondition: Int,
         val condition: Int,
     )
+}
+
+private class BuiltInRoundConditionPlugin(
+    override val id: String,
+    ownedConditions: Set<SkillConditionCode>,
+) : SpecialSkillPlugin {
+    override val ownedConditions: Set<SkillConditionCode> =
+        Collections.unmodifiableSet(LinkedHashSet(ownedConditions))
+
+    override fun compile(
+        code: SkillConditionCode,
+        rule: SkillEffectRule,
+    ): List<SkillCondition> =
+        listOf(
+            when (code.value) {
+                104 -> SkillCondition.RoundRange(1, 3)
+                203 -> SkillCondition.RoundRange(3, 3)
+                205 -> SkillCondition.RoundRange(5, 5)
+                207 -> SkillCondition.RoundRange(7, 7)
+                303 -> SkillCondition.RoundRange(4, 8)
+                else -> error("Unsupported built-in round condition $code")
+            },
+        )
+}
+
+private fun builtInRoundConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter { it.field == SkillConditionField.CAST_CONDITION && it.value in ROUND_CONDITIONS }
+        .filterNot(overridden::contains)
+        .toSet()
+    return if (codes.isEmpty()) {
+        emptyList()
+    } else {
+        listOf(BuiltInRoundConditionPlugin("builtin.round-condition", codes))
+    }
 }
 
 private class BuiltInTargetConditionPlugin(
@@ -427,6 +469,7 @@ private class PendingSpecialSkillPlugin(
 private val TARGET_PRECONDITIONS = setOf(-80, -70, 70, 80)
 private val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
 private val POSITION_PRECONDITIONS = setOf(-14, 14, 16)
+private val ROUND_CONDITIONS = setOf(104, 203, 205, 207, 303)
 
 private fun defaultPendingPlugins(
     graph: SkillRuleGraph,

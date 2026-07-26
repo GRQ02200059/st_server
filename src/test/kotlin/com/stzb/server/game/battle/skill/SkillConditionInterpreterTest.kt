@@ -79,7 +79,9 @@ class SkillConditionInterpreterTest {
             code.value in setOf(
                 -80, -70, 70, 80, -14, 14, 16,
                 100003, 100010, 100479, 100661,
-            )
+            ) ||
+            code.field == SkillConditionField.CAST_CONDITION &&
+            code.value in setOf(104, 203, 205, 207, 303)
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -157,6 +159,36 @@ class SkillConditionInterpreterTest {
                 100003,
             ),
             interpreter.compile(graph.detail(20090234)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `verified client round codes compile to exact round ranges`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.RoundRange(1, 3),
+            interpreter.compile(graph.detail(20088501)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.RoundRange(4, 8),
+            interpreter.compile(graph.detail(20029211)).conditions.single(),
+        )
+        assertEquals(
+            listOf(
+                SkillCondition.RoundRange(3, 3),
+                SkillCondition.TargetPredicate(SkillCondition.TargetPredicate.Kind.ALLY),
+            ),
+            interpreter.compile(graph.detail(21026501)).conditions,
+        )
+        assertEquals(
+            SkillCondition.RoundRange(5, 5),
+            interpreter.compile(graph.detail(21026503)).conditions.first(),
+        )
+        assertEquals(
+            SkillCondition.RoundRange(7, 7),
+            interpreter.compile(graph.detail(21026505)).conditions.first(),
         )
     }
 
