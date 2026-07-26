@@ -512,6 +512,15 @@ class BattleStateChangeApplier(
                 requireHero(change.source)
                 requireHero(change.target)
             }
+            is ClearReferencedEffectChange -> {
+                requireHero(change.source)
+                requireHero(change.target)
+            }
+            is ReduceReferencedEffectUseChange -> {
+                requireHero(change.source)
+                requireHero(change.target)
+                require(change.amount >= 0) { "referenced effect use reduction must not be negative" }
+            }
             else -> throw UnsupportedBattleStateChangeException(change)
         }
     }
@@ -620,6 +629,14 @@ class BattleStateChangeApplier(
                 recalculateStats()
             }
             is EffectBlockedChange -> Unit
+            is ClearReferencedEffectChange -> {
+                synchronize(change.apply(state.effectStore))
+                recalculateStats(change.target)
+            }
+            is ReduceReferencedEffectUseChange -> {
+                synchronize(change.apply(state.effectStore))
+                recalculateStats(change.target)
+            }
             else -> throw UnsupportedBattleStateChangeException(change)
         }
     }

@@ -92,6 +92,7 @@ data class TimingPosition(
 
 class SkillTimingDue internal constructor(
     val change: ScheduledEffectActivationChange,
+    val activatedChanges: List<BattleStateChange>,
     val dueRound: Int,
     val dueHit: Int,
     val sequence: Long,
@@ -106,10 +107,24 @@ class SkillTimingDue internal constructor(
     companion object {
         internal fun mint(
             change: ScheduledEffectActivationChange,
+            activatedChanges: List<BattleStateChange>,
             dueRound: Int,
             dueHit: Int,
             sequence: Long,
-        ): SkillTimingDue = SkillTimingDue(change, dueRound, dueHit, sequence)
+        ): SkillTimingDue = SkillTimingDue(
+            change,
+            Collections.unmodifiableList(activatedChanges.toList()),
+            dueRound,
+            dueHit,
+            sequence,
+        )
+
+        internal fun mint(
+            change: ScheduledEffectActivationChange,
+            dueRound: Int,
+            dueHit: Int,
+            sequence: Long,
+        ): SkillTimingDue = mint(change, change.activationChanges(), dueRound, dueHit, sequence)
     }
 }
 
@@ -448,26 +463,31 @@ class CompleteTimingCoordinator(
                     reason = "Missing scheduled payload for sequence=${delayed.sequence}",
                 )
             } else {
-                val timingDue = (change as? ScheduledEffectActivationChange)?.let {
-                    SkillTimingDue.mint(it, delayed.dueRound, delayed.dueHit, delayed.sequence)
-                }
-                aggregate + activate(change, round, timingDue)
+                aggregate + activate(change, round, delayed)
             }
         }
 
     private fun activate(
         change: BattleStateChange,
         round: Int,
-        timingDue: SkillTimingDue?,
+        delayed: DelayedEffect,
     ): SkillExecutionResult =
         activate(change, round).let { activated ->
-            if (timingDue == null) activated
+            if (change !is ScheduledEffectActivationChange) activated
             else SkillExecutionResult.immutable(
                 activated.stateChanges,
                 activated.events,
                 activated.executedSkillIds,
                 activated.diagnostics,
-                listOf(timingDue),
+                listOf(
+                    SkillTimingDue.mint(
+                        change,
+                        activated.stateChanges,
+                        delayed.dueRound,
+                        delayed.dueHit,
+                        delayed.sequence,
+                    ),
+                ),
             )
         }
 

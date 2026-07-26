@@ -1,10 +1,15 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.ActionPermission
+import com.stzb.server.game.battle.BattleActionResolver
 import com.stzb.server.game.battle.BattleConfigRepository
+import com.stzb.server.game.battle.BattleDamageCalculator
 import com.stzb.server.game.battle.BattleEvent
+import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleStat
+import com.stzb.server.game.battle.DamageOrigin
+import com.stzb.server.game.battle.DamageSchool
 import com.stzb.server.game.battle.DamageTag
 import com.stzb.server.game.battle.SkillKind
 
@@ -22,6 +27,7 @@ class DefaultCompleteSkillEngine private constructor(
     private val applier: BattleStateChangeApplier,
 ) : CompleteSkillEngine {
     private var prepared = false
+    private val actionResolver = BattleActionResolver()
     private val cooldownUntilRound = mutableMapOf<Pair<BattleHeroRef, Int>, Int>()
 
     override fun prepareBattle(context: SkillBattleContext): List<BattleEvent> {
@@ -62,9 +68,11 @@ class DefaultCompleteSkillEngine private constructor(
                     )
                     .firstOrNull()
                 if (scoped.source == first) {
+                    val timingResult = timing.onRoundStart(scoped)
+                    events += apply(timingResult, scoped)
                     val roundOutputs = applier.onRoundStart(scoped.round)
-                    events += roundOutputs.toEvents(scoped.round)
-                    timing.onRoundStart(scoped)
+                    events += processDamageOutputs(roundOutputs, scoped)
+                    SkillExecutionResult.EMPTY
                 } else {
                     SkillExecutionResult.EMPTY
                 }
@@ -112,6 +120,7 @@ class DefaultCompleteSkillEngine private constructor(
         source: BattleHeroRef,
         target: BattleHeroRef,
         amount: Int,
+        context: SkillBattleContext,
     ): List<BattleEvent> {
         val redirected = applier.permissionFor(target).damageRedirectTarget ?: target
         val result = applier.apply(
@@ -132,8 +141,25 @@ class DefaultCompleteSkillEngine private constructor(
             ),
             round,
         )
-        return result.toEvents(round)
+        return processDamageOutputs(result, context.copy(round = round, source = source))
     }
+
+    internal fun schedule(
+        change: BattleStateChange,
+        round: Int,
+    ) {
+        timing.enqueue(change, round, timing.position().hit)
+    }
+
+    internal fun timingPosition(): TimingPosition = timing.position()
+
+    internal fun applyChanges(
+        changes: List<BattleStateChange>,
+        context: SkillBattleContext,
+    ): List<BattleEvent> = apply(
+        SkillExecutionResult.immutable(changes, emptyList(), emptyList(), emptyList()),
+        context,
+    )
 
     fun liveHero(ref: BattleHeroRef) = state.liveHero(ref)
 
@@ -150,6 +176,69 @@ class DefaultCompleteSkillEngine private constructor(
 
     fun recordTarget(source: BattleHeroRef, target: BattleHeroRef) {
         history.record(source, target)
+    }
+
+    fun secondaryTarget(
+        source: BattleHeroRef,
+        primary: BattleHeroRef,
+    ): BattleHeroRef? {
+        val sourceHero = liveHero(source)
+        return state.view.heroes()
+            .asSequence()
+            .filter {
+                it.side == primary.side && it != primary &&
+                    (state.view.state(it)?.troops ?: 0) > 0
+            }
+            .map(::liveHero)
+            .filter {
+                actionResolver.selectNormalAttackTarget(sourceHero, listOf(it), random = null) != null
+            }
+            .minWithOrNull(
+                compareBy<BattleHero> { kotlin.math.abs(it.position - primary.position) }
+                    .thenBy { it.position },
+            )
+            ?.let { BattleHeroRef(primary.side, it.position, it.id) }
+    }
+
+    fun reactiveAttack(
+        round: Int,
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+        effectId: Int,
+        context: SkillBattleContext,
+    ): List<BattleEvent> {
+        if (baseDefeated()) return emptyList()
+        val effect = state.effectStore.effectsFor(source).lastOrNull { it.effectId == effectId }
+            ?: return emptyList()
+        val sourceHero = liveHero(source)
+        val targetHero = liveHero(target)
+        if (sourceHero.troops <= 0 || targetHero.troops <= 0) return emptyList()
+        if (actionResolver.selectNormalAttackTarget(sourceHero, listOf(targetHero), random = null) == null) {
+            return emptyList()
+        }
+        val damage = BattleDamageCalculator.physical(
+            source = sourceHero,
+            target = targetHero,
+            ratePercent = effect.effectiveStrength.coerceAtLeast(1),
+            origin = DamageOrigin.NORMAL,
+        )
+        val result = applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source,
+                    target,
+                    damage,
+                    (targetHero.troops - damage).coerceAtLeast(0),
+                    DamageSchool.PHYSICAL,
+                    DamageOrigin.NORMAL,
+                    emptySet(),
+                    effect.skillId,
+                    effectId,
+                ),
+            ),
+            round,
+        )
+        return processDamageOutputs(result, context.copy(round = round, source = source))
     }
 
     fun tryEvade(
@@ -399,7 +488,9 @@ class DefaultCompleteSkillEngine private constructor(
                 is SkillPreparationStartedEvent -> Unit
             }
         }
-        for (change in result.stateChanges) {
+        val dueChangeIndices = result.dueChangeIndexMask()
+        for ((changeIndex, change) in result.stateChanges.withIndex()) {
+            if (dueChangeIndices[changeIndex]) continue
             when (change) {
                 is ScheduledEffectActivationChange -> {
                     if (change.spec.startBoundary == EffectStartBoundary.IMMEDIATE) {
@@ -418,7 +509,7 @@ class DefaultCompleteSkillEngine private constructor(
                         val position = timing.position()
                         timing.enqueue(change, context.round.coerceAtLeast(1), position.hit)
                     } else {
-                        events += applier.apply(listOf(change), context.round).toEvents(context.round)
+                        events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                         events += BattleEvent.StatusApplied(
                             context.round,
                             change.source,
@@ -434,7 +525,7 @@ class DefaultCompleteSkillEngine private constructor(
                         val position = timing.position()
                         timing.enqueue(change, context.round.coerceAtLeast(1), position.hit)
                     } else {
-                        events += applier.apply(listOf(change), context.round).toEvents(context.round)
+                        events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                     }
                 is SkillAttemptRejectedChange,
                 is SkillPreparationRejectedChange,
@@ -445,28 +536,51 @@ class DefaultCompleteSkillEngine private constructor(
                 is MarkerEffectChange,
                 is MetaEffectChange,
                 is MoraleEffectChange,
-                is ClearReferencedEffectChange,
-                is ReduceReferencedEffectUseChange,
                 -> Unit
                 is DamageModifierChange ->
                     if (change.durationRounds > 0) {
-                        events += applier.apply(listOf(change), context.round).toEvents(context.round)
+                        events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                     }
                 is BattleStatChange -> {
-                    events += applier.apply(listOf(change), context.round).toEvents(context.round)
+                    events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 }
-                else -> events += applier.apply(listOf(change), context.round).toEvents(context.round)
+                is ClearReferencedEffectChange,
+                is ReduceReferencedEffectUseChange,
+                -> events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
+                else -> events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
             }
             if (baseDefeated()) break
         }
         result.timingDues.forEach { due ->
-            events += applier.applyActivated(
+            events += processDamageOutputs(applier.applyActivated(
                 due.change,
                 due,
                 context.round,
                 timing.position().hit,
-            ).toEvents(context.round)
+            ), context)
         }
+        return events
+    }
+
+    private fun processDamageOutputs(
+        result: BattleStateApplyResult,
+        context: SkillBattleContext,
+    ): List<BattleEvent> {
+        val events = mutableListOf<BattleEvent>()
+        result.outputs.filterIsInstance<BattleStateOutput.DamageDealt>().forEach { output ->
+            events += BattleStateApplyResult(listOf(output)).toEvents(context.round)
+            val damageContext = context.copy(source = output.source, trigger = BattleTrigger.DAMAGE_AFTER)
+            state.runtime.recordBattleTriggerOccurrence(output.source, BattleTrigger.DAMAGE_AFTER)
+            events += trigger(BattleTrigger.DAMAGE_AFTER, damageContext)
+            val hurtContext = context.copy(source = output.target, trigger = BattleTrigger.HURT_AFTER)
+            state.runtime.recordBattleTriggerOccurrence(output.target, BattleTrigger.HURT_AFTER)
+            events += trigger(BattleTrigger.HURT_AFTER, hurtContext)
+            events += apply(timing.onHit(damageContext), damageContext)
+        }
+        events += result.outputs
+            .filterNot { it is BattleStateOutput.DamageDealt || it is BattleStateOutput.HurtReceived }
+            .let(::BattleStateApplyResult)
+            .toEvents(context.round)
         return events
     }
 
@@ -474,8 +588,6 @@ class DefaultCompleteSkillEngine private constructor(
         outputs.flatMap { output ->
             when (output) {
                 is BattleStateOutput.DamageDealt -> {
-                    state.runtime.recordBattleTriggerOccurrence(output.source, BattleTrigger.DAMAGE_AFTER)
-                    state.runtime.recordBattleTriggerOccurrence(output.target, BattleTrigger.HURT_AFTER)
                     val damageEvent: BattleEvent =
                         if (output.skillId == 0) {
                             BattleEvent.NormalAttack(
@@ -510,8 +622,6 @@ class DefaultCompleteSkillEngine private constructor(
                     listOf(
                         BattleEvent.TriggerPoint(round, output.source, BattleTrigger.DAMAGE_BEFORE),
                         damageEvent,
-                        BattleEvent.TriggerPoint(round, output.source, BattleTrigger.DAMAGE_AFTER),
-                        BattleEvent.TriggerPoint(round, output.target, BattleTrigger.HURT_AFTER),
                     )
                 }
                 is BattleStateOutput.HurtReceived -> emptyList()
@@ -625,6 +735,21 @@ class DefaultCompleteSkillEngine private constructor(
     }
 
     private lateinit var history: MutableBattleHistory
+}
+
+internal fun SkillExecutionResult.dueChangeIndexMask(): BooleanArray {
+    val dueChangeIndices = BooleanArray(stateChanges.size)
+    timingDues
+        .flatMap { it.activatedChanges }
+        .asReversed()
+        .forEach { dueChange ->
+            val index = stateChanges.indices.reversed().firstOrNull {
+                !dueChangeIndices[it] && stateChanges[it] == dueChange
+            }
+            check(index != null) { "Timing due change is missing from execution result: $dueChange" }
+            dueChangeIndices[index] = true
+        }
+    return dueChangeIndices
 }
 
 private class MutableBattleHistory : SkillBattleHistoryAdapter {

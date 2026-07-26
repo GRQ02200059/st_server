@@ -136,7 +136,36 @@ object BattleEngine {
                                 events += evaded
                             } else {
                                 val damage = actionResolver.normalAttackDamage(currentActor, selected, random)
-                                events += engine.applyNormalDamage(round, actor, target, damage)
+                                events += engine.applyNormalDamage(round, actor, target, damage, actorContext)
+                                if (!engine.baseDefeated()) {
+                                    engine.secondaryTarget(actor, target)
+                                        ?.takeIf { permission.secondaryAttack }
+                                        ?.let { secondary ->
+                                            events += engine.reactiveAttack(
+                                                round,
+                                                actor,
+                                                secondary,
+                                                545,
+                                                actorContext,
+                                            )
+                                        }
+                                }
+                                if (!engine.baseDefeated()) {
+                                    val targetContext = context(
+                                        round,
+                                        target,
+                                        BattleTrigger.DAMAGE_AFTER,
+                                    )
+                                    if (engine.permissionFor(target, targetContext).counterattack) {
+                                        events += engine.reactiveAttack(
+                                            round,
+                                            target,
+                                            actor,
+                                            551,
+                                            targetContext,
+                                        )
+                                    }
+                                }
                             }
                             engine.state.runtime.recordBattleTriggerOccurrence(
                                 actor,
