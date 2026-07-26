@@ -342,6 +342,131 @@ class BattleStateChangeApplierTest {
     }
 
     @Test
+    fun `cleanse and dispel remove signed stat and taken modifiers with synchronized caches`() {
+        val fixture = fixture()
+        fixture.applier.apply(
+            listOf(
+                BattleStatChange(
+                    source,
+                    target,
+                    BattleStatChange.Kind.ATTACK,
+                    TypedBattlePotency.flat(-20),
+                    durationRounds = 3,
+                    skillId = 20,
+                    effectId = 101,
+                ),
+                DamageModifierChange(
+                    source,
+                    target,
+                    DamageModifierChange.Direction.TAKEN,
+                    DamageSchool.PHYSICAL,
+                    null,
+                    null,
+                    percent = 25,
+                    durationRounds = 3,
+                    skillId = 21,
+                    effectId = 521,
+                ),
+                DamageModifierChange(
+                    source,
+                    target,
+                    DamageModifierChange.Direction.TAKEN,
+                    DamageSchool.STRATEGY,
+                    null,
+                    null,
+                    percent = -30,
+                    durationRounds = 3,
+                    skillId = 22,
+                    effectId = 524,
+                ),
+            ),
+            round = 0,
+        )
+
+        assertEquals(80, fixture.state.view.state(target)?.stats?.attack)
+        assertEquals(
+            setOf(EffectCategory.HARMFUL, EffectCategory.HARMFUL, EffectCategory.BENEFICIAL),
+            fixture.state.effectStore.effectsFor(target).map { it.category }.toSet(),
+        )
+        assertEquals(2, fixture.state.liveHero(target).modifiers.size)
+
+        fixture.applier.apply(
+            listOf(CleanseEffectsChange(spec(511), EffectCategory.HARMFUL)),
+            round = 1,
+        )
+        assertEquals(100, fixture.state.view.state(target)?.stats?.attack)
+        assertEquals(listOf(EffectCategory.BENEFICIAL), fixture.state.effectStore.effectsFor(target).map { it.category })
+        assertEquals(
+            listOf(-30),
+            fixture.state.liveHero(target).modifiers
+                .filterIsInstance<BattleModifier.DamageTakenPercent>()
+                .map { it.percent },
+        )
+
+        fixture.applier.apply(
+            listOf(CleanseEffectsChange(spec(594), EffectCategory.BENEFICIAL)),
+            round = 1,
+        )
+        assertTrue(fixture.state.effectStore.effectsFor(target).isEmpty())
+        assertTrue(fixture.state.liveHero(target).modifiers.isEmpty())
+    }
+
+    @Test
+    fun `zero stat and damage modifiers are rejected atomically`() {
+        val fixture = fixture()
+
+        assertFailsWith<IllegalArgumentException> {
+            fixture.applier.apply(
+                listOf(
+                    TroopDamageChange(
+                        source,
+                        target,
+                        10,
+                        990,
+                        DamageSchool.PHYSICAL,
+                        DamageOrigin.NORMAL,
+                        emptySet(),
+                        10,
+                        301,
+                    ),
+                    BattleStatChange(
+                        source,
+                        target,
+                        BattleStatChange.Kind.ATTACK,
+                        TypedBattlePotency.flat(0),
+                        2,
+                        10,
+                        101,
+                    ),
+                ),
+                round = 1,
+            )
+        }
+        assertEquals(1_000, fixture.state.view.state(target)?.troops)
+
+        assertFailsWith<IllegalArgumentException> {
+            fixture.applier.apply(
+                listOf(
+                    DamageModifierChange(
+                        source,
+                        target,
+                        DamageModifierChange.Direction.DEALT,
+                        null,
+                        null,
+                        null,
+                        0,
+                        2,
+                        10,
+                        531,
+                    ),
+                ),
+                round = 1,
+            )
+        }
+        assertTrue(fixture.state.effectStore.effectsFor(target).isEmpty())
+    }
+
+    @Test
     fun `stronger replacement swaps redirection behavior and expiry removes it`() {
         val fixture = fixture()
         val weak = DamageRedirectionEffectChange(
@@ -478,7 +603,7 @@ class BattleStateChangeApplierTest {
     }
 
     @Test
-    fun `delayed activation is rejected by ordinary apply and accepted only at due boundary`() {
+    fun `delayed activation rejects early succeeds exactly once at due boundary`() {
         val fixture = fixture()
         val scheduled = ScheduledEffectActivationChange(
             spec = spec(544).copy(
@@ -494,9 +619,19 @@ class BattleStateChangeApplierTest {
         }
         assertEquals(1, fixture.applier.permissionFor(target).normalAttackCount)
 
-        fixture.applier.applyActivated(scheduled.activationChanges(), round = 2)
+        val due = SkillTimingDue.mint(scheduled, dueRound = 2, dueHit = 0, sequence = 7)
+        assertFailsWith<IllegalArgumentException> {
+            fixture.applier.applyActivated(scheduled, due, round = 1, hit = 0)
+        }
+        assertEquals(1, fixture.applier.permissionFor(target).normalAttackCount)
+
+        fixture.applier.applyActivated(scheduled, due, round = 2, hit = 0)
         assertEquals(2, fixture.applier.permissionFor(target).normalAttackCount)
         assertTrue(BattleStatus.DOUBLE_ATTACK in requireNotNull(fixture.state.view.state(target)).statuses)
+        assertFailsWith<IllegalArgumentException> {
+            fixture.applier.applyActivated(scheduled, due, round = 2, hit = 0)
+        }
+        assertEquals(2, fixture.applier.permissionFor(target).normalAttackCount)
     }
 
     @Test

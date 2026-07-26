@@ -43,6 +43,7 @@ data class SkillExecutionResult(
     val events: List<SkillExecutionEvent>,
     val executedSkillIds: List<Int>,
     val diagnostics: List<SkillExecutionDiagnostic>,
+    val timingDues: List<SkillTimingDue>,
 ) {
     operator fun plus(other: SkillExecutionResult): SkillExecutionResult {
         if (this === EMPTY) return other
@@ -52,6 +53,7 @@ data class SkillExecutionResult(
             events + other.events,
             executedSkillIds + other.executedSkillIds,
             diagnostics + other.diagnostics,
+            timingDues + other.timingDues,
         )
     }
 
@@ -64,12 +66,14 @@ data class SkillExecutionResult(
             events: Collection<SkillExecutionEvent>,
             executedSkillIds: Collection<Int>,
             diagnostics: Collection<SkillExecutionDiagnostic>,
+            timingDues: Collection<SkillTimingDue> = emptyList(),
         ): SkillExecutionResult =
             SkillExecutionResult(
                 Collections.unmodifiableList(ArrayList(stateChanges)),
                 Collections.unmodifiableList(ArrayList(events)),
                 Collections.unmodifiableList(ArrayList(executedSkillIds)),
                 Collections.unmodifiableList(ArrayList(diagnostics)),
+                Collections.unmodifiableList(ArrayList(timingDues)),
             )
     }
 }

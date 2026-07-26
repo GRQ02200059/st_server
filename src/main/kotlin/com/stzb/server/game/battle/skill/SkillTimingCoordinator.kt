@@ -90,6 +90,29 @@ data class TimingPosition(
     val hit: Int,
 )
 
+class SkillTimingDue internal constructor(
+    val change: ScheduledEffectActivationChange,
+    val dueRound: Int,
+    val dueHit: Int,
+    val sequence: Long,
+) {
+    private var consumed = false
+
+    internal fun consume() {
+        require(!consumed) { "Skill timing due token was already consumed: sequence=$sequence" }
+        consumed = true
+    }
+
+    companion object {
+        internal fun mint(
+            change: ScheduledEffectActivationChange,
+            dueRound: Int,
+            dueHit: Int,
+            sequence: Long,
+        ): SkillTimingDue = SkillTimingDue(change, dueRound, dueHit, sequence)
+    }
+}
+
 class CompleteTimingCoordinator(
     private val graph: SkillRuleGraph,
     private val interpreter: SkillRuleInterpreter,
@@ -400,8 +423,27 @@ class CompleteTimingCoordinator(
                     reason = "Missing scheduled payload for sequence=${delayed.sequence}",
                 )
             } else {
-                aggregate + activate(change, round)
+                val timingDue = (change as? ScheduledEffectActivationChange)?.let {
+                    SkillTimingDue.mint(it, delayed.dueRound, delayed.dueHit, delayed.sequence)
+                }
+                aggregate + activate(change, round, timingDue)
             }
+        }
+
+    private fun activate(
+        change: BattleStateChange,
+        round: Int,
+        timingDue: SkillTimingDue?,
+    ): SkillExecutionResult =
+        activate(change, round).let { activated ->
+            if (timingDue == null) activated
+            else SkillExecutionResult.immutable(
+                activated.stateChanges,
+                activated.events,
+                activated.executedSkillIds,
+                activated.diagnostics,
+                listOf(timingDue),
+            )
         }
 
     private fun timingOf(change: BattleStateChange): Triple<Int, Int, DelayedEffect>? =

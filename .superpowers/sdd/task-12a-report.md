@@ -62,3 +62,16 @@ Forced matrix:
 Result: `BUILD SUCCESSFUL`. `git diff --check` passed. No server was started.
 Existing unrelated response/protocol/handler changes were left untouched and
 excluded from the task commit.
+
+## Final Review Fixes
+
+- Derived stat effect category from potency sign and rejected zero potency.
+- Derived damage-modifier category from both direction and sign:
+  dealt `+/-` is beneficial/harmful; taken `+/-` is harmful/beneficial.
+- Added cleanse/dispel coverage proving stat, store, and live modifier caches
+  remain synchronized.
+- Removed the public arbitrary-list delayed activation bypass.
+- Added coordinator-minted `SkillTimingDue` identity/boundary tokens; the
+  applier rejects early use atomically and rejects duplicate consumption.
+- Forced Applier + Control + Store + Timing matrix: 104 tests, 0 failures,
+  0 errors; `BUILD SUCCESSFUL`. `git diff --check` passed.

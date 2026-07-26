@@ -261,6 +261,7 @@ class SkillTimingTest {
 
         val due = fixture.coordinator.onRound(context().copy(round = 5))
         val applied = due.stateChanges.filterIsInstance<ApplyBattleEffectChange>().single().spec
+        val timingDue = due.timingDues.single()
 
         assertEquals(defender, applied.source)
         assertEquals(attacker, applied.target)
@@ -268,6 +269,10 @@ class SkillTimingTest {
         assertEquals(92, applied.skillId)
         assertEquals(9_201, applied.detailId)
         assertEquals(701, applied.effectId)
+        assertEquals(scheduled, timingDue.change)
+        assertEquals(5, timingDue.dueRound)
+        assertEquals(0, timingDue.dueHit)
+        assertTrue(timingDue.sequence >= 0)
     }
 
     @Test

@@ -304,14 +304,20 @@ class BattleStateChangeApplier(
     ): BattleStateApplyResult = applyValidated(changes, round, delayedActivation = false)
 
     fun applyActivated(
-        changes: List<BattleStateChange>,
-        round: Int,
-    ): BattleStateApplyResult = applyValidated(changes, round, delayedActivation = true)
-
-    fun applyActivated(
         change: ScheduledEffectActivationChange,
+        due: SkillTimingDue,
         round: Int,
-    ): BattleStateApplyResult = applyActivated(change.activationChanges(), round)
+        hit: Int = 0,
+    ): BattleStateApplyResult {
+        require(due.change == change) { "Timing due token does not match scheduled activation" }
+        require(round > due.dueRound || round == due.dueRound && hit >= due.dueHit) {
+            "Activation is early: current=($round,$hit) due=(${due.dueRound},${due.dueHit})"
+        }
+        val changes = change.activationChanges()
+        changes.forEach { preflight(it, delayedActivation = true) }
+        due.consume()
+        return applyValidated(changes, round, delayedActivation = true)
+    }
 
     private fun applyValidated(
         changes: List<BattleStateChange>,
@@ -425,12 +431,14 @@ class BattleStateChangeApplier(
                     change.potency.unit == BattleEffectValueUnit.FLAT ||
                         change.potency.unit == BattleEffectValueUnit.PERCENT,
                 ) { "stat potency must be flat or percent" }
+                require(change.potency.value != 0) { "stat potency must not be zero" }
                 statEffect(change)
             }
             is DamageModifierChange -> {
                 requireHero(change.source)
                 requireHero(change.target)
                 require(change.durationRounds > 0) { "damage modifier duration must be positive" }
+                require(change.percent != 0) { "damage modifier percent must not be zero" }
                 modifierEffect(change)
             }
             is ApplyBattleEffectChange -> validateSpec(change.spec, delayedActivation)
@@ -643,7 +651,8 @@ class BattleStateChangeApplier(
             rawSkillType = 2,
             detailId = change.skillId * 10_000 + change.effectId,
             effectId = change.effectId,
-            category = EffectCategory.BENEFICIAL,
+            category =
+                if (change.potency.value > 0) EffectCategory.BENEFICIAL else EffectCategory.HARMFUL,
             conflict = 0,
             replaceType = 0,
             bindFlag = 0,
@@ -721,7 +730,12 @@ class BattleStateChangeApplier(
             detailId = change.skillId * 10_000 + change.effectId,
             effectId = change.effectId,
             category =
-                if (change.percent >= 0) EffectCategory.BENEFICIAL else EffectCategory.HARMFUL,
+                when (change.direction) {
+                    DamageModifierChange.Direction.DEALT ->
+                        if (change.percent > 0) EffectCategory.BENEFICIAL else EffectCategory.HARMFUL
+                    DamageModifierChange.Direction.TAKEN ->
+                        if (change.percent > 0) EffectCategory.HARMFUL else EffectCategory.BENEFICIAL
+                },
             conflict = 0,
             replaceType = 0,
             bindFlag = 0,
