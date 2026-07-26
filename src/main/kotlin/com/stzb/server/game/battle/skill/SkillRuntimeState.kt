@@ -17,6 +17,7 @@ class SkillRuntimeState {
     private val triggerCounts = mutableMapOf<TriggerKey, Int>()
     private val sideTriggerCounts = mutableMapOf<SideTriggerKey, Int>()
     private val consumedThresholdGenerations = mutableMapOf<ThresholdKey, Int>()
+    private val markers = mutableMapOf<MarkerKey, MarkerValue>()
     private val preparations = mutableListOf<PreparedSkill>()
     private val delayedEffects = mutableListOf<DelayedEffect>()
     private val callStack = ArrayDeque<Int>()
@@ -90,6 +91,35 @@ class SkillRuntimeState {
         if (generation <= consumed) return false
         consumedThresholdGenerations[key] = generation
         return true
+    }
+
+    fun recordMarker(
+        target: BattleHeroRef,
+        detailId: Int,
+        value: Int,
+        appliedRound: Int,
+        durationRounds: Int,
+    ) {
+        require(detailId > 0) { "Marker detail ID must be positive: $detailId" }
+        require(appliedRound >= 0) { "Marker round must be non-negative: $appliedRound" }
+        require(durationRounds >= 0) { "Marker duration must be non-negative: $durationRounds" }
+        markers[MarkerKey(target, detailId)] = MarkerValue(
+            value = value,
+            expiresAtRound = appliedRound + durationRounds,
+        )
+    }
+
+    fun hasMarker(target: BattleHeroRef, detailId: Int, round: Int): Boolean =
+        markerValue(target, detailId, round) != null
+
+    fun markerValue(target: BattleHeroRef, detailId: Int, round: Int): Int? {
+        val key = MarkerKey(target, detailId)
+        val marker = markers[key] ?: return null
+        if (round >= marker.expiresAtRound) {
+            markers.remove(key)
+            return null
+        }
+        return marker.value
     }
 
     @Deprecated(
@@ -216,6 +246,16 @@ class SkillRuntimeState {
         val owner: BattleHeroRef,
         val namespace: String,
         val threshold: Int,
+    )
+
+    private data class MarkerKey(
+        val target: BattleHeroRef,
+        val detailId: Int,
+    )
+
+    private data class MarkerValue(
+        val value: Int,
+        val expiresAtRound: Int,
     )
 
     companion object {

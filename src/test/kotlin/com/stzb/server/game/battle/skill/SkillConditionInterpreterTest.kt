@@ -96,6 +96,8 @@ class SkillConditionInterpreterTest {
                         130005101, 230005101, 130005205, 130005301, 230005301,
                     )
                 ) ||
+            code.field == SkillConditionField.CAST_CONDITION &&
+            code.value in setOf(321001701, 421001701) ||
             code.field == SkillConditionField.PRECONDITION &&
             code.value in setOf(18, -18) ||
             code.field == SkillConditionField.CONDITION &&
@@ -629,6 +631,21 @@ class SkillConditionInterpreterTest {
                 context(view = view(metadata = mapOf(SOURCE to metadata(country = 1)))),
             ),
         )
+    }
+
+    @Test
+    fun `zhuge pouch branches distinguish existing marker from first application`() {
+        val graph = realGraph()
+        val runtime = SkillRuntimeState()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertFalse(interpreter.matches(graph.detail(20001705), trigger(), context(runtime = runtime)))
+        assertTrue(interpreter.matches(graph.detail(20001706), trigger(), context(runtime = runtime)))
+
+        runtime.recordMarker(SOURCE, 21001701, value = 0, appliedRound = 2, durationRounds = 2)
+
+        assertTrue(interpreter.matches(graph.detail(20001705), trigger(), context(runtime = runtime)))
+        assertFalse(interpreter.matches(graph.detail(20001706), trigger(), context(runtime = runtime)))
     }
 
     @Test

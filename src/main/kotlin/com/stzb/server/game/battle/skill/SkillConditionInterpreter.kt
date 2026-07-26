@@ -179,6 +179,12 @@ sealed interface SkillCondition {
         val negated: Boolean = false,
     ) : SkillCondition
 
+    data class HasMarker(
+        val subject: Subject,
+        val detailId: Int,
+        val negated: Boolean = false,
+    ) : SkillCondition
+
     sealed interface Unresolved : SkillCondition
 }
 
@@ -225,6 +231,7 @@ class CompiledSkillCondition internal constructor(
                 is SkillCondition.TriggerCount -> matchesTriggerCount(condition, context)
                 is SkillCondition.HeroId -> matchesHeroId(condition, context)
                 is SkillCondition.Country -> matchesCountry(condition, context)
+                is SkillCondition.HasMarker -> matchesMarker(condition, context)
                 is SkillCondition.TargetPredicate -> true
                 is SpecialConditionRequirement -> throw unresolved(condition, trigger)
             }
@@ -376,6 +383,15 @@ class CompiledSkillCondition internal constructor(
         return if (condition.negated) !matches else matches
     }
 
+    private fun matchesMarker(
+        condition: SkillCondition.HasMarker,
+        context: SkillBattleContext,
+    ): Boolean {
+        val ref = subject(condition.subject, context) ?: return false
+        val present = context.runtime.hasMarker(ref, condition.detailId, context.round)
+        return if (condition.negated) !present else present
+    }
+
     private fun subject(
         subject: Subject,
         context: SkillBattleContext,
@@ -458,6 +474,9 @@ class SkillConditionInterpreter(
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
         builtInCountryConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
+        builtInMarkerConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
@@ -621,6 +640,47 @@ private fun builtInCountryConditionPlugins(
     } else {
         listOf(BuiltInCountryConditionPlugin("builtin.target-country", codes))
     }
+}
+
+private class BuiltInMarkerConditionPlugin(
+    ownedConditions: Set<SkillConditionCode>,
+) : SpecialSkillPlugin {
+    override val id: String = "builtin.detail-marker"
+    override val ownedConditions: Set<SkillConditionCode> =
+        Collections.unmodifiableSet(LinkedHashSet(ownedConditions))
+
+    override fun compile(
+        code: SkillConditionCode,
+        rule: SkillEffectRule,
+    ): List<SkillCondition> = listOf(
+        when (code.value) {
+            321001701 -> SkillCondition.HasMarker(
+                Subject.SOURCE,
+                detailId = 21001701,
+            )
+            421001701 -> SkillCondition.HasMarker(
+                Subject.SOURCE,
+                detailId = 21001701,
+                negated = true,
+            )
+            else -> error("Unsupported marker condition $code")
+        },
+    )
+}
+
+private fun builtInMarkerConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter {
+            it.field == SkillConditionField.CAST_CONDITION &&
+                it.value in setOf(321001701, 421001701)
+        }
+        .filterNot(overridden::contains)
+        .toSet()
+    return if (codes.isEmpty()) emptyList() else listOf(BuiltInMarkerConditionPlugin(codes))
 }
 
 private class BuiltInAttributeConditionPlugin(

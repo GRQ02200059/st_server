@@ -582,10 +582,16 @@ class DefaultCompleteSkillEngine private constructor(
                 is ExecuteChildSkillChange,
                 is RetriggerSkillChange,
                 is TriggerReferencedEffectChange,
-                is MarkerEffectChange,
                 is MetaEffectChange,
                 is MoraleEffectChange,
                 -> Unit
+                is MarkerEffectChange -> state.runtime.recordMarker(
+                    target = change.target,
+                    detailId = change.detailId,
+                    value = change.marker,
+                    appliedRound = context.round,
+                    durationRounds = change.parameters.availableRounds,
+                )
                 is DamageModifierChange ->
                     if (change.durationRounds > 0) {
                         events += processDamageOutputs(applier.apply(listOf(change), context.round), context)

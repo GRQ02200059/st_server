@@ -88,6 +88,26 @@ class SkillRuntimeStateTest {
     }
 
     @Test
+    fun `detail markers are target scoped and expire after configured rounds`() {
+        val state = SkillRuntimeState()
+
+        state.recordMarker(
+            target = refA,
+            detailId = 21001701,
+            value = 7,
+            appliedRound = 2,
+            durationRounds = 2,
+        )
+
+        assertTrue(state.hasMarker(refA, 21001701, round = 2))
+        assertTrue(state.hasMarker(refA, 21001701, round = 3))
+        assertEquals(7, state.markerValue(refA, 21001701, round = 3))
+        assertEquals(false, state.hasMarker(refB, 21001701, round = 3))
+        assertEquals(false, state.hasMarker(refA, 21001701, round = 4))
+        assertEquals(null, state.markerValue(refA, 21001701, round = 4))
+    }
+
+    @Test
     fun `threshold generations are consumed once per owner and threshold`() {
         val state = SkillRuntimeState()
 

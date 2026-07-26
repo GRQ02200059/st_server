@@ -46,6 +46,36 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `marker effects become queryable runtime state for later skill branches`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100017, 100, listOf(200017), position = 2)),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        engine.recordTarget(source, target)
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 200017,
+            currentSkillId = 200017,
+            trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            battleView = engine.state.view,
+        )
+
+        engine.trigger(BattleTrigger.ACTIVE_SKILL_ATTEMPT, context)
+
+        assertTrue(engine.state.runtime.hasMarker(source, 21001701, round = 1))
+    }
+
+    @Test
     fun `safe production engine executes known conditions instead of suppressing every conditional detail`() {
         val request = BattleRequest(
             attacker = BattleTeam(
