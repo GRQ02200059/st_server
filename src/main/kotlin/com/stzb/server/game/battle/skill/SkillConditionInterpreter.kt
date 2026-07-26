@@ -61,6 +61,8 @@ sealed interface SkillCondition {
             BASE_POSITION,
             NON_BASE_POSITION,
             FRONT_POSITION,
+            TROOPS_BELOW_PERCENT,
+            TROOPS_ABOVE_PERCENT,
         }
     }
 
@@ -278,6 +280,9 @@ class SkillConditionInterpreter(
         builtInRoundConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInTroopRatioConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -349,6 +354,43 @@ class SkillConditionInterpreter(
         val precondition: Int,
         val condition: Int,
     )
+}
+
+private class BuiltInTroopRatioConditionPlugin(
+    override val id: String,
+    ownedConditions: Set<SkillConditionCode>,
+) : SpecialSkillPlugin {
+    override val ownedConditions: Set<SkillConditionCode> =
+        Collections.unmodifiableSet(LinkedHashSet(ownedConditions))
+
+    override fun compile(
+        code: SkillConditionCode,
+        rule: SkillEffectRule,
+    ): List<SkillCondition> {
+        val threshold = code.value % 100
+        val kind = when (code.value / 1000) {
+            1 -> SkillCondition.TargetPredicate.Kind.TROOPS_BELOW_PERCENT
+            2 -> SkillCondition.TargetPredicate.Kind.TROOPS_ABOVE_PERCENT
+            else -> error("Unsupported troop-ratio condition $code")
+        }
+        return listOf(SkillCondition.TargetPredicate(kind, threshold))
+    }
+}
+
+private fun builtInTroopRatioConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter { it.field == SkillConditionField.CONDITION && it.value in TROOP_RATIO_CONDITIONS }
+        .filterNot(overridden::contains)
+        .toSet()
+    return if (codes.isEmpty()) {
+        emptyList()
+    } else {
+        listOf(BuiltInTroopRatioConditionPlugin("builtin.target-troop-ratio", codes))
+    }
 }
 
 private class BuiltInRoundConditionPlugin(
@@ -470,6 +512,7 @@ private val TARGET_PRECONDITIONS = setOf(-80, -70, 70, 80)
 private val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
 private val POSITION_PRECONDITIONS = setOf(-14, 14, 16)
 private val ROUND_CONDITIONS = setOf(104, 203, 205, 207, 303)
+private val TROOP_RATIO_CONDITIONS = setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
 
 private fun defaultPendingPlugins(
     graph: SkillRuleGraph,

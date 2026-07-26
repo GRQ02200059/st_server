@@ -230,6 +230,25 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `condition troop ratios filter each candidate at exact boundaries`() {
+        val states = defaultStates().toMutableMap().apply {
+            put(enemyBase, state(troops = 490))
+            put(enemyMiddle, state(troops = 500))
+            put(enemyFront, state(troops = 610))
+        }
+        val context = context(view(states = states, sourceRange = 5))
+
+        assertEquals(
+            listOf(enemyBase),
+            select(rule(selectType = 34, condition = 1050), context),
+        )
+        assertEquals(
+            listOf(enemyFront),
+            select(rule(selectType = 34, condition = 2060), context),
+        )
+    }
+
+    @Test
     fun `minimum and maximum selectors use live troops and four combat stats`() {
         val states = defaultStates().toMutableMap().apply {
             put(enemyBase, state(troops = 300, attack = 80, defense = 10, strategy = 70, speed = 40))
@@ -677,6 +696,7 @@ class SkillTargetSelectorTest {
         skillHitRange: Int? = null,
         effectBuffType: Int = 1,
         precondition: Int = 0,
+        condition: Int = 0,
     ) = SkillEffectRule(
         detailId = detailId,
         effectId = 301,
@@ -698,6 +718,7 @@ class SkillTargetSelectorTest {
             targetCountry = targetCountry,
             selectFlag = selectFlag,
             precondition = precondition,
+            condition = condition,
         ),
         skillHitRange = skillHitRange,
         effectBuffType = effectBuffType,

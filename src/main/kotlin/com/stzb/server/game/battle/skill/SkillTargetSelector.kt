@@ -68,6 +68,7 @@ class SkillTargetSelector {
                     )
             }
             .filter { target -> matchesPreconditionTarget(raw.precondition, context, target) }
+            .filter { target -> matchesConditionTarget(raw.condition, context, target) }
             .sortedWith(CLIENT_POSITION_ORDER)
 
         candidates = when (raw.selectType) {
@@ -266,6 +267,24 @@ class SkillTargetSelector {
         }
     }
 
+    private fun matchesConditionTarget(
+        condition: Int,
+        context: SkillBattleContext,
+        target: BattleHeroRef,
+    ): Boolean {
+        if (condition !in TROOP_RATIO_CONDITIONS) return true
+        val state = requireNotNull(context.battleView.state(target)) {
+            "Missing live state for $target"
+        }
+        if (state.maxTroops <= 0) return false
+        val threshold = condition % 100
+        return when (condition / 1000) {
+            1 -> state.troops.toLong() * 100 < state.maxTroops.toLong() * threshold
+            2 -> state.troops.toLong() * 100 > state.maxTroops.toLong() * threshold
+            else -> error("Unsupported troop-ratio condition=$condition")
+        }
+    }
+
     private fun requireMetadata(
         targetType: Int,
         metadata: SkillBattleHeroMetadata?,
@@ -318,6 +337,7 @@ class SkillTargetSelector {
         const val MIDDLE_POSITION = 1
         const val FRONT_POSITION = 2
         val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
+        val TROOP_RATIO_CONDITIONS = setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
 
         const val TARGET_ARCHER_OR_INFANTRY = -30
         const val TARGET_CAVALRY_OR_INFANTRY = -10

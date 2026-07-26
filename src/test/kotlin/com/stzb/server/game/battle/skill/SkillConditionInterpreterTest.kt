@@ -81,7 +81,9 @@ class SkillConditionInterpreterTest {
                 100003, 100010, 100479, 100661,
             ) ||
             code.field == SkillConditionField.CAST_CONDITION &&
-            code.value in setOf(104, 203, 205, 207, 303)
+            code.value in setOf(104, 203, 205, 207, 303) ||
+            code.field == SkillConditionField.CONDITION &&
+            code.value in setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -130,10 +132,10 @@ class SkillConditionInterpreterTest {
             interpreter.compile(graph.detail(20024801)).conditions.single(),
         )
         assertEquals(
-            listOf(1090, 1070, 1050, 1030),
+            listOf(90, 70, 50, 30),
             (20093902..20093905).map { detailId ->
-                val requirement = interpreter.compile(graph.detail(detailId)).conditions.single()
-                (requirement as SpecialConditionRequirement).code.value
+                val predicate = interpreter.compile(graph.detail(detailId)).conditions.single()
+                (predicate as SkillCondition.TargetPredicate).value
             },
         )
     }
@@ -189,6 +191,27 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.RoundRange(7, 7),
             interpreter.compile(graph.detail(21026505)).conditions.first(),
+        )
+    }
+
+    @Test
+    fun `verified troop ratio codes compile as target predicates`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.TROOPS_BELOW_PERCENT,
+                50,
+            ),
+            interpreter.compile(graph.detail(20025601)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.TROOPS_ABOVE_PERCENT,
+                60,
+            ),
+            interpreter.compile(graph.detail(20094404)).conditions.single(),
         )
     }
 

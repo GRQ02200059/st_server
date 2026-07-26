@@ -59,7 +59,9 @@ class SpecialSkillPluginTest {
                     100003, 100010, 100479, 100661,
                 ) ||
                 it.field == SkillConditionField.CAST_CONDITION &&
-                it.value in setOf(104, 203, 205, 207, 303)
+                it.value in setOf(104, 203, 205, 207, 303) ||
+                it.field == SkillConditionField.CONDITION &&
+                it.value in setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
         }
         assertEquals(
             (ScopedConditionCodeCatalog.codes - resolvedTargetCodes)
