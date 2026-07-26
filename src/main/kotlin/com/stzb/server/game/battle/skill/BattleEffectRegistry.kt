@@ -142,6 +142,9 @@ class BattleEffectRegistry private constructor(
 
     fun declaration(effectId: Int): EffectDeclaration? = declarations[effectId]
 
+    fun implementationSemanticId(effectId: Int): String? =
+        registrations[effectId]?.handler?.semanticId
+
     fun register(vararg registrations: EffectHandlerRegistration): BattleEffectRegistry {
         val repeatedIds = registrations
             .groupingBy { it.effectId }
@@ -311,6 +314,15 @@ fun BattleEffectRegistry.registerControlEffects(
     calculator: BattleValueCalculator = DefaultBattleValueCalculator(),
 ): BattleEffectRegistry =
     register(*ControlEffectHandlers.registrations(effectStore, calculator))
+
+fun BattleEffectRegistry.registerMetaEffects(
+    targetSelector: SkillTargetSelector = SkillTargetSelector(),
+): BattleEffectRegistry {
+    val registrations = MetaEffectHandlers.registrations(targetSelector)
+        .filter { it.effectId in declaredEffectIds() }
+        .toTypedArray()
+    return register(*registrations)
+}
 
 private fun <K, V> immutableMap(values: Map<K, V>): Map<K, V> =
     Collections.unmodifiableMap(LinkedHashMap(values))
