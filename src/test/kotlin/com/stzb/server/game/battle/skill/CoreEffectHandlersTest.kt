@@ -112,7 +112,108 @@ class CoreEffectHandlersTest {
     }
 
     @Test
-    fun `four ongoing damage effects schedule typed effects instead of dealing immediately`() {
+    fun `damage origin comes from skill kind and selects only its modifier axis`() {
+        val config = BattleConfigRepository.loadDefault()
+        val pursuitGraph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200026),
+                learnableSaSkillIds = emptySet(),
+            ),
+            config,
+        )
+        val pursuitRule = pursuitGraph.detail(20002612)
+        val pursuitRegistry = registry(BattleEffectStore(), pursuitRule)
+        val pursuitContext = context(
+            sourceModifiers = listOf(
+                BattleModifier.DamageDealtPercent(origin = DamageOrigin.ACTIVE, percent = 500),
+            ),
+        ).copy(rootSkillId = 200026, currentSkillId = 200026)
+        val pursuit = pursuitRegistry.execute(pursuitRule, pursuitContext).stateChanges.single()
+
+        assertIs<TroopDamageChange>(pursuit)
+        assertEquals(DamageOrigin.PURSUIT, pursuit.origin)
+        assertEquals(
+            BattleDamageCalculator.physical(
+                source = pursuitContext.request.attacker.heroes.single(),
+                target = pursuitContext.request.defender.heroes.single(),
+                ratePercent = 200,
+                attributeRandomTenths = 30,
+                origin = DamageOrigin.PURSUIT,
+            ),
+            pursuit.amount,
+        )
+
+        listOf(
+            SkillKind.ACTIVE to (3 to DamageOrigin.ACTIVE),
+            SkillKind.PURSUIT to (4 to DamageOrigin.PURSUIT),
+            SkillKind.COMMAND to (2 to DamageOrigin.COMMAND),
+            SkillKind.PASSIVE to (1 to DamageOrigin.PASSIVE),
+        ).forEach { (kind, rawAndOrigin) ->
+            val (rawSkillType, expectedOrigin) = rawAndOrigin
+            val synthetic = rule(
+                effectId = 302,
+                constant = 180,
+                skillKind = kind,
+                rawSkillType = rawSkillType,
+            )
+            val syntheticContext = context(
+                sourceModifiers = listOf(
+                    BattleModifier.DamageDealtPercent(
+                        origin = expectedOrigin,
+                        percent = 40,
+                    ),
+                    BattleModifier.DamageDealtPercent(
+                        origin = if (expectedOrigin == DamageOrigin.ACTIVE) {
+                            DamageOrigin.PURSUIT
+                        } else {
+                            DamageOrigin.ACTIVE
+                        },
+                        percent = 500,
+                    ),
+                ),
+            )
+            val change = registry(BattleEffectStore(), synthetic)
+                .execute(synthetic, syntheticContext)
+                .stateChanges.single()
+            assertIs<TroopDamageChange>(change)
+            assertEquals(expectedOrigin, change.origin)
+            assertEquals(
+                BattleDamageCalculator.strategy(
+                    source = syntheticContext.request.attacker.heroes.single(),
+                    target = syntheticContext.request.defender.heroes.single(),
+                    ratePercent = 180,
+                    origin = expectedOrigin,
+                ),
+                change.amount,
+            )
+        }
+    }
+
+    @Test
+    fun `unknown skill kind and raw type never fall back to active damage`() {
+        val unsupported = rule(
+            effectId = 302,
+            constant = 180,
+            skillKind = SkillKind.UNKNOWN,
+            rawSkillType = 14,
+        )
+
+        val strict = assertFailsWith<UnsupportedConfiguredBattleValueException> {
+            registry(BattleEffectStore(), unsupported).execute(unsupported, context())
+        }
+        assertTrue(strict.diagnostic.reason.orEmpty().contains("rawSkillType=14"))
+        assertTrue(strict.diagnostic.reason.orEmpty().contains("skillKind=UNKNOWN"))
+
+        val diagnostics = mutableListOf<BattleEffectDiagnostic>()
+        val safe = BattleEffectRegistry.safe(graph(listOf(unsupported)), diagnostics::add)
+            .registerCoreEffects(BattleEffectStore())
+            .execute(unsupported, context())
+        assertEquals(EffectExecution.EMPTY, safe)
+        assertTrue(diagnostics.single().reason.orEmpty().contains("rawSkillType=14"))
+    }
+
+    @Test
+    fun `four ongoing damage effects schedule complete typed effects instead of cast damage`() {
         val registry = registry()
         val expected = mapOf(
             303 to (BattleStatus.SHAKE to DamageSchool.PHYSICAL),
@@ -127,16 +228,144 @@ class CoreEffectHandlersTest {
             assertIs<ScheduledDamageEffectChange>(scheduled)
             assertEquals(type.first, scheduled.status)
             assertEquals(type.second, scheduled.school)
-            assertEquals(DamageOrigin.ONGOING, scheduled.origin)
+            assertEquals(DamageOrigin.ACTIVE, scheduled.origin)
             assertEquals(
                 if (scheduled.status == BattleStatus.BURN) setOf(DamageTag.ONGOING, DamageTag.FIRE)
                 else setOf(DamageTag.ONGOING),
                 scheduled.tags,
             )
-            assertTrue(scheduled.damagePerTick > 0)
+            assertEquals(TypedBattlePotency.rate(120), scheduled.potency)
             assertEquals(2, scheduled.durationRounds)
             assertTrue(result.stateChanges.none { it is TroopDamageChange })
         }
+    }
+
+    @Test
+    fun `real delayed burn preserves full identity and recalculates every tick from live combatants`() {
+        val config = BattleConfigRepository.loadDefault()
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200020),
+                learnableSaSkillIds = emptySet(),
+            ),
+            config,
+        )
+        val realRule = graph.detail(20002012)
+        val scheduled = registry(BattleEffectStore(), realRule)
+            .execute(
+                realRule,
+                context().copy(rootSkillId = 200020, currentSkillId = 200020),
+            )
+            .stateChanges.single()
+
+        assertIs<ScheduledDamageEffectChange>(scheduled)
+        assertEquals(
+            PersistentEffectSpec(
+                source = sourceRef,
+                target = targetRef,
+                rootSkillId = 200020,
+                skillId = 200020,
+                skillKind = SkillKind.COMMAND,
+                rawSkillType = 2,
+                detailId = 20002012,
+                effectId = 305,
+                category = EffectCategory.HARMFUL,
+                conflict = 0,
+                replaceType = 0,
+                bindFlag = 0,
+                maxStacks = 1,
+                delayRound = 2,
+                delayHit = 0,
+                availableRounds = 8,
+                availableHit = 0,
+                clearPerHit = false,
+                startBoundary = EffectStartBoundary.AFTER_DELAY,
+                potency = TypedBattlePotency.rate(31),
+            ),
+            scheduled.spec,
+        )
+        assertEquals(DamageSchool.STRATEGY, scheduled.school)
+        assertEquals(DamageOrigin.COMMAND, scheduled.origin)
+        assertEquals(setOf(DamageTag.ONGOING, DamageTag.FIRE), scheduled.tags)
+        assertEquals(BattleStatus.BURN, scheduled.status)
+
+        val firstSource = hero(id = 1, position = 2, troops = 1_000, strategy = 120)
+        val firstTarget = hero(id = 2, position = 2, troops = 900, strategy = 80)
+        val first = scheduled.tick(firstSource, firstTarget)
+        assertEquals(
+            BattleDamageCalculator.strategy(
+                source = firstSource,
+                target = firstTarget,
+                ratePercent = 32,
+                ongoing = true,
+                origin = DamageOrigin.COMMAND,
+                tags = setOf(DamageTag.ONGOING, DamageTag.FIRE),
+            ),
+            first.amount,
+        )
+
+        val secondSource = hero(id = 1, position = 2, troops = 1_500, strategy = 200).copy(
+            modifiers = listOf(
+                BattleModifier.DamageDealtPercent(origin = DamageOrigin.COMMAND, percent = 35),
+                BattleModifier.DamageDealtPercent(tag = DamageTag.ONGOING, percent = 25),
+            ),
+        )
+        val secondTarget = hero(id = 2, position = 2, troops = 600, strategy = 260).copy(
+            modifiers = listOf(
+                BattleModifier.DamageTakenPercent(origin = DamageOrigin.COMMAND, percent = -20),
+            ),
+        )
+        val second = scheduled.tick(secondSource, secondTarget)
+        assertEquals(
+            BattleDamageCalculator.strategy(
+                source = secondSource,
+                target = secondTarget,
+                ratePercent = 34,
+                ongoing = true,
+                origin = DamageOrigin.COMMAND,
+                tags = setOf(DamageTag.ONGOING, DamageTag.FIRE),
+            ),
+            second.amount,
+        )
+        assertTrue(first.amount != second.amount)
+
+        val nearlyDefeated = secondTarget.copy(troops = 3)
+        assertEquals(3, scheduled.tick(secondSource, nearlyDefeated).amount)
+        assertEquals(0, scheduled.tick(secondSource, nearlyDefeated).troopsAfter)
+    }
+
+    @Test
+    fun `pursuit ongoing damage keeps origin tag and hit lifecycle`() {
+        val pursuitBurn = rule(
+            effectId = 305,
+            constant = 120,
+            availableRounds = 0,
+            availableHit = 4,
+            delayHit = 2,
+            clearPerHit = true,
+            bindFlag = 7,
+            addCountMax = 2,
+            hideConflict = 51,
+            effectReplaceType = 2,
+            skillKind = SkillKind.PURSUIT,
+            rawSkillType = 4,
+        )
+        val scheduled = registry(BattleEffectStore(), pursuitBurn)
+            .execute(pursuitBurn, context())
+            .stateChanges.single()
+
+        assertIs<ScheduledDamageEffectChange>(scheduled)
+        assertEquals(DamageOrigin.PURSUIT, scheduled.origin)
+        assertEquals(setOf(DamageTag.ONGOING, DamageTag.FIRE), scheduled.tags)
+        assertEquals(0, scheduled.spec.availableRounds)
+        assertEquals(4, scheduled.spec.availableHit)
+        assertEquals(2, scheduled.spec.delayHit)
+        assertEquals(true, scheduled.spec.clearPerHit)
+        assertEquals(7, scheduled.spec.bindFlag)
+        assertEquals(3, scheduled.spec.maxStacks)
+        assertEquals(51, scheduled.spec.conflict)
+        assertEquals(2, scheduled.spec.replaceType)
+        assertEquals(EffectStartBoundary.AFTER_DELAY, scheduled.spec.startBoundary)
     }
 
     @Test
@@ -631,6 +860,8 @@ class CoreEffectHandlersTest {
         effectBuffType: Int = if (effectId in 101..106) 2 else 1,
         effectReplaceType: Int = 0,
         rawCalcPosition: Int = if (effectId in 101..105 || effectId in 201..205) 311 else 0,
+        skillKind: SkillKind = SkillKind.ACTIVE,
+        rawSkillType: Int = 3,
     ): SkillEffectRule =
         SkillEffectRule(
             detailId = 10_000 + effectId,
@@ -679,8 +910,8 @@ class CoreEffectHandlersTest {
             ),
             effectBuffType = effectBuffType,
             effectReplaceType = effectReplaceType,
-            skillKind = SkillKind.ACTIVE,
-            rawSkillType = 3,
+            skillKind = skillKind,
+            rawSkillType = rawSkillType,
         )
 
     private fun SkillRuleGraph.detail(detailId: Int): SkillEffectRule =
@@ -692,8 +923,9 @@ class CoreEffectHandlersTest {
         woundedTroops: Int = 300,
         targetDefense: Int = 100,
         targetStrategy: Int = 100,
+        sourceModifiers: List<BattleModifier> = emptyList(),
     ): SkillBattleContext {
-        val source = hero(id = 1, position = 2, strategy = 120)
+        val source = hero(id = 1, position = 2, strategy = 120).copy(modifiers = sourceModifiers)
         val target = hero(
             id = 2,
             position = 2,
@@ -772,7 +1004,7 @@ class CoreEffectHandlersTest {
             woundedTroops = woundedTroops,
         )
 
-    private class TestBattleView(
+    private inner class TestBattleView(
         private val states: Map<BattleHeroRef, SkillBattleHeroState>,
     ) : SkillBattleView {
         override val capabilities = setOf(
@@ -789,7 +1021,8 @@ class CoreEffectHandlersTest {
         override fun currentMorale(ref: BattleHeroRef) = states[ref]?.morale
         override fun currentAttackRange(ref: BattleHeroRef) = states[ref]?.attackRange
         override fun linkedTarget(source: BattleHeroRef): BattleHeroRef? = null
-        override fun currentTarget(source: BattleHeroRef): BattleHeroRef? = null
+        override fun currentTarget(source: BattleHeroRef): BattleHeroRef? =
+            targetRef.takeIf { source == sourceRef }
         override fun previousTarget(source: BattleHeroRef): BattleHeroRef? = null
         override fun matchesStateFilter(
             filter: SkillTargetStateFilter,

@@ -163,17 +163,93 @@ data class ApplyBattleEffectChange(
 }
 
 data class ScheduledDamageEffectChange(
-    val source: BattleHeroRef,
-    val target: BattleHeroRef,
-    val damagePerTick: Int,
+    val spec: PersistentEffectSpec,
     val school: DamageSchool,
     val origin: DamageOrigin,
     val tags: Set<DamageTag>,
     val status: BattleStatus,
-    val durationRounds: Int,
-    val skillId: Int,
-    val effectId: Int,
-) : BattleStateChange
+    val coefficientSource: BattleCoefficientSource,
+    val rawCoefficient: Int,
+    val calculationTypes: List<Int>,
+) : BattleStateChange {
+    val source: BattleHeroRef
+        get() = spec.source
+    val target: BattleHeroRef
+        get() = spec.target
+    val potency: TypedBattlePotency.Resolved
+        get() = spec.potency
+    val durationRounds: Int
+        get() = spec.availableRounds
+    val skillId: Int
+        get() = spec.skillId
+    val effectId: Int
+        get() = spec.effectId
+
+    fun tick(
+        liveSource: BattleHero,
+        liveTarget: BattleHero,
+        attributeRandomTenths: Int = 35,
+    ): TroopDamageChange {
+        val ratePercent = liveRatePercent(liveSource)
+        val amount = when (school) {
+            DamageSchool.PHYSICAL -> BattleDamageCalculator.physical(
+                source = liveSource,
+                target = liveTarget,
+                ratePercent = ratePercent,
+                attributeRandomTenths = attributeRandomTenths,
+                origin = origin,
+                tags = tags,
+            )
+            DamageSchool.STRATEGY -> BattleDamageCalculator.strategy(
+                source = liveSource,
+                target = liveTarget,
+                ratePercent = ratePercent,
+                ongoing = true,
+                origin = origin,
+                tags = tags,
+            )
+        }.coerceAtMost(liveTarget.troops)
+        return TroopDamageChange(
+            source = source,
+            target = target,
+            amount = amount,
+            troopsAfter = (liveTarget.troops - amount).coerceAtLeast(0),
+            school = school,
+            origin = origin,
+            tags = tags,
+            skillId = skillId,
+            effectId = effectId,
+        )
+    }
+
+    private fun liveRatePercent(source: BattleHero): Int {
+        val attribute = when (coefficientSource) {
+            BattleCoefficientSource.ATTACK -> source.stats.attack
+            BattleCoefficientSource.DEFENSE -> source.stats.defense
+            BattleCoefficientSource.STRATEGY -> source.stats.strategy
+            BattleCoefficientSource.SPEED -> source.stats.speed
+            BattleCoefficientSource.NONE -> BASE_STRATEGY.toInt()
+        }
+        val base = potency.value.toDouble()
+        val rate = if (rawCoefficient == 0) {
+            base
+        } else if (attribute < BASE_STRATEGY) {
+            base * 0.4 + base * 0.6 * attribute / BASE_STRATEGY
+        } else {
+            base + rawCoefficient / 1_000.0 * (attribute - BASE_STRATEGY)
+        }
+        val multiplier = if (calculationTypes.isEmpty()) {
+            1
+        } else {
+            calculationTypes[source.advanceLevel.coerceIn(0, calculationTypes.lastIndex)]
+        }
+        return (rate * multiplier).roundToInt().coerceAtLeast(1)
+    }
+
+    private companion object {
+        const val BASE_STRATEGY = 80.0
+    }
+}
 
 val ScheduledRecoveryEffectChange.source: BattleHeroRef
     get() = spec.source
@@ -348,7 +424,7 @@ class DefaultBattleValueCalculator(
             target = targetHero,
             ratePercent = damageRate(invocation.rule, source),
             attributeRandomTenths = 30 + invocation.context.random.nextInt(10),
-            origin = DamageOrigin.ACTIVE,
+            origin = invocation.damageOrigin(),
         )
     }
 
@@ -362,7 +438,6 @@ class DefaultBattleValueCalculator(
     ): Int {
         val source = invocation.liveHero(invocation.context.source)
         val targetHero = invocation.liveHero(target)
-        val origin = if (ongoing) DamageOrigin.ONGOING else DamageOrigin.ACTIVE
         val tags = buildSet {
             if (ongoing) add(DamageTag.ONGOING)
             if (invocation.rule.effectId == FIRE_ATTACK_EFFECT_ID) add(DamageTag.FIRE)
@@ -372,7 +447,7 @@ class DefaultBattleValueCalculator(
             target = targetHero,
             ratePercent = damageRate(invocation.rule, source),
             ongoing = ongoing,
-            origin = origin,
+            origin = invocation.damageOrigin(),
             tags = tags,
         )
     }
@@ -520,7 +595,7 @@ private class CoreEffectHandler(
             amount = damage,
             troopsAfter = (targetState.troops - damage).coerceAtLeast(0),
             school = school,
-            origin = DamageOrigin.ACTIVE,
+            origin = invocation.damageOrigin(),
             tags = tags,
             skillId = invocation.context.currentSkillId,
             effectId = invocation.rule.effectId,
@@ -533,24 +608,23 @@ private class CoreEffectHandler(
         status: BattleStatus,
         school: DamageSchool,
     ): ScheduledDamageEffectChange {
-        val damage = when (school) {
-            DamageSchool.PHYSICAL -> calculator.physicalDamage(invocation, target)
-            DamageSchool.STRATEGY -> calculator.strategyDamage(invocation, target, ongoing = true)
-        }
+        val raw = invocation.rule.raw
+        val potency = TypedBattlePotency.Resolved(
+            unit = invocation.rule.configuredValue?.unit ?: BattleEffectValueUnit.RATE,
+            value = invocation.rule.configuredValue?.rawConstant ?: raw.constantParam,
+        )
         return ScheduledDamageEffectChange(
-            source = invocation.context.source,
-            target = target,
-            damagePerTick = damage,
+            spec = persistentSpec(invocation, target, potency),
             school = school,
-            origin = DamageOrigin.ONGOING,
+            origin = invocation.damageOrigin(),
             tags = buildSet {
                 add(DamageTag.ONGOING)
                 if (status == BattleStatus.BURN) add(DamageTag.FIRE)
             },
             status = status,
-            durationRounds = invocation.rule.raw.availableRounds,
-            skillId = invocation.context.currentSkillId,
-            effectId = invocation.rule.effectId,
+            coefficientSource = invocation.rule.coefficientSource,
+            rawCoefficient = invocation.rule.configuredValue?.rawCoefficient ?: raw.intelParam,
+            calculationTypes = raw.calculationTypes.toList(),
         )
     }
 
@@ -722,6 +796,26 @@ private fun TypedBattlePotency.requireResolved(
                 trigger = invocation.context.trigger,
                 callPath = invocation.callPath,
                 reason = diagnostic,
+            ),
+        )
+    }
+
+private fun EffectInvocation.damageOrigin(): DamageOrigin =
+    when (rule.skillKind to rule.rawSkillType) {
+        SkillKind.ACTIVE to 3 -> DamageOrigin.ACTIVE
+        SkillKind.PURSUIT to 4 -> DamageOrigin.PURSUIT
+        SkillKind.COMMAND to 2 -> DamageOrigin.COMMAND
+        SkillKind.PASSIVE to 1 -> DamageOrigin.PASSIVE
+        else -> throw UnsupportedConfiguredBattleValueException(
+            BattleEffectDiagnostic(
+                code = EffectFailureCode.UNSUPPORTED_CONFIGURED_VALUE,
+                skillId = context.currentSkillId,
+                detailId = rule.detailId,
+                effectId = rule.effectId,
+                trigger = context.trigger,
+                callPath = callPath,
+                reason = "Unsupported damage origin: skillKind=${rule.skillKind} " +
+                    "rawSkillType=${rule.rawSkillType}",
             ),
         )
     }

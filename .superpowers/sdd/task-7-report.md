@@ -2,7 +2,7 @@
 
 ## Status
 
-DONE_WITH_CONCERNS
+DONE
 
 ## Scope
 
@@ -107,23 +107,67 @@ Result: `BUILD SUCCESSFUL`; 85 tests passed with zero failures/errors:
 - Unrelated protocol/response changes were not modified or staged.
 - `git diff --check` passes.
 
-## Concerns
+## Final completion
 
-- `DefaultBattleValueCalculator.effectValue` still returns a bare `Int` and
-  retains the magnitude-based `>= 1_000_000` scaling heuristic. The repository
-  now preserves raw unit/scaling metadata losslessly, but execution does not
-  yet use a typed/deferred value and percentage stat application remains
-  unresolved.
-- Persistent and scheduled intents do not yet snapshot the complete skill,
-  conflict, stacking, delay, hit, and lifecycle identity. Zero configured
-  duration is still coerced to one round.
-- Scheduled recovery stores an already capped amount. It still needs an
-  uncapped-potency tick helper that caps against live troops, capacity, and
-  wounded pool on every tick and consumes wounded troops once.
-- `ApplyBattleEffectChange` still lacks the complete fields and conversion
-  needed to construct `ActiveSkillEffect` without a repository lookup.
-- Some older damage/recovery assertions remain relational rather than exact
-  numeric fixtures. The physical simulator regression is exact.
-- These handlers intentionally produce state-change intents. A later
-  interpreter/orchestrator task must apply them to the live battle state and
-  `BattleEffectStore`; the entry snapshot has no historical wounded pool.
+Commit `3016f9b7` removes the remaining execution heuristic and completes the
+effect intent contracts:
+
+- `TypedBattlePotency` preserves `FLAT`, `PERCENT`, and `RATE` values; ambiguous
+  encodings become `Deferred` with a precise diagnostic instead of being
+  guessed from magnitude.
+- Real rows `20095701`, `20002301`, `29500101`, and `20000712` lock the typed
+  behavior. In particular `500000` is never decoded as a flat `5000`, and the
+  15% row remains percentage-valued.
+- `PersistentEffectSpec` contains source/root/current skill identity, kind/raw
+  type, detail/effect, conflict/replacement/binding/stack fields, delay and
+  round/hit lifecycles, clear-per-hit, start boundary, and typed potency.
+- Zero configured duration remains explicit and is not coerced to one round.
+- `PersistentEffectSpec.toActiveSkillEffect()` constructs the store model
+  without a repository lookup.
+- Scheduled recovery stores uncapped potency and calculates every tick from
+  live troops, capacity, wounded troops, and live effect 207. It returns one
+  recovery change and one matching wounded-consumption change, preventing
+  double consumption.
+
+Final forced regression command covered `CoreEffectHandlersTest`,
+`BattleActionResolverTest`, `BattleEnginePlayableTest`,
+`BattleEffectRegistryTest`, `BattleEffectStoreTest`,
+`BattleConfigRepositoryTest`, `SkillRuleCatalogTest`, and
+`BattleEffectStateTest`.
+
+Result: `BUILD SUCCESSFUL`; 94 tests passed with zero failures, errors, or
+skips. `CoreEffectHandlersTest` contains 17 focused tests.
+
+The remaining orchestration work is intentionally assigned to Tasks 9 and 12:
+they apply these complete intents to the live battle state and effect store.
+
+## Final P1 closure
+
+The last two review findings are closed with test-first coverage:
+
+- One strict damage-origin mapper validates `SkillKind` together with its raw
+  type and preserves `ACTIVE`, `PURSUIT`, `COMMAND`, and `PASSIVE` across
+  physical, strategy, direct, and ongoing damage. Ongoing remains an
+  orthogonal tag. Unsupported `UNKNOWN`/raw type `14` fails in strict mode and
+  is diagnosed/skipped in safe mode, with no active fallback.
+- Real pursuit detail `20002612` and synthetic strategy details prove the
+  emitted origin and modifier axis. Pursuit, command, passive, active,
+  ongoing, and fire classifications remain independently selectable.
+- Scheduled damage now carries `PersistentEffectSpec`, uncapped typed potency,
+  damage school/origin/tags/status, coefficient metadata, and the complete
+  round/hit/delay/clear/bind/conflict/replacement/stack/start lifecycle.
+- Real command burn detail `20002012` preserves delay round `2`, duration `8`,
+  and full skill/detail/effect identity. Every tick recalculates from live
+  source/target troops, stats, and modifiers before applying the current target
+  troop cap; pursuit ongoing damage retains pursuit origin plus ongoing tag.
+
+The RED focused run failed at test compilation on the absent scheduled-damage
+`spec`, typed potency, and `tick` contract. The final focused run passed all 21
+`CoreEffectHandlersTest` tests.
+
+The final forced eight-suite command used `--rerun-tasks`, `--no-daemon`,
+`-Dkotlin.compiler.execution.strategy=in-process`, and
+`-Pkotlin.incremental=false`.
+
+Result: `BUILD SUCCESSFUL`; 98 tests passed with zero failures, errors, or
+skips. No server was started, and `git diff --check` passes.
