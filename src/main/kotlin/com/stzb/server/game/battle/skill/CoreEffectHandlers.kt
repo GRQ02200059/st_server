@@ -43,6 +43,8 @@ data class BattleStatChange(
     val durationRounds: Int,
     val skillId: Int,
     val effectId: Int,
+    val detailId: Int = skillId * 10_000 + effectId,
+    val maxStacks: Int = 1,
 ) : BattleStateChange {
     enum class Kind {
         ATTACK,
@@ -322,6 +324,8 @@ data class DamageModifierChange(
     val durationRounds: Int,
     val skillId: Int,
     val effectId: Int,
+    val detailId: Int = skillId * 10_000 + effectId,
+    val availableHits: Int = 0,
 ) : BattleStateChange {
     enum class Direction {
         DEALT,

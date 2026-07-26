@@ -39,6 +39,13 @@ class SkillTargetSelector {
         val raw = rule.raw
         val view = context.battleView
         var candidates = seedCandidates(raw.selectType, raw.attackType, context)
+            .ifEmpty {
+                if (raw.attackType % 1000 == 11 && rule.effectBuffType == BENEFICIAL_BUFF_TYPE) {
+                    listOf(context.source)
+                } else {
+                    emptyList()
+                }
+            }
             .filter { view.isTargetable(it) }
             .filter { target ->
                 matchesTargetType(
@@ -317,6 +324,7 @@ class SkillTargetSelector {
         val ATTRIBUTE_SELECTORS = setOf(1, 2, 3, 4, 8)
         val ATTACK_TYPES = setOf(0, 11, 13, 21, 23, 24, 41, 43, 81, 94, 95, 96, 97, 98, 99, 113)
         const val MAX_RANDOM_GROUP_SIZE = 2
+        const val BENEFICIAL_BUFF_TYPE = 2
 
         val CLIENT_POSITION_ORDER = compareBy<BattleHeroRef> {
             when (it.side) {

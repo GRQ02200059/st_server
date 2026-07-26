@@ -25,6 +25,7 @@ class DefaultCompleteSkillEngine private constructor(
     private val interpreter: SkillRuleInterpreter,
     private val timing: CompleteTimingCoordinator,
     private val applier: BattleStateChangeApplier,
+    private val specialPlugins: SpecialSkillPluginRegistry,
 ) : CompleteSkillEngine {
     private var prepared = false
     private val actionResolver = BattleActionResolver()
@@ -89,7 +90,7 @@ class DefaultCompleteSkillEngine private constructor(
             -> executeBattleSkills(trigger, scoped)
             else -> SkillExecutionResult.EMPTY
         }
-        events += apply(result, scoped)
+        events += apply(withSuccessfulSkillPluginResponses(result, scoped), scoped)
         return events
     }
 
@@ -277,8 +278,13 @@ class DefaultCompleteSkillEngine private constructor(
                     rootSkillId = skillId,
                     currentSkillId = skillId,
                 )
+            specialPlugins.pluginFor(skillId)?.takeIf {
+                trigger == BattleTrigger.BATTLE_COMMAND
+            }?.let { plugin ->
+                return@fold result + pluginTriggeredResult(skillId, trigger, skillContext, plugin)
+            }
             val skillResult = interpreter.execute(skillId, trigger, skillContext)
-            result + withSoloStatFallback(skillId, skillResult, skillContext)
+            result + skillResult
         }
 
     private fun attemptSkills(
@@ -302,46 +308,84 @@ class DefaultCompleteSkillEngine private constructor(
                 if (skillId == DISORDER_SKILL_ID && attempt.executedSkillIds.isNotEmpty()) {
                     cooldownUntilRound[key] = context.round + 3
                 }
-                result + withSoloStatFallback(
-                    skillId,
-                    attempt,
-                    context.copy(rootSkillId = skillId, currentSkillId = skillId),
-                )
+                result + attempt
             }
         }
 
-    private fun withSoloStatFallback(
-        skillId: Int,
+    private fun withSuccessfulSkillPluginResponses(
         result: SkillExecutionResult,
         context: SkillBattleContext,
-    ): SkillExecutionResult {
-        if (skillId !in SOLO_STAT_FALLBACK_SKILLS ||
-            skillId !in result.executedSkillIds
-        ) return result
-        val livingAllies = state.view.heroes().filter {
-            it.side == context.source.side && requireNotNull(state.view.state(it)).troops > 0
-        }
-        if (livingAllies != listOf(context.source)) return result
-        val fallbackDetails = graph.rule(skillId)!!.details.filter { detail ->
-            detail.effectId in 101..106 &&
-                result.stateChanges.filterIsInstance<BattleStatChange>().none {
-                    it.target == context.source && it.effectId == detail.effectId
-                }
-        }
-        return fallbackDetails
-            .fold(result) { aggregate, detail ->
-                aggregate + interpreter.executeDetailForEngine(
-                    detail,
-                    context,
-                    preselectedTargets = listOf(context.source),
-                    valueOverride = if (skillId == 200036) {
-                        TypedBattlePotency.flat(detail.raw.constantParam / 10)
-                    } else {
-                        null
-                    },
+    ): SkillExecutionResult =
+        result.executedSkillIds
+            .filter { graph.rule(it)?.kind == SkillKind.ACTIVE }
+            .fold(result) { aggregate, successfulSkillId ->
+                aggregate + successfulSkillPluginResponses(
+                    actor = context.source,
+                    successfulSkillId = successfulSkillId,
+                    successfulSkillKind = SkillKind.ACTIVE,
+                    context = context,
                 )
             }
+
+    private fun pluginTriggeredResult(
+        skillId: Int,
+        trigger: BattleTrigger,
+        context: SkillBattleContext,
+        plugin: SkillExecutionPlugin,
+    ): SkillExecutionResult {
+        val result = plugin.execute(
+            SpecialSkillInvocation(
+                phase = SpecialSkillPhase.BATTLE_PREPARE,
+                owner = context.source,
+                actor = context.source,
+                context = context,
+            ),
+        )
+        return SkillExecutionResult.immutable(
+            stateChanges = result.stateChanges,
+            events = listOf(
+                SkillTriggered(
+                    context.round,
+                    context.source,
+                    skillId,
+                    skillId,
+                    trigger,
+                ),
+            ) + result.events,
+            executedSkillIds = listOf(skillId),
+            diagnostics = result.diagnostics,
+            timingDues = result.timingDues,
+        )
     }
+
+    private fun successfulSkillPluginResponses(
+        actor: BattleHeroRef,
+        successfulSkillId: Int,
+        successfulSkillKind: SkillKind?,
+        context: SkillBattleContext,
+    ): SkillExecutionResult =
+        state.view.heroes()
+            .filter { (state.view.state(it)?.troops ?: 0) > 0 }
+            .fold(SkillExecutionResult.EMPTY) ownerFold@{ aggregate, owner ->
+                state.liveHero(owner).skillIds.fold(aggregate) pluginFold@{ inner, ownerSkillId ->
+                    val plugin = specialPlugins.pluginFor(ownerSkillId)
+                        ?: return@pluginFold inner
+                    inner + plugin.execute(
+                        SpecialSkillInvocation(
+                            phase = SpecialSkillPhase.AFTER_SUCCESSFUL_SKILL,
+                            owner = owner,
+                            actor = actor,
+                            successfulSkillId = successfulSkillId,
+                            successfulSkillKind = successfulSkillKind,
+                            context = context.copy(
+                                source = owner,
+                                rootSkillId = ownerSkillId,
+                                currentSkillId = ownerSkillId,
+                            ),
+                        ),
+                    )
+                }
+            }
 
     private fun executeDisorder(context: SkillBattleContext): SkillExecutionResult {
         if (!context.runtime.recordAttempt(
@@ -675,7 +719,6 @@ class DefaultCompleteSkillEngine private constructor(
 
     companion object {
         private const val DISORDER_SKILL_ID = 200002
-        private val SOLO_STAT_FALLBACK_SKILLS = setOf(200001, 200036)
         fun create(
             request: com.stzb.server.game.battle.BattleRequest,
             config: BattleConfigRepository,
@@ -724,12 +767,14 @@ class DefaultCompleteSkillEngine private constructor(
             } else {
                 CompleteTimingCoordinator.safe(graph, interpreter, runtime)
             }
+            val specialPlugins = ConfiguredSpecialSkillPlugins.registry(config)
             return DefaultCompleteSkillEngine(
                 state,
                 graph,
                 interpreter,
                 timing,
                 BattleStateChangeApplier(state),
+                specialPlugins,
             ).also { it.history = history }
         }
     }

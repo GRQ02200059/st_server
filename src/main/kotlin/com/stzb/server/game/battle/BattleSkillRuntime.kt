@@ -92,19 +92,6 @@ class BattleSkillRuntime(
         random: BattleRandom,
         state: SkillRuntimeState,
     ): SkillCastResult {
-        LegacySkillCatalog.findClient(skillId)?.let { definition ->
-            return definition.execute(
-                LegacySkillContext(
-                    round = round,
-                    skillId = skillId,
-                    sourceRef = sourceRef,
-                    source = source,
-                    enemies = enemies,
-                    allies = allies,
-                    random = random,
-                ),
-            )
-        }
         val updatedEnemies = enemies.heroes.associateBy { it.position }.toMutableMap()
         val updatedAllies = allies.heroes.associateBy { it.position }.toMutableMap()
         val events = mutableListOf<BattleEvent>()

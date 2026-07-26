@@ -81,6 +81,32 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `beneficial other ally selector falls back to source when no teammate exists`() {
+        val soloView = FakeBattleView(
+            refs = listOf(source, enemyBase),
+            states = mapOf(source to state(attackRange = 5), enemyBase to state()),
+            metadata = mapOf(
+                source to metadata(SkillHeroGender.MALE, SkillTroopType.INFANTRY),
+                enemyBase to metadata(SkillHeroGender.MALE, SkillTroopType.INFANTRY),
+            ),
+            damageDealt = emptyMap(),
+            linkedTarget = enemyBase,
+            currentTarget = enemyBase,
+            previousTargets = emptyMap(),
+            acceptedStateFilters = emptyMap(),
+        )
+        val context = context(soloView)
+
+        assertEquals(
+            listOf(source),
+            select(rule(attackType = 11, selectType = 0, effectBuffType = 2), context),
+        )
+        assertTrue(
+            select(rule(attackType = 11, selectType = 0, effectBuffType = 1), context).isEmpty(),
+        )
+    }
+
+    @Test
     fun `minimum and maximum selectors use live troops and four combat stats`() {
         val states = defaultStates().toMutableMap().apply {
             put(enemyBase, state(troops = 300, attack = 80, defense = 10, strategy = 70, speed = 40))
@@ -525,6 +551,7 @@ class SkillTargetSelectorTest {
         attackMax: Int = 1,
         selectFlag: Int = 0,
         skillHitRange: Int? = null,
+        effectBuffType: Int = 1,
     ) = SkillEffectRule(
         detailId = 1,
         effectId = 301,
@@ -547,6 +574,7 @@ class SkillTargetSelectorTest {
             selectFlag = selectFlag,
         ),
         skillHitRange = skillHitRange,
+        effectBuffType = effectBuffType,
     )
 
     private fun ref(side: Side, position: Int, heroId: Int) =

@@ -244,7 +244,7 @@ class BattleEnginePlayableTest {
         val noBuff = BattleEngine.resolve(
             BattleRequest(
                 attacker = BattleTeam(listOf(hero(heroId = 1, position = 2, attack = 100, speed = 200))),
-                defender = BattleTeam(listOf(hero(heroId = 2, position = 2, defense = 50, speed = 50))),
+                defender = BattleTeam(listOf(hero(heroId = 2, position = 2, defense = 50, speed = 50, troops = 10_000))),
                 maxRounds = 1,
             ),
             repo,
@@ -252,18 +252,27 @@ class BattleEnginePlayableTest {
         )
         val withBuffSkill = BattleEngine.resolve(
             BattleRequest(
-                attacker = BattleTeam(listOf(hero(heroId = 100036, position = 2, attack = 100, speed = 200, skillIds = listOf(200036)))),
-                defender = BattleTeam(listOf(hero(heroId = 2, position = 2, defense = 50, speed = 50))),
+                attacker = BattleTeam(listOf(hero(heroId = 100036, position = 2, attack = 100, speed = 200, skillIds = listOf(200001)))),
+                defender = BattleTeam(listOf(hero(heroId = 2, position = 2, defense = 50, speed = 50, troops = 10_000))),
                 maxRounds = 3,
             ),
             repo,
             FixedBattleRandom(0),
         )
         val baseDmg = noBuff.events.filterIsInstance<BattleEvent.NormalAttack>().firstOrNull()?.damage ?: 0
-        val laterAttacks = withBuffSkill.events.filterIsInstance<BattleEvent.NormalAttack>()
-            .filter { it.source.heroId == BattleHeroId(100036) && it.round >= 2 }
+        val buffedAttacks = withBuffSkill.events.filterIsInstance<BattleEvent.NormalAttack>()
+            .filter { it.source.heroId == BattleHeroId(100036) }
+        val laterAttacks = buffedAttacks.filter { it.round >= 2 }
         assertTrue(laterAttacks.isNotEmpty(), "should find normal attack after round 1, events: ${withBuffSkill.events}")
-        assertTrue(laterAttacks.any { it.damage > baseDmg }, "stat buff should increase damage, base=$baseDmg, later=$laterAttacks")
+        assertTrue(
+            withBuffSkill.events.filterIsInstance<BattleEvent.StatChanged>()
+                .any { it.skillId == 200001 && it.target.heroId == BattleHeroId(100036) },
+            "configured skill must apply a real stat change",
+        )
+        assertTrue(
+            buffedAttacks.first().damage > baseDmg,
+            "configured stat buff should increase same-round damage, base=$baseDmg, buffed=$buffedAttacks",
+        )
     }
 
     @Test

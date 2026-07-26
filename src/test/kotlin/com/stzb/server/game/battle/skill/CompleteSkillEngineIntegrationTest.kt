@@ -20,6 +20,133 @@ class CompleteSkillEngineIntegrationTest {
     private val config = BattleConfigRepository.loadDefault()
 
     @Test
+    fun `complete engine routes fuwangyikou through its single plugin path`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100036, 100, listOf(200036), position = 0),
+                    hero(100001, 150, listOf(200012), position = 1),
+                    hero(100002, 200, listOf(200012), position = 2),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 0
+        }
+        val middle = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 1
+        }
+        val front = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 2
+        }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 200036,
+            currentSkillId = 200036,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        val commandEvents = engine.prepareBattle(context)
+
+        assertEquals(
+            setOf(middle, front),
+            engine.state.effectStore.effectsFor(middle)
+                .plus(engine.state.effectStore.effectsFor(front))
+                .filter { it.skillId == 200036 && it.effectId == 352 }
+                .mapTo(linkedSetOf()) { it.target },
+        )
+        assertEquals(
+            1,
+            commandEvents.filterIsInstance<BattleEvent.SkillTriggered>()
+                .count { it.skillId == 200036 },
+            "plugin and configured interpreter must not both execute 200036",
+        )
+
+        val attackBefore = engine.liveHero(front).stats.attack
+        val strategyBefore = engine.liveHero(front).stats.strategy
+        engine.trigger(
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context.copy(
+                round = 1,
+                source = front,
+                rootSkillId = 200012,
+                currentSkillId = 200012,
+                trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            ),
+        )
+
+        assertEquals(attackBefore + 11, engine.liveHero(front).stats.attack)
+        assertEquals(strategyBefore + 13, engine.liveHero(front).stats.strategy)
+    }
+
+    @Test
+    fun `prepared active completion also triggers fuwangyikou response`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100036, 100, listOf(200036), position = 0),
+                    hero(100001, 200, listOf(200031), position = 2),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10))),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 0
+        }
+        val actor = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 2
+        }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 200036,
+            currentSkillId = 200036,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+        engine.trigger(
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context.copy(
+                source = actor,
+                round = 1,
+                rootSkillId = 200031,
+                currentSkillId = 200031,
+                trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            ),
+        )
+        val attackBeforeCompletion = engine.liveHero(actor).stats.attack
+        val strategyBeforeCompletion = engine.liveHero(actor).stats.strategy
+
+        engine.trigger(
+            BattleTrigger.ACTION_BEFORE,
+            context.copy(
+                source = actor,
+                round = 2,
+                rootSkillId = 200031,
+                currentSkillId = 200031,
+                trigger = BattleTrigger.ACTION_BEFORE,
+            ),
+        )
+
+        assertEquals(attackBeforeCompletion + 11, engine.liveHero(actor).stats.attack)
+        assertEquals(strategyBeforeCompletion + 13, engine.liveHero(actor).stats.strategy)
+    }
+
+    @Test
     fun `configured battle executes skill phases around the action in exact order`() {
         val result = BattleEngine.resolve(
             BattleRequest(

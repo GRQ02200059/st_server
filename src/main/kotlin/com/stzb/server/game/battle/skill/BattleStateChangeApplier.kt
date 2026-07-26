@@ -330,7 +330,13 @@ class BattleStateChangeApplier(
         val origin: DamageOrigin?,
         val tag: DamageTag?,
         val sign: Int,
-    )
+    ) {
+        fun matches(change: TroopDamageChange): Boolean =
+            direction == DamageModifierChange.Direction.TAKEN &&
+                (school == null || school == change.school) &&
+                (origin == null || origin == change.origin) &&
+                (tag == null || tag in change.tags)
+    }
 
     private data class Redirection(
         val protectedTargets: List<BattleHeroRef>,
@@ -670,6 +676,25 @@ class BattleStateChangeApplier(
             change.skillId,
             change.effectId,
         )
+        activeEntries(damageModifiers)
+            .filter { (key, modifier) ->
+                key.target == change.target &&
+                    modifier.matches(change) &&
+                    state.effectStore.effectsFor(key.target)
+                        .singleOrNull { it.key() == key }
+                        ?.remainingHits != null
+            }
+            .map { it.first }
+            .forEach { key ->
+                synchronize(
+                    state.effectStore.consumeHit(
+                        target = key.target,
+                        effectId = key.effectId,
+                        source = key.source,
+                        detailId = key.detailId,
+                    ),
+                )
+            }
     }
 
     private fun applyRecovery(
@@ -725,14 +750,14 @@ class BattleStateChangeApplier(
             skillId = change.skillId,
             skillKind = SkillKind.COMMAND,
             rawSkillType = 2,
-            detailId = change.skillId * 10_000 + change.effectId,
+            detailId = change.detailId,
             effectId = change.effectId,
             category =
                 if (change.potency.value > 0) EffectCategory.BENEFICIAL else EffectCategory.HARMFUL,
             conflict = 0,
             replaceType = 0,
             bindFlag = 0,
-            maxStacks = 1,
+            maxStacks = change.maxStacks,
             delayRound = 0,
             delayHit = 0,
             availableRounds = change.durationRounds,
@@ -803,7 +828,7 @@ class BattleStateChangeApplier(
             skillId = change.skillId,
             skillKind = SkillKind.COMMAND,
             rawSkillType = 2,
-            detailId = change.skillId * 10_000 + change.effectId,
+            detailId = change.detailId,
             effectId = change.effectId,
             category =
                 when (change.direction) {
@@ -819,7 +844,7 @@ class BattleStateChangeApplier(
             delayRound = 0,
             delayHit = 0,
             availableRounds = change.durationRounds,
-            availableHit = 0,
+            availableHit = change.availableHits,
             clearPerHit = false,
             startBoundary = EffectStartBoundary.IMMEDIATE,
             potency = TypedBattlePotency.percent(change.percent),
