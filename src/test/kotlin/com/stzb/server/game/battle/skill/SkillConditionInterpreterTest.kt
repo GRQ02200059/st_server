@@ -82,7 +82,10 @@ class SkillConditionInterpreterTest {
                 1, 2, -2, 13, 19, 2099, 3100, 6000, -6000,
             ) ||
             code.field == SkillConditionField.CAST_CONDITION &&
-            code.value in setOf(104, 203, 205, 207, 303) ||
+            code.value in setOf(
+                104, 203, 205, 207, 303,
+                1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013,
+            ) ||
             code.field == SkillConditionField.CONDITION &&
             code.value in setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060) ||
             code.field == SkillConditionField.CAST_CONDITION &&
@@ -98,15 +101,15 @@ class SkillConditionInterpreterTest {
         assertEquals(
             listOf(
                 SpecialConditionRequirement(
-                    code = SkillConditionCode(
-                        skillId = 200003,
-                        field = SkillConditionField.CAST_CONDITION,
-                        value = 4013,
+                    SkillConditionCode(
+                        200024,
+                        SkillConditionField.CAST_CONDITION,
+                        6207,
                     ),
-                    owner = "skill.200003",
+                    "skill.200024",
                 ),
             ),
-            interpreter.compile(graph.detail(20000301)).conditions,
+            interpreter.compile(graph.detail(20002402)).conditions,
         )
         assertEquals(
             listOf(
@@ -345,6 +348,69 @@ class SkillConditionInterpreterTest {
                 SkillCondition.TargetPredicate.Kind.NOT_SPECIAL_TROOP_CATEGORY,
             ),
             interpreter.compile(graph.detail(20029751)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `verified attribute and berserk cast conditions preserve source versus target scope`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.StatComparison(
+                left = SkillCondition.StatRef(Subject.SOURCE, SkillCondition.CombatStat.ATTACK),
+                comparison = Comparison.GREATER_THAN_OR_EQUAL,
+                right = SkillCondition.StatRef(Subject.SOURCE, SkillCondition.CombatStat.STRATEGY),
+            ),
+            interpreter.compile(graph.detail(21329401)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.StatComparison(
+                left = SkillCondition.StatRef(Subject.SOURCE, SkillCondition.CombatStat.STRATEGY),
+                comparison = Comparison.GREATER_THAN,
+                right = SkillCondition.StatRef(Subject.SOURCE, SkillCondition.CombatStat.ATTACK),
+            ),
+            interpreter.compile(graph.detail(21329402)).conditions.single(),
+        )
+        assertTrue(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.ATTACK_NOT_LOWER_THAN_STRATEGY,
+            ) in interpreter.compile(graph.detail(20027304)).conditions,
+        )
+        assertTrue(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.STRATEGY_GREATER_THAN_ATTACK,
+            ) in interpreter.compile(graph.detail(20027305)).conditions,
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.STRATEGY_LOWER_THAN_SOURCE,
+            ),
+            interpreter.compile(graph.detail(21096804)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_BERSERK,
+            ),
+            interpreter.compile(graph.detail(21096805)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.SPEED_LOWER_THAN_SOURCE,
+            ),
+            interpreter.compile(graph.detail(21296113)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.SPEED_NOT_LOWER_THAN_SOURCE,
+            ),
+            interpreter.compile(graph.detail(21296114)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_CONFUSION_OR_BERSERK,
+            ),
+            interpreter.compile(graph.detail(20000301)).conditions.single(),
         )
     }
 
@@ -756,7 +822,7 @@ class SkillConditionInterpreterTest {
 
     @Test
     fun `unresolved plugin requirement throws in strict mode and becomes safe diagnostic`() {
-        val detail = effectRule(20000301, castCondition = 4013)
+        val detail = effectRule(20000301, castCondition = 6207)
         val graph = graph(rule(200003, detail))
         val context = context(skillId = 200003)
         val registry = BattleEffectRegistry.strict(graph).registerMetaEffects()
@@ -768,7 +834,7 @@ class SkillConditionInterpreterTest {
                 context,
             )
         }
-        assertTrue(strictError.message.orEmpty().contains("owner=skill.200003"))
+        assertTrue(strictError.message.orEmpty().contains("cast_condition=6207"))
 
         val safeContext = context(skillId = 200003)
         val safeResult = SkillRuleInterpreter.safe(
@@ -782,7 +848,7 @@ class SkillConditionInterpreterTest {
         )
 
         assertEquals("UNSUPPORTED_CONDITION", safeResult.diagnostics.single().code)
-        assertTrue(safeResult.diagnostics.single().reason.contains("cast_condition=4013"))
+        assertTrue(safeResult.diagnostics.single().reason.contains("cast_condition=6207"))
         assertTrue(safeResult.stateChanges.isEmpty())
     }
 

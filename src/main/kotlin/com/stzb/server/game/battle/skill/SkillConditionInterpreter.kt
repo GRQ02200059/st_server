@@ -72,6 +72,12 @@ sealed interface SkillCondition {
             MORALE_AT_OR_BELOW,
             SPECIAL_TROOP_CATEGORY,
             NOT_SPECIAL_TROOP_CATEGORY,
+            ATTACK_NOT_LOWER_THAN_STRATEGY,
+            STRATEGY_GREATER_THAN_ATTACK,
+            STRATEGY_LOWER_THAN_SOURCE,
+            HAS_BERSERK,
+            SPEED_LOWER_THAN_SOURCE,
+            SPEED_NOT_LOWER_THAN_SOURCE,
         }
     }
 
@@ -112,6 +118,23 @@ sealed interface SkillCondition {
             DISTINCT_BASE_ATTACK_RANGE,
         }
     }
+
+    enum class CombatStat {
+        ATTACK,
+        STRATEGY,
+        SPEED,
+    }
+
+    data class StatRef(
+        val subject: Subject,
+        val stat: CombatStat,
+    )
+
+    data class StatComparison(
+        val left: StatRef,
+        val comparison: Comparison,
+        val right: StatRef,
+    ) : SkillCondition
 
     data class HasEffect(
         val subject: Subject,
@@ -182,6 +205,7 @@ class CompiledSkillCondition internal constructor(
                 is SkillCondition.TroopRatio -> matchesTroopRatio(condition, context)
                 is SkillCondition.AttackRange -> matchesAttackRange(condition, context)
                 is SkillCondition.FormationRoster -> matchesFormationRoster(condition, context)
+                is SkillCondition.StatComparison -> matchesStatComparison(condition, context)
                 is SkillCondition.HasEffect -> matchesEffect(condition, context)
                 is SkillCondition.HasStatus -> matchesStatus(condition, context)
                 is SkillCondition.TriggerCount -> matchesTriggerCount(condition, context)
@@ -259,6 +283,29 @@ class CompiledSkillCondition internal constructor(
             }
         }
         return if (condition.negated) !matches else matches
+    }
+
+    private fun matchesStatComparison(
+        condition: SkillCondition.StatComparison,
+        context: SkillBattleContext,
+    ): Boolean {
+        val left = statValue(condition.left, context) ?: return false
+        val right = statValue(condition.right, context) ?: return false
+        return condition.comparison.matches(left.toLong(), right.toLong())
+    }
+
+    private fun statValue(
+        ref: SkillCondition.StatRef,
+        context: SkillBattleContext,
+    ): Int? {
+        val hero = subject(ref.subject, context) ?: return null
+        if (SkillBattleViewCapability.LIVE_STATE !in context.battleView.capabilities) return null
+        val stats = context.battleView.state(hero)?.stats ?: return null
+        return when (ref.stat) {
+            SkillCondition.CombatStat.ATTACK -> stats.attack
+            SkillCondition.CombatStat.STRATEGY -> stats.strategy
+            SkillCondition.CombatStat.SPEED -> stats.speed
+        }
     }
 
     private fun matchesEffect(
@@ -379,6 +426,9 @@ class SkillConditionInterpreter(
         builtInFormationConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInAttributeConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -450,6 +500,84 @@ class SkillConditionInterpreter(
         val precondition: Int,
         val condition: Int,
     )
+}
+
+private class BuiltInAttributeConditionPlugin(
+    override val id: String,
+    ownedConditions: Set<SkillConditionCode>,
+) : SpecialSkillPlugin {
+    override val ownedConditions: Set<SkillConditionCode> =
+        Collections.unmodifiableSet(LinkedHashSet(ownedConditions))
+
+    override fun compile(
+        code: SkillConditionCode,
+        rule: SkillEffectRule,
+    ): List<SkillCondition> =
+        listOf(
+            when (code.value) {
+                1103 -> sourceStatComparison(
+                    SkillCondition.CombatStat.ATTACK,
+                    Comparison.GREATER_THAN_OR_EQUAL,
+                    SkillCondition.CombatStat.STRATEGY,
+                )
+                1123 -> sourceStatComparison(
+                    SkillCondition.CombatStat.STRATEGY,
+                    Comparison.GREATER_THAN,
+                    SkillCondition.CombatStat.ATTACK,
+                )
+                3103 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.ATTACK_NOT_LOWER_THAN_STRATEGY,
+                )
+                3123 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.STRATEGY_GREATER_THAN_ATTACK,
+                )
+                2313 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.STRATEGY_LOWER_THAN_SOURCE,
+                )
+                4003 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.HAS_BERSERK,
+                )
+                2414 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.SPEED_LOWER_THAN_SOURCE,
+                )
+                2434 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.SPEED_NOT_LOWER_THAN_SOURCE,
+                )
+                4013 -> SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.HAS_CONFUSION_OR_BERSERK,
+                )
+                else -> error("Unsupported attribute condition $code")
+            },
+        )
+
+    private fun sourceStatComparison(
+        left: SkillCondition.CombatStat,
+        comparison: Comparison,
+        right: SkillCondition.CombatStat,
+    ) = SkillCondition.StatComparison(
+        SkillCondition.StatRef(Subject.SOURCE, left),
+        comparison,
+        SkillCondition.StatRef(Subject.SOURCE, right),
+    )
+}
+
+private fun builtInAttributeConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter {
+            it.field == SkillConditionField.CAST_CONDITION &&
+                it.value in ATTRIBUTE_CAST_CONDITIONS
+        }
+        .filterNot(overridden::contains)
+        .toSet()
+    return if (codes.isEmpty()) {
+        emptyList()
+    } else {
+        listOf(BuiltInAttributeConditionPlugin("builtin.attribute-condition", codes))
+    }
 }
 
 private class BuiltInFormationConditionPlugin(
@@ -797,6 +925,8 @@ private val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 7001, 18306)
 private val MORALE_TARGET_CONDITIONS = setOf(20160)
 private val ATTACK_RANGE_CONDITIONS = setOf(32002, 32011)
 private val FORMATION_PRECONDITIONS = setOf(1, 2, -2, 13, 19)
+private val ATTRIBUTE_CAST_CONDITIONS =
+    setOf(1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013)
 private const val FORMATION_HERO_COUNT = 3
 
 private fun defaultPendingPlugins(

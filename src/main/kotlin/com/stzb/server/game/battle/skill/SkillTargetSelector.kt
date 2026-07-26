@@ -74,6 +74,9 @@ class SkillTargetSelector {
             .filter { target ->
                 matchesStatusConditionTarget(raw.castCondition, raw.condition, context, target)
             }
+            .filter { target ->
+                matchesAttributeCastConditionTarget(raw.castCondition, context, target)
+            }
             .sortedWith(CLIENT_POSITION_ORDER)
 
         candidates = when (raw.selectType) {
@@ -337,9 +340,35 @@ class SkillTargetSelector {
             }
             4000 -> statuses.any(CONTROL_STATUSES::contains) ||
                 BERSERK_EFFECT_IDS.any { it in context.battleView.activeEffectIds(target) }
+            4003 -> BERSERK_EFFECT_IDS.any { it in context.battleView.activeEffectIds(target) }
+            4013 -> BattleStatus.CONFUSION in statuses || BERSERK_EFFECT_IDS.any {
+                it in context.battleView.activeEffectIds(target)
+            }
             7001 -> statuses.any(ONGOING_DAMAGE_STATUSES::contains)
             18306 -> BattleStatus.HEX in statuses
             else -> error("Unsupported status target condition=$statusCondition")
+        }
+    }
+
+    private fun matchesAttributeCastConditionTarget(
+        castCondition: Int,
+        context: SkillBattleContext,
+        target: BattleHeroRef,
+    ): Boolean {
+        if (castCondition !in ATTRIBUTE_TARGET_CAST_CONDITIONS) return true
+        val sourceStats = requireNotNull(context.battleView.state(context.source)) {
+            "Missing live state for ${context.source}"
+        }.stats
+        val targetStats = requireNotNull(context.battleView.state(target)) {
+            "Missing live state for $target"
+        }.stats
+        return when (castCondition) {
+            2313 -> targetStats.strategy < sourceStats.strategy
+            2414 -> targetStats.speed < sourceStats.speed
+            2434 -> targetStats.speed >= sourceStats.speed
+            3103 -> targetStats.attack >= targetStats.strategy
+            3123 -> targetStats.strategy > targetStats.attack
+            else -> error("Unsupported attribute cast condition=$castCondition")
         }
     }
 
@@ -396,7 +425,8 @@ class SkillTargetSelector {
         const val FRONT_POSITION = 2
         val HERO_ID_PRECONDITIONS = setOf(100003, 100010, 100479, 100661)
         val TROOP_RATIO_CONDITIONS = setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060)
-        val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 7001, 18306)
+        val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 4003, 4013, 7001, 18306)
+        val ATTRIBUTE_TARGET_CAST_CONDITIONS = setOf(2313, 2414, 2434, 3103, 3123)
         val SPECIAL_TROOP_CATEGORIES = setOf(
             SkillTroopCategory.BARBARIAN,
             SkillTroopCategory.RATTAN_ARMOR,

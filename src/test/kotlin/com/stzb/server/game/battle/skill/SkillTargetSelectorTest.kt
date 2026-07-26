@@ -95,6 +95,7 @@ class SkillTargetSelectorTest {
             currentTarget = enemyBase,
             previousTargets = emptyMap(),
             acceptedStateFilters = emptyMap(),
+            activeEffects = emptyMap(),
         )
         val context = context(soloView)
 
@@ -196,6 +197,7 @@ class SkillTargetSelectorTest {
             currentTarget = null,
             previousTargets = emptyMap(),
             acceptedStateFilters = emptyMap(),
+            activeEffects = emptyMap(),
         )
 
         assertEquals(
@@ -342,6 +344,53 @@ class SkillTargetSelectorTest {
         assertEquals(
             emptyList(),
             select(rule(selectType = 34, precondition = -6000), context),
+        )
+    }
+
+    @Test
+    fun `attribute cast conditions filter candidates using exact live combat stats`() {
+        val states = defaultStates().toMutableMap().apply {
+            put(source, state(attack = 80, strategy = 90, speed = 50))
+            put(enemyBase, state(attack = 110, strategy = 100, speed = 40))
+            put(enemyMiddle, state(attack = 70, strategy = 80, speed = 50))
+            put(enemyFront, state(attack = 70, strategy = 70, speed = 60))
+        }
+        val context = context(view(states = states, sourceRange = 5))
+
+        assertEquals(
+            listOf(enemyFront, enemyBase),
+            select(rule(selectType = 34, castCondition = 3103), context),
+        )
+        assertEquals(
+            listOf(enemyMiddle),
+            select(rule(selectType = 34, castCondition = 3123), context),
+        )
+        assertEquals(
+            listOf(enemyFront, enemyMiddle),
+            select(rule(selectType = 34, castCondition = 2313), context),
+        )
+        assertEquals(
+            listOf(enemyBase),
+            select(rule(selectType = 34, castCondition = 2414), context),
+        )
+        assertEquals(
+            listOf(enemyFront, enemyMiddle),
+            select(rule(selectType = 34, castCondition = 2434), context),
+        )
+    }
+
+    @Test
+    fun `berserk cast condition accepts only candidates with berserk effect`() {
+        val context = context(
+            view(
+                sourceRange = 5,
+                activeEffects = mapOf(enemyMiddle to setOf(503)),
+            ),
+        )
+
+        assertEquals(
+            listOf(enemyMiddle),
+            select(rule(selectType = 34, castCondition = 4003), context),
         )
     }
 
@@ -734,6 +783,7 @@ class SkillTargetSelectorTest {
         currentTarget: BattleHeroRef? = enemyMiddle,
         previousTargets: Map<BattleHeroRef, BattleHeroRef> = emptyMap(),
         acceptedStateFilters: Map<SkillTargetStateFilter, BattleHeroRef> = emptyMap(),
+        activeEffects: Map<BattleHeroRef, Set<Int>> = emptyMap(),
     ): SkillBattleView {
         val liveStates = states.toMutableMap()
         liveStates[source] = liveStates.getValue(source).copy(attackRange = sourceRange)
@@ -746,6 +796,7 @@ class SkillTargetSelectorTest {
             currentTarget = currentTarget,
             previousTargets = previousTargets,
             acceptedStateFilters = acceptedStateFilters,
+            activeEffects = activeEffects,
         )
     }
 
@@ -846,6 +897,7 @@ class SkillTargetSelectorTest {
         private val currentTarget: BattleHeroRef?,
         private val previousTargets: Map<BattleHeroRef, BattleHeroRef>,
         private val acceptedStateFilters: Map<SkillTargetStateFilter, BattleHeroRef>,
+        private val activeEffects: Map<BattleHeroRef, Set<Int>>,
     ) : SkillBattleView {
         override val capabilities: Set<SkillBattleViewCapability> =
             SkillBattleViewCapability.entries.toSet()
@@ -865,6 +917,6 @@ class SkillTargetSelectorTest {
             target: BattleHeroRef,
         ): Boolean = acceptedStateFilters[filter] == target
 
-        override fun activeEffectIds(ref: BattleHeroRef): Set<Int> = emptySet()
+        override fun activeEffectIds(ref: BattleHeroRef): Set<Int> = activeEffects[ref].orEmpty()
     }
 }
