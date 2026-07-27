@@ -32,6 +32,22 @@ data class EffectLifecycleResult(
 class BattleEffectStore {
     private val active = mutableMapOf<BattleHeroRef, MutableList<ActiveSkillEffect>>()
 
+    fun canApply(effect: ActiveSkillEffect): Boolean {
+        val incoming = effect.snapshot()
+        val conflict = active[incoming.target].orEmpty().firstOrNull { it.conflictsWith(incoming) }
+            ?: return true
+        return when (incoming.replaceType) {
+            STACK -> conflict.sameOrigin(incoming)
+            KEEP_EXISTING -> false
+            REPLACE_BY_STRENGTH ->
+                incoming.effectiveStrength > conflict.effectiveStrength ||
+                    incoming.effectiveStrength == conflict.effectiveStrength &&
+                    conflict.sameOrigin(incoming)
+            KEEP_EXISTING_ACROSS_SKILL_TYPES -> false
+            else -> error("ActiveSkillEffect validates replaceType")
+        }
+    }
+
     fun apply(effect: ActiveSkillEffect): EffectApplyResult {
         val incoming = effect.snapshot()
         val effects = active.getOrPut(incoming.target) { mutableListOf() }

@@ -726,6 +726,87 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `juxian reacts before successful ally increases and enemy decreases from round one`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100269, 100, listOf(200269), position = 2),
+                    hero(100017, 90, position = 1).copy(troops = 9_000),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100269) }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100017) }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        engine.state.mutable(ally).woundedTroops = 1_000
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = owner,
+            rootSkillId = 900000,
+            currentSkillId = 900000,
+            trigger = BattleTrigger.EFFECT_APPLYING,
+            battleView = engine.state.view,
+        )
+
+        val allyEvents = engine.applyChanges(
+            listOf(statChange(owner, ally, 101, 10)),
+            context,
+        )
+        val enemyEvents = engine.applyChanges(
+            listOf(statChange(owner, enemy, 201, -10)),
+            context,
+        )
+
+        assertTrue(allyEvents.filterIsInstance<BattleEvent.Recovery>().any { it.target == ally })
+        assertTrue(
+            enemyEvents.filterIsInstance<BattleEvent.SkillDamage>()
+                .any { it.skillId == 214269 && it.target == enemy },
+        )
+    }
+
+    @Test
+    fun `juxian does not react to setup round stat changes`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100269, 100, listOf(200269), position = 2),
+                    hero(100017, 90, position = 1).copy(troops = 9_000),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100269) }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100017) }
+        engine.state.mutable(ally).woundedTroops = 1_000
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 900000,
+            currentSkillId = 900000,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        val events = engine.applyChanges(
+            listOf(statChange(owner, ally, 101, 10)),
+            context,
+        )
+
+        assertTrue(events.none { it is BattleEvent.Recovery })
+    }
+
+    @Test
     fun `zhongke follows attack damage on its marked target at most twice`() {
         val request = BattleRequest(
             attacker = BattleTeam(
@@ -1617,6 +1698,25 @@ class CompleteSkillEngineIntegrationTest {
         tags = setOf(com.stzb.server.game.battle.DamageTag.ONGOING),
         skillId = 900000,
         effectId = 305,
+    )
+
+    private fun statChange(
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+        effectId: Int,
+        value: Int,
+    ) = BattleStatChange(
+        source = source,
+        target = target,
+        kind = when (effectId) {
+            101, 201 -> BattleStatChange.Kind.ATTACK
+            else -> error("Unsupported test stat effect $effectId")
+        },
+        potency = TypedBattlePotency.flat(value),
+        durationRounds = 1,
+        skillId = 900000,
+        effectId = effectId,
+        detailId = 900000 + effectId,
     )
 
     private fun configRule(

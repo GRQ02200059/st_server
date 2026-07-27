@@ -23,6 +23,21 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class BattleStateChangeApplierTest {
+    @Test
+    fun `effect store preflight matches accepted and rejected apply outcomes`() {
+        val store = BattleEffectStore()
+        val accepted = spec(304).copy(conflict = 304).toActiveSkillEffect()
+        val rejected = spec(304).copy(
+            source = BattleHeroRef(Side.ATTACKER, 1, BattleHeroId(100018)),
+            conflict = 304,
+        ).toActiveSkillEffect()
+
+        assertTrue(store.canApply(accepted))
+        assertTrue(store.apply(accepted).outcome != EffectApplyOutcome.REJECTED)
+        assertFalse(store.canApply(rejected))
+        assertEquals(EffectApplyOutcome.REJECTED, store.apply(rejected).outcome)
+    }
+
     private val source = BattleHeroRef(Side.ATTACKER, 2, BattleHeroId(1))
     private val target = BattleHeroRef(Side.DEFENDER, 2, BattleHeroId(2))
 

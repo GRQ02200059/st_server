@@ -373,6 +373,9 @@ class BattleStateChangeApplier(
         round: Int,
     ): BattleStateApplyResult = applyValidated(changes, round, delayedActivation = false)
 
+    fun willApply(change: BattleStatChange): Boolean =
+        state.effectStore.canApply(statEffect(change))
+
     fun applyActivated(
         change: ScheduledEffectActivationChange,
         due: SkillTimingDue,

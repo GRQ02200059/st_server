@@ -52,6 +52,7 @@ class SkillRuntimeStateTest {
                 "NORMAL_ATTACK_AFTER",
                 "DAMAGE_BEFORE",
                 "DAMAGE_AFTER",
+                "EFFECT_APPLYING",
                 "EFFECT_APPLIED",
                 "HURT_AFTER",
                 "RECOVERY_AFTER",

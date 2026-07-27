@@ -555,6 +555,9 @@ class SkillConditionInterpreter(
         builtInQixurulinStrategySplashPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInJuxianStatApplyingPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         builtInZhongkeDamageConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -1220,6 +1223,29 @@ private fun builtInQixurulinStrategySplashPlugins(
                 rule: SkillEffectRule,
             ): List<SkillCondition> =
                 listOf(SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER))
+        },
+    )
+}
+
+private fun builtInJuxianStatApplyingPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = setOf(
+        SkillConditionCode(210269, SkillConditionField.CONDITION, 25002),
+        SkillConditionCode(210269, SkillConditionField.CONDITION, 25003),
+    ).filterTo(linkedSetOf()) { it !in overridden }
+    if (codes.isEmpty() || graph.details.none { it.detailId == 21026901 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.juxian-stat-effect-applying"
+            override val ownedConditions: Set<SkillConditionCode> = codes
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.EFFECT_APPLYING))
         },
     )
 }

@@ -516,6 +516,32 @@ class DefaultCompleteSkillEngine private constructor(
         )
     }
 
+    private fun juxianStatApplyingResult(
+        change: BattleStatChange,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (context.round <= 0 || !applier.willApply(change)) return SkillExecutionResult.EMPTY
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200269 in state.liveHero(candidate).skillIds &&
+                (
+                    change.potency.value > 0 && candidate.side == change.target.side ||
+                        change.potency.value < 0 && candidate.side != change.target.side
+                    )
+        } ?: return SkillExecutionResult.EMPTY
+        val detailId = if (change.potency.value > 0) 21326901 else 21426901
+        return interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == detailId },
+            context.copy(
+                source = owner,
+                rootSkillId = 200269,
+                currentSkillId = detailId / 100,
+                trigger = BattleTrigger.EFFECT_APPLYING,
+            ),
+            preselectedTargets = listOf(change.target),
+        )
+    }
+
     private fun zhongkeDamageResult(
         output: BattleStateOutput.DamageDealt,
         context: SkillBattleContext,
@@ -1030,6 +1056,7 @@ class DefaultCompleteSkillEngine private constructor(
                         events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                     }
                 is BattleStatChange -> {
+                    events += apply(juxianStatApplyingResult(change, context), context)
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 }
                 is ClearReferencedEffectChange -> {
