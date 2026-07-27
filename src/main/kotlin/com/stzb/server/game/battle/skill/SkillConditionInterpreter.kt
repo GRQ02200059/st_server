@@ -181,6 +181,12 @@ sealed interface SkillCondition {
         val negated: Boolean = false,
     ) : SkillCondition
 
+    data class RuntimeMarker(
+        val subject: Subject,
+        val detailId: Int,
+        val negated: Boolean = false,
+    ) : SkillCondition
+
     sealed interface Unresolved : SkillCondition
 }
 
@@ -227,6 +233,7 @@ class CompiledSkillCondition internal constructor(
                 is SkillCondition.TriggerCount -> matchesTriggerCount(condition, context)
                 is SkillCondition.HeroId -> matchesHeroId(condition, context)
                 is SkillCondition.Country -> matchesCountry(condition, context)
+                is SkillCondition.RuntimeMarker -> matchesRuntimeMarker(condition, context)
                 is SkillCondition.TargetPredicate -> true
                 is SpecialConditionRequirement -> throw unresolved(condition, trigger)
             }
@@ -376,6 +383,15 @@ class CompiledSkillCondition internal constructor(
         if (SkillBattleViewCapability.HERO_METADATA !in context.battleView.capabilities) return false
         val matches = context.battleView.metadata(ref)?.country == condition.country
         return if (condition.negated) !matches else matches
+    }
+
+    private fun matchesRuntimeMarker(
+        condition: SkillCondition.RuntimeMarker,
+        context: SkillBattleContext,
+    ): Boolean {
+        val ref = subject(condition.subject, context) ?: return false
+        val present = context.runtime.hasMarker(ref, condition.detailId, context.round)
+        return if (condition.negated) !present else present
     }
 
     private fun subject(
@@ -660,6 +676,10 @@ private class BuiltInMarkerConditionPlugin(
                 SkillCondition.TargetPredicate.Kind.LACKS_DETAIL_MARKER,
                 value = 20024302,
             )
+            121079601 -> SkillCondition.RuntimeMarker(
+                Subject.SOURCE,
+                detailId = 21079601,
+            )
             121002401 -> SkillCondition.TargetPredicate(
                 SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
                 value = 21002401,
@@ -679,7 +699,7 @@ private fun builtInMarkerConditionPlugins(
             it.field == SkillConditionField.CAST_CONDITION &&
                 it.value in setOf(
                     320000301, 121002401, 321001701, 421001701,
-                    420024301, 420024302,
+                    420024301, 420024302, 121079601,
                 )
         }
         .filterNot(overridden::contains)

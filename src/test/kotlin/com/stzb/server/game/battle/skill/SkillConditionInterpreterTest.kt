@@ -99,7 +99,7 @@ class SkillConditionInterpreterTest {
             code.field == SkillConditionField.CAST_CONDITION &&
             code.value in setOf(
                 320000301, 121002401, 321001701, 421001701,
-                420024301, 420024302,
+                420024301, 420024302, 121079601,
             ) ||
             code.field == SkillConditionField.PRECONDITION &&
             code.value in setOf(18, -18) ||
@@ -682,6 +682,10 @@ class SkillConditionInterpreterTest {
                 20024302,
             ),
             interpreter.compile(graph.detail(21124301)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.RuntimeMarker(Subject.SOURCE, 21079601),
+            interpreter.compile(graph.detail(20079626)).conditions.single(),
         )
     }
 
