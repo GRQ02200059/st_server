@@ -526,6 +526,9 @@ class SkillConditionInterpreter(
         builtInHuangtianDamageConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInZhongkeDamageConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -1116,6 +1119,26 @@ private fun builtInHuangtianDamageConditionPlugins(
         object : SpecialSkillPlugin {
             override val id: String = "builtin.huangtian-own-hex-damage"
             override val ownedConditions: Set<SkillConditionCode> = codes
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER))
+        },
+    )
+}
+
+private fun builtInZhongkeDamageConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val code = SkillConditionCode(200268, SkillConditionField.CAST_CONDITION, 420026822)
+    if (code in overridden || graph.details.none { it.detailId == 20026822 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.zhongke-marked-attack-damage"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
 
             override fun compile(
                 code: SkillConditionCode,

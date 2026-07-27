@@ -6,9 +6,21 @@ import com.stzb.server.game.battle.Side
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SkillRuntimeStateTest {
+    @Test
+    fun `limited occurrences stop at their configured cap per owner and namespace`() {
+        val runtime = SkillRuntimeState()
+        val owner = BattleHeroRef(Side.ATTACKER, 2, BattleHeroId(100268))
+
+        assertTrue(runtime.consumeLimitedOccurrence(owner, "skill.200268.marked-attack", 2))
+        assertTrue(runtime.consumeLimitedOccurrence(owner, "skill.200268.marked-attack", 2))
+        assertFalse(runtime.consumeLimitedOccurrence(owner, "skill.200268.marked-attack", 2))
+        assertTrue(runtime.consumeLimitedOccurrence(owner, "other", 2))
+    }
+
     private val refA = ref(Side.ATTACKER, 0, 100017)
     private val refB = ref(Side.ATTACKER, 1, 100018)
 

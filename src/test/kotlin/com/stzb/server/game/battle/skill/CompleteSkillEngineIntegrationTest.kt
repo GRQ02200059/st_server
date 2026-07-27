@@ -546,6 +546,44 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `zhongke follows attack damage on its marked target at most twice`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100268, 100, listOf(200268), position = 2),
+                    hero(100017, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100268) }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100017) }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        engine.state.runtime.recordMarker(target, 20026811, 0, 1, 8)
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = ally,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.DAMAGE_AFTER,
+            battleView = engine.state.view,
+        )
+
+        val first = engine.applyNormalDamage(1, ally, target, 1, context)
+        val second = engine.applyNormalDamage(1, ally, target, 1, context)
+        val third = engine.applyNormalDamage(1, ally, target, 1, context)
+
+        assertTrue(first.filterIsInstance<BattleEvent.SkillDamage>().any { it.source == owner })
+        assertTrue(second.filterIsInstance<BattleEvent.SkillDamage>().any { it.source == owner })
+        assertTrue(third.filterIsInstance<BattleEvent.SkillDamage>().none { it.source == owner })
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(

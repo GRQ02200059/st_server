@@ -17,6 +17,7 @@ class SkillRuntimeState {
     private val triggerCounts = mutableMapOf<TriggerKey, Int>()
     private val sideTriggerCounts = mutableMapOf<SideTriggerKey, Int>()
     private val consumedThresholdGenerations = mutableMapOf<ThresholdKey, Int>()
+    private val limitedOccurrences = mutableMapOf<OccurrenceKey, Int>()
     private val pendingSignals = mutableMapOf<SignalKey, Int>()
     private val markers = mutableMapOf<MarkerKey, MarkerValue>()
     private val preparations = mutableListOf<PreparedSkill>()
@@ -101,6 +102,20 @@ class SkillRuntimeState {
         val consumed = consumedThresholdGenerations[key] ?: 0
         if (generation <= consumed) return false
         consumedThresholdGenerations[key] = generation
+        return true
+    }
+
+    fun consumeLimitedOccurrence(
+        owner: BattleHeroRef,
+        namespace: String,
+        limit: Int,
+    ): Boolean {
+        require(namespace.isNotBlank()) { "Occurrence namespace must not be blank" }
+        require(limit > 0) { "Occurrence limit must be positive: $limit" }
+        val key = OccurrenceKey(owner, namespace)
+        val consumed = limitedOccurrences[key] ?: 0
+        if (consumed >= limit) return false
+        limitedOccurrences[key] = consumed + 1
         return true
     }
 
@@ -288,6 +303,11 @@ class SkillRuntimeState {
     )
 
     private data class SignalKey(
+        val owner: BattleHeroRef,
+        val namespace: String,
+    )
+
+    private data class OccurrenceKey(
         val owner: BattleHeroRef,
         val namespace: String,
     )

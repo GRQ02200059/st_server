@@ -386,6 +386,42 @@ class DefaultCompleteSkillEngine private constructor(
         )
     }
 
+    private fun zhongkeDamageResult(
+        output: BattleStateOutput.DamageDealt,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (output.amount <= 0 ||
+            output.school != DamageSchool.PHYSICAL ||
+            output.skillId == 212268 ||
+            !state.runtime.hasMarker(output.target, 20026811, context.round)
+        ) {
+            return SkillExecutionResult.EMPTY
+        }
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side != output.target.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200268 in state.liveHero(candidate).skillIds
+        } ?: return SkillExecutionResult.EMPTY
+        if (!state.runtime.consumeLimitedOccurrence(
+                owner = owner,
+                namespace = "skill.200268.marked-attack",
+                limit = 2,
+            )
+        ) {
+            return SkillExecutionResult.EMPTY
+        }
+        return interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 21226811 },
+            context.copy(
+                source = owner,
+                rootSkillId = 200268,
+                currentSkillId = 212268,
+                trigger = BattleTrigger.DAMAGE_AFTER,
+            ),
+            preselectedTargets = listOf(output.target),
+        )
+    }
+
     fun secondaryTarget(
         source: BattleHeroRef,
         primary: BattleHeroRef,
@@ -877,6 +913,10 @@ class DefaultCompleteSkillEngine private constructor(
                 recordDamageThresholds(output.source, context)
                 events += apply(
                     huangtianDamageResult(output, damageContext),
+                    damageContext,
+                )
+                events += apply(
+                    zhongkeDamageResult(output, damageContext),
                     damageContext,
                 )
                 events += apply(

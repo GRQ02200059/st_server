@@ -145,6 +145,11 @@ class SkillConditionInterpreterTest {
                 420000802,
             )
             || code == SkillConditionCode(200008, SkillConditionField.CONDITION, 26636)
+            || code == SkillConditionCode(
+                200268,
+                SkillConditionField.CAST_CONDITION,
+                420026822,
+            )
             || code.field == SkillConditionField.PRECONDITION && code.value == 43
 
     @Test
@@ -565,6 +570,17 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER),
             interpreter.compile(graph.detail(20000802)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `zhongke follow up condition compiles to attack damage event`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER),
+            interpreter.compile(graph.detail(20026822)).conditions.single(),
         )
     }
 
