@@ -87,7 +87,10 @@ class DefaultCompleteSkillEngine private constructor(
             BattleTrigger.PURSUIT_ATTEMPT,
             -> attemptSkills(trigger, scoped)
             BattleTrigger.ACTION_BEFORE ->
-                timing.onAction(scoped) + zhengshiActionResult(scoped) + dingjunActionResult(scoped)
+                timing.onAction(scoped) +
+                    zhengshiActionResult(scoped) +
+                    dingjunActionResult(scoped) +
+                    fenjiActionResult(scoped)
             BattleTrigger.BATTLE_PASSIVE,
             BattleTrigger.BATTLE_COMMAND,
             -> executeBattleSkills(trigger, scoped)
@@ -304,6 +307,32 @@ class DefaultCompleteSkillEngine private constructor(
                 currentSkillId = 200293,
                 trigger = BattleTrigger.ACTION_BEFORE,
             ),
+        )
+    }
+
+    private fun fenjiActionResult(context: SkillBattleContext): SkillExecutionResult {
+        if (200961 !in state.liveHero(context.source).skillIds) return SkillExecutionResult.EMPTY
+        val listenerContext = context.copy(
+            rootSkillId = 200961,
+            currentSkillId = 200961,
+            trigger = BattleTrigger.ACTION_BEFORE,
+        )
+        var result = interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 20096102 },
+            listenerContext,
+            preselectedTargets = listOf(context.source),
+        )
+        result += interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 20096103 },
+            listenerContext,
+        )
+        val accumulated = state.effectStore.effectsFor(context.source)
+            .filter { it.detailId == 21396101 }
+            .sumOf { it.effectiveStrength }
+        if (accumulated < 40) return result
+        return result + interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 20096101 },
+            listenerContext,
         )
     }
 

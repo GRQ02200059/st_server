@@ -697,6 +697,45 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `fenji attacks at forty percent and clears its accumulated damage buff`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100961, 200, listOf(200961), position = 2),
+                    hero(100001, 20, position = 1),
+                    hero(100002, 10, position = 0),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 30, position = 2),
+                    hero(200002, 25, position = 1),
+                    hero(200003, 15, position = 0),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100961) }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = owner,
+            rootSkillId = 200961,
+            currentSkillId = 200961,
+            trigger = BattleTrigger.ACTION_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        val events = engine.trigger(BattleTrigger.ACTION_BEFORE, context)
+
+        assertTrue(events.any { it is BattleEvent.SkillTriggered && it.skillId == 211961 })
+        assertTrue(engine.state.effectStore.effectsFor(owner).none { it.detailId == 21396101 })
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(

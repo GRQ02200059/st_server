@@ -166,6 +166,7 @@ class SkillConditionInterpreterTest {
             )
             || code == SkillConditionCode(200293, SkillConditionField.CONDITION, 5001)
             || code == SkillConditionCode(201006, SkillConditionField.CONDITION, 24001)
+            || code == SkillConditionCode(200961, SkillConditionField.CONDITION, 5005)
             || code.field == SkillConditionField.PRECONDITION && code.value == 43
 
     @Test
@@ -723,6 +724,17 @@ class SkillConditionInterpreterTest {
                 interpreter.compile(graph.detail(detailId)).conditions.single(),
             )
         }
+    }
+
+    @Test
+    fun `fenji threshold branch binds to owner action before`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.EventTrigger(BattleTrigger.ACTION_BEFORE),
+            interpreter.compile(graph.detail(20096101)).conditions.single(),
+        )
     }
 
     @Test

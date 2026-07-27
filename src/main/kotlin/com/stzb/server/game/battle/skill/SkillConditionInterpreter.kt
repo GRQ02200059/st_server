@@ -564,6 +564,9 @@ class SkillConditionInterpreter(
         builtInTongchouHurtPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInFenjiActionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -1305,6 +1308,26 @@ private fun builtInTongchouHurtPlugins(
                 rule: SkillEffectRule,
             ): List<SkillCondition> =
                 listOf(SkillCondition.EventTrigger(BattleTrigger.HURT_AFTER))
+        },
+    )
+}
+
+private fun builtInFenjiActionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val code = SkillConditionCode(200961, SkillConditionField.CONDITION, 5005)
+    if (code in overridden || graph.details.none { it.detailId == 20096101 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.fenji-owner-action"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.ACTION_BEFORE))
         },
     )
 }
