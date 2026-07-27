@@ -906,6 +906,10 @@ private class BuiltInMarkerConditionPlugin(
                 SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
                 value = 21002401,
             )
+            327002401 -> SkillCondition.RuntimeMarker(
+                Subject.SOURCE,
+                detailId = 27002401,
+            )
             else -> error("Unsupported marker condition $code")
         },
     )
@@ -940,6 +944,7 @@ private fun builtInMarkerConditionPlugins(
                     320092602, 221095712,
                     121196601, 421196601,
                     220028331,
+                    327002401,
                 )
         }
         .filterNot(overridden::contains)
