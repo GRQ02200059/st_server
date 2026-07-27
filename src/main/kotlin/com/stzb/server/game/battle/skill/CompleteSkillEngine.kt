@@ -631,10 +631,31 @@ class DefaultCompleteSkillEngine private constructor(
         result.outputs.filterIsInstance<BattleStateOutput.TroopsRecovered>()
             .filter { it.amount > 0 }
             .forEach { output ->
-                state.runtime.recordBattleTriggerOccurrence(
+                val recoveryCount = state.runtime.recordBattleTriggerOccurrence(
                     output.source,
                     BattleTrigger.RECOVERY_AFTER,
                 )
+                if (
+                    200016 in state.liveHero(output.source).skillIds &&
+                    state.runtime.consumeThreshold(
+                        owner = output.source,
+                        namespace = "skill.200016.actual-recovery",
+                        count = recoveryCount,
+                        threshold = 3,
+                    )
+                ) {
+                    val listenerContext = context.copy(
+                        source = output.source,
+                        rootSkillId = 200016,
+                        currentSkillId = 200016,
+                        trigger = BattleTrigger.RECOVERY_AFTER,
+                    )
+                    val listenerDetail = graph.details.single { it.detailId == 20001602 }
+                    events += apply(
+                        interpreter.executeDetailForEngine(listenerDetail, listenerContext),
+                        listenerContext,
+                    )
+                }
             }
         events += result.outputs
             .filterNot { it is BattleStateOutput.DamageDealt || it is BattleStateOutput.HurtReceived }

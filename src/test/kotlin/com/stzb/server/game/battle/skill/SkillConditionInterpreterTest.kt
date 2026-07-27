@@ -128,7 +128,8 @@ class SkillConditionInterpreterTest {
             code.field == SkillConditionField.CAST_CONDITION &&
             code.value in setOf(500, 4000, 7001) ||
             code.field == SkillConditionField.CONDITION &&
-            code.value in setOf(20160, 32002, 32011, 18306)
+            code.value in setOf(20160, 32002, 32011, 18306) ||
+            code == SkillConditionCode(200016, SkillConditionField.CONDITION, 5003)
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -1143,6 +1144,17 @@ class SkillConditionInterpreterTest {
         assertEquals(1, runtime.count(SOURCE, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1))
         assertEquals(2, runtime.count(SOURCE, BattleTrigger.NORMAL_ATTACK_AFTER))
         assertEquals(1, runtime.count(SOURCE, BattleTrigger.HURT_AFTER))
+    }
+
+    @Test
+    fun `huangyi recovery threshold detail is restricted to recovery events`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.EventTrigger(BattleTrigger.RECOVERY_AFTER),
+            interpreter.compile(graph.detail(20001602)).conditions.single(),
+        )
     }
 
     @Test

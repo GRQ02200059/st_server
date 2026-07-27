@@ -187,6 +187,10 @@ sealed interface SkillCondition {
         val negated: Boolean = false,
     ) : SkillCondition
 
+    data class EventTrigger(
+        val trigger: BattleTrigger,
+    ) : SkillCondition
+
     sealed interface Unresolved : SkillCondition
 }
 
@@ -234,6 +238,7 @@ class CompiledSkillCondition internal constructor(
                 is SkillCondition.HeroId -> matchesHeroId(condition, context)
                 is SkillCondition.Country -> matchesCountry(condition, context)
                 is SkillCondition.RuntimeMarker -> matchesRuntimeMarker(condition, context)
+                is SkillCondition.EventTrigger -> trigger == condition.trigger
                 is SkillCondition.TargetPredicate -> true
                 is SpecialConditionRequirement -> throw unresolved(condition, trigger)
             }
@@ -479,6 +484,9 @@ class SkillConditionInterpreter(
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
         builtInMarkerConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
+        builtInRecoveryEventConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
@@ -868,6 +876,26 @@ private fun builtInMarkerConditionPlugins(
         .filterNot(overridden::contains)
         .toSet()
     return if (codes.isEmpty()) emptyList() else listOf(BuiltInMarkerConditionPlugin(codes))
+}
+
+private fun builtInRecoveryEventConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val code = SkillConditionCode(200016, SkillConditionField.CONDITION, 5003)
+    if (code in overridden || graph.details.none { it.detailId == 20001602 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.actual-recovery-event"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.RECOVERY_AFTER))
+        },
+    )
 }
 
 private class BuiltInAttributeConditionPlugin(
