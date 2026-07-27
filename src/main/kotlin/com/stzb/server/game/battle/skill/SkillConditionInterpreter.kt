@@ -501,6 +501,9 @@ class SkillConditionInterpreter(
         builtInAttemptEventConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInZhengshiEventConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -933,6 +936,33 @@ private fun builtInAttemptEventConditionPlugins(
                         ),
                     ),
                 )
+        },
+    )
+}
+
+private fun builtInZhengshiEventConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val mappings = mapOf(
+        SkillConditionCode(200244, SkillConditionField.CONDITION, 5003) to
+            BattleTrigger.DAMAGE_AFTER,
+        SkillConditionCode(200244, SkillConditionField.CONDITION, 5005) to
+            BattleTrigger.ACTION_BEFORE,
+    ).filterKeys { code ->
+        code !in overridden && graph.details.any { it.detailId / 100 == code.skillId }
+    }
+    if (mappings.isEmpty()) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.zhengshi-event-boundaries"
+            override val ownedConditions: Set<SkillConditionCode> = mappings.keys
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(mappings.getValue(code)))
         },
     )
 }

@@ -155,6 +155,18 @@ class SkillRuntimeStateTest {
         assertEquals(true, state.consumeThreshold(refB, "damage", count = 3, threshold = 3))
     }
 
+    @Test
+    fun `pending signals wait until their ready round and consume once`() {
+        val state = SkillRuntimeState()
+
+        state.scheduleSignal(refA, "zhengshi", readyRound = 3)
+
+        assertEquals(false, state.consumeSignal(refA, "zhengshi", round = 2))
+        assertEquals(true, state.consumeSignal(refA, "zhengshi", round = 3))
+        assertEquals(false, state.consumeSignal(refA, "zhengshi", round = 3))
+        assertEquals(false, state.consumeSignal(refB, "zhengshi", round = 3))
+    }
+
     @Suppress("DEPRECATION")
     @Test
     fun `recordTrigger remains a compatibility alias for the explicit battle occurrence contract`() {

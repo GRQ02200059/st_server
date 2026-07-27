@@ -13,6 +13,8 @@ import com.stzb.server.game.battle.DamageSchool
 import com.stzb.server.game.battle.DamageTag
 import com.stzb.server.game.battle.SkillKind
 
+private const val ZHENGSHI_SIGNAL = "skill.200244.next-action"
+
 interface CompleteSkillEngine {
     fun prepareBattle(context: SkillBattleContext): List<BattleEvent>
     fun trigger(trigger: BattleTrigger, context: SkillBattleContext): List<BattleEvent>
@@ -84,7 +86,8 @@ class DefaultCompleteSkillEngine private constructor(
             BattleTrigger.ACTIVE_SKILL_ATTEMPT,
             BattleTrigger.PURSUIT_ATTEMPT,
             -> attemptSkills(trigger, scoped)
-            BattleTrigger.ACTION_BEFORE -> timing.onAction(scoped)
+            BattleTrigger.ACTION_BEFORE ->
+                timing.onAction(scoped) + zhengshiActionResult(scoped)
             BattleTrigger.BATTLE_PASSIVE,
             BattleTrigger.BATTLE_COMMAND,
             -> executeBattleSkills(trigger, scoped)
@@ -177,6 +180,34 @@ class DefaultCompleteSkillEngine private constructor(
 
     fun recordTarget(source: BattleHeroRef, target: BattleHeroRef) {
         history.record(source, target)
+    }
+
+    internal fun recordDamageThresholds(
+        damageSource: BattleHeroRef,
+        context: SkillBattleContext,
+    ) {
+        state.runtime.recordBattleTriggerOccurrence(damageSource, BattleTrigger.DAMAGE_AFTER)
+        val damageCount = state.runtime.sideCount(damageSource.side, BattleTrigger.DAMAGE_AFTER)
+        state.view.heroes()
+            .filter { owner ->
+                owner.side != damageSource.side &&
+                    200244 in state.liveHero(owner).skillIds
+            }
+            .forEach { owner ->
+                if (state.runtime.consumeThreshold(
+                        owner = owner,
+                        namespace = "skill.200244.enemy-damage",
+                        count = damageCount,
+                        threshold = 15,
+                    )
+                ) {
+                    state.runtime.scheduleSignal(
+                        owner,
+                        ZHENGSHI_SIGNAL,
+                        readyRound = context.round + 1,
+                    )
+                }
+            }
     }
 
     fun secondaryTarget(
@@ -346,6 +377,18 @@ class DefaultCompleteSkillEngine private constructor(
         return interpreter.executeDetailForEngine(
             graph.details.single { it.detailId == 20025301 },
             context.copy(rootSkillId = 200253, currentSkillId = 200253),
+        )
+    }
+
+    private fun zhengshiActionResult(context: SkillBattleContext): SkillExecutionResult {
+        if (200244 !in state.liveHero(context.source).skillIds ||
+            !state.runtime.consumeSignal(context.source, ZHENGSHI_SIGNAL, context.round)
+        ) {
+            return SkillExecutionResult.EMPTY
+        }
+        return interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 20024406 },
+            context.copy(rootSkillId = 200244, currentSkillId = 200244),
         )
     }
 
@@ -653,7 +696,7 @@ class DefaultCompleteSkillEngine private constructor(
         result.outputs.filterIsInstance<BattleStateOutput.DamageDealt>().forEach { output ->
             events += BattleStateApplyResult(listOf(output)).toEvents(context.round)
             val damageContext = context.copy(source = output.source, trigger = BattleTrigger.DAMAGE_AFTER)
-            state.runtime.recordBattleTriggerOccurrence(output.source, BattleTrigger.DAMAGE_AFTER)
+            recordDamageThresholds(output.source, context)
             events += trigger(BattleTrigger.DAMAGE_AFTER, damageContext)
             val hurtContext = context.copy(source = output.target, trigger = BattleTrigger.HURT_AFTER)
             state.runtime.recordBattleTriggerOccurrence(output.target, BattleTrigger.HURT_AFTER)

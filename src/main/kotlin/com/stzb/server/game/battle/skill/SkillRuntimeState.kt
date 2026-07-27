@@ -17,6 +17,7 @@ class SkillRuntimeState {
     private val triggerCounts = mutableMapOf<TriggerKey, Int>()
     private val sideTriggerCounts = mutableMapOf<SideTriggerKey, Int>()
     private val consumedThresholdGenerations = mutableMapOf<ThresholdKey, Int>()
+    private val pendingSignals = mutableMapOf<SignalKey, Int>()
     private val markers = mutableMapOf<MarkerKey, MarkerValue>()
     private val preparations = mutableListOf<PreparedSkill>()
     private val delayedEffects = mutableListOf<DelayedEffect>()
@@ -95,6 +96,31 @@ class SkillRuntimeState {
         val consumed = consumedThresholdGenerations[key] ?: 0
         if (generation <= consumed) return false
         consumedThresholdGenerations[key] = generation
+        return true
+    }
+
+    fun scheduleSignal(
+        owner: BattleHeroRef,
+        namespace: String,
+        readyRound: Int,
+    ) {
+        require(namespace.isNotBlank()) { "Signal namespace must not be blank" }
+        require(readyRound >= 0) { "Signal ready round must be non-negative: $readyRound" }
+        val key = SignalKey(owner, namespace)
+        pendingSignals[key] = minOf(pendingSignals[key] ?: readyRound, readyRound)
+    }
+
+    fun consumeSignal(
+        owner: BattleHeroRef,
+        namespace: String,
+        round: Int,
+    ): Boolean {
+        require(namespace.isNotBlank()) { "Signal namespace must not be blank" }
+        require(round >= 0) { "Signal round must be non-negative: $round" }
+        val key = SignalKey(owner, namespace)
+        val readyRound = pendingSignals[key] ?: return false
+        if (round < readyRound) return false
+        pendingSignals.remove(key)
         return true
     }
 
@@ -254,6 +280,11 @@ class SkillRuntimeState {
         val owner: BattleHeroRef,
         val namespace: String,
         val threshold: Int,
+    )
+
+    private data class SignalKey(
+        val owner: BattleHeroRef,
+        val namespace: String,
     )
 
     private data class MarkerKey(

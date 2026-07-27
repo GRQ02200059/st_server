@@ -199,6 +199,49 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `zhengshi waits until the owners next action after fifteen enemy damage events`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100701, 100, listOf(200244), position = 2)),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val roundOne = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = enemy,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.DAMAGE_AFTER,
+            battleView = engine.state.view,
+        )
+        repeat(15) { engine.recordDamageThresholds(enemy, roundOne) }
+
+        assertTrue(
+            engine.trigger(
+                BattleTrigger.ACTION_BEFORE,
+                roundOne.copy(source = owner, trigger = BattleTrigger.ACTION_BEFORE),
+            ).none { it is BattleEvent.SkillTriggered && it.skillId == 213244 },
+        )
+        val roundTwo = roundOne.copy(
+            round = 2,
+            source = owner,
+            trigger = BattleTrigger.ACTION_BEFORE,
+        )
+        val first = engine.trigger(BattleTrigger.ACTION_BEFORE, roundTwo)
+        val repeated = engine.trigger(BattleTrigger.ACTION_BEFORE, roundTwo)
+
+        assertEquals(1, first.filterIsInstance<BattleEvent.SkillTriggered>().count { it.skillId == 213244 })
+        assertTrue(repeated.none { it is BattleEvent.SkillTriggered && it.skillId == 213244 })
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(
