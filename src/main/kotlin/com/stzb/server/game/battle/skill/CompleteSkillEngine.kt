@@ -585,13 +585,7 @@ class DefaultCompleteSkillEngine private constructor(
                 is MetaEffectChange,
                 is MoraleEffectChange,
                 -> Unit
-                is MarkerEffectChange -> state.runtime.recordMarker(
-                    target = change.target,
-                    detailId = change.detailId,
-                    value = change.marker,
-                    appliedRound = context.round,
-                    durationRounds = change.parameters.availableRounds,
-                )
+                is MarkerEffectChange -> Unit
                 is DamageModifierChange ->
                     if (change.durationRounds > 0) {
                         events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
@@ -600,9 +594,6 @@ class DefaultCompleteSkillEngine private constructor(
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 }
                 is ClearReferencedEffectChange -> {
-                    if (change.referencedEffectId == 77) {
-                        state.runtime.removeMarker(change.target, change.referencedDetailId)
-                    }
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 }
                 is ReduceReferencedEffectUseChange,

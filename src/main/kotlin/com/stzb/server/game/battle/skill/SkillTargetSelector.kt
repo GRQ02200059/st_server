@@ -380,10 +380,10 @@ class SkillTargetSelector {
         target: BattleHeroRef,
     ): Boolean {
         if (castCondition !in ATTRIBUTE_TARGET_CAST_CONDITIONS) return true
-        val sourceStats = requireNotNull(context.battleView.state(context.source)) {
+        val sourceStats = requireNotNull(conditionState(context, context.source)) {
             "Missing live state for ${context.source}"
         }.stats
-        val targetStats = requireNotNull(context.battleView.state(target)) {
+        val targetStats = requireNotNull(conditionState(context, target)) {
             "Missing live state for $target"
         }.stats
         return when (castCondition) {
@@ -399,6 +399,16 @@ class SkillTargetSelector {
             else -> error("Unsupported attribute cast condition=$castCondition")
         }
     }
+
+    private fun conditionState(
+        context: SkillBattleContext,
+        ref: BattleHeroRef,
+    ): SkillBattleHeroState? =
+        if (SkillBattleViewCapability.LIVE_STATE in context.battleView.capabilities) {
+            context.battleView.state(ref)
+        } else {
+            context.battleView.entryState(ref)
+        }
 
     private fun matchesMarkerCastConditionTarget(
         castCondition: Int,

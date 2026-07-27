@@ -76,6 +76,42 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `same cast marker branches observe and consume earlier detail markers`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100003, 100, listOf(200003), position = 2)),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 10, position = 2).copy(
+                        activeStatuses = setOf(com.stzb.server.game.battle.BattleStatus.CONFUSION),
+                    ),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        engine.recordTarget(source, target)
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 200003,
+            currentSkillId = 200003,
+            trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            battleView = engine.state.view,
+        )
+
+        engine.trigger(BattleTrigger.ACTIVE_SKILL_ATTEMPT, context)
+
+        assertEquals(false, engine.state.runtime.hasMarker(target, 20000301, round = 1))
+    }
+
+    @Test
     fun `safe production engine executes known conditions instead of suppressing every conditional detail`() {
         val request = BattleRequest(
             attacker = BattleTeam(

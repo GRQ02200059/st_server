@@ -307,6 +307,25 @@ class SkillRuleInterpreter private constructor(
                 preselectedTargets = preselectedTargets,
                 valueOverride = valueOverride,
             )
+            execution.stateChanges.forEach { change ->
+                when (change) {
+                    is MarkerEffectChange -> context.runtime.recordMarker(
+                        target = change.target,
+                        detailId = change.detailId,
+                        value = change.marker,
+                        appliedRound = context.round,
+                        durationRounds = change.parameters.availableRounds,
+                    )
+                    is ClearReferencedEffectChange ->
+                        if (change.referencedEffectId == 77) {
+                            context.runtime.removeMarker(
+                                change.target,
+                                change.referencedDetailId,
+                            )
+                        }
+                    else -> Unit
+                }
+            }
             var result = SkillExecutionResult.immutable(
                 stateChanges = execution.stateChanges,
                 events = execution.events.map { BattleOutputEvent(context.rootSkillId, it) },
