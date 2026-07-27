@@ -322,9 +322,13 @@ class BattleStateChangeApplierTest {
                 potency = TypedBattlePotency.rate(500),
             ),
         )
-        fixture.applier.apply(listOf(accepted, rejected), round = 0)
+        val applied = fixture.applier.apply(listOf(accepted, rejected), round = 0)
 
         assertEquals(1, fixture.state.effectStore.effectsFor(target).size)
+        assertEquals(
+            listOf(accepted.spec),
+            applied.outputs.filterIsInstance<BattleStateOutput.EffectApplied>().map { it.spec },
+        )
         assertTrue(BattleStatus.PANIC in requireNotNull(fixture.state.view.state(target)).statuses)
         val firstTick = fixture.applier.onRoundStart(1)
             .outputs.filterIsInstance<BattleStateOutput.DamageDealt>().single()

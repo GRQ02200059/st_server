@@ -429,6 +429,40 @@ class DefaultCompleteSkillEngine private constructor(
         )
     }
 
+    private fun xianmingOngoingDamageResult(
+        output: BattleStateOutput.DamageDealt,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (output.amount <= 0 || DamageTag.ONGOING !in output.tags) {
+            return SkillExecutionResult.EMPTY
+        }
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side != output.target.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200254 in state.liveHero(candidate).skillIds
+        } ?: return SkillExecutionResult.EMPTY
+        if (state.runtime.hasMarker(output.target, 21125401, context.round)) {
+            return SkillExecutionResult.EMPTY
+        }
+        state.runtime.recordMarker(
+            target = output.target,
+            detailId = 21125401,
+            value = 1,
+            appliedRound = context.round,
+            durationRounds = 1,
+        )
+        return interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 21225401 },
+            context.copy(
+                source = owner,
+                rootSkillId = 200254,
+                currentSkillId = 212254,
+                trigger = BattleTrigger.DAMAGE_AFTER,
+            ),
+            preselectedTargets = listOf(output.target),
+        )
+    }
+
     private fun zhongkeDamageResult(
         output: BattleStateOutput.DamageDealt,
         context: SkillBattleContext,
@@ -981,6 +1015,10 @@ class DefaultCompleteSkillEngine private constructor(
                     damageContext,
                 )
                 events += apply(
+                    xianmingOngoingDamageResult(output, damageContext),
+                    damageContext,
+                )
+                events += apply(
                     zhongkeDamageResult(output, damageContext),
                     damageContext,
                 )
@@ -1052,6 +1090,27 @@ class DefaultCompleteSkillEngine private constructor(
                     )
                 }
             }
+        result.outputs.filterIsInstance<BattleStateOutput.EffectApplied>()
+            .filter { context.round >= 3 }
+            .forEach { output ->
+                val owner = state.view.heroes().firstOrNull { candidate ->
+                    candidate.side != output.spec.target.side &&
+                        state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                        200254 in state.liveHero(candidate).skillIds
+                }
+                if (owner != null) {
+                    val appliedContext = context.copy(
+                        source = owner,
+                        rootSkillId = 200254,
+                        currentSkillId = 214254,
+                        trigger = BattleTrigger.EFFECT_APPLIED,
+                    )
+                    events += processDamageOutputs(
+                        applier.triggerAppliedOngoingDamage(output.spec, context.round),
+                        appliedContext,
+                    )
+                }
+            }
         events += result.outputs
             .filterNot { it is BattleStateOutput.DamageDealt || it is BattleStateOutput.HurtReceived }
             .let(::BattleStateApplyResult)
@@ -1091,6 +1150,7 @@ class DefaultCompleteSkillEngine private constructor(
     private fun BattleStateApplyResult.toEvents(round: Int): List<BattleEvent> =
         outputs.flatMap { output ->
             when (output) {
+                is BattleStateOutput.EffectApplied -> emptyList()
                 is BattleStateOutput.DamageDealt -> {
                     val damageEvent: BattleEvent =
                         if (output.skillId == 0) {

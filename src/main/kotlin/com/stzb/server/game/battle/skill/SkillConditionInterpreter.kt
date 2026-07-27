@@ -549,6 +549,9 @@ class SkillConditionInterpreter(
         builtInHuangtianDamageConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInXianmingEffectAppliedPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         builtInZhongkeDamageConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -1171,6 +1174,29 @@ private fun builtInHuangtianDamageConditionPlugins(
                 rule: SkillEffectRule,
             ): List<SkillCondition> =
                 listOf(SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER))
+        },
+    )
+}
+
+private fun builtInXianmingEffectAppliedPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val code = SkillConditionCode(214254, SkillConditionField.CONDITION, 25011)
+    if (code in overridden || graph.details.none { it.detailId == 21425401 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.xianming-ongoing-effect-applied"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(
+                    SkillCondition.RoundRange(3, Int.MAX_VALUE),
+                    SkillCondition.EventTrigger(BattleTrigger.EFFECT_APPLIED),
+                )
         },
     )
 }

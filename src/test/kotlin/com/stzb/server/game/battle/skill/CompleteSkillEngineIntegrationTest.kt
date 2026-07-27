@@ -546,6 +546,128 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `xianming follows only the first ongoing damage suffered by each enemy in a round`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100784, 100, listOf(200254), position = 2)),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 20, position = 2),
+                    hero(200002, 10, position = 1),
+                ),
+            ),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val targets = engine.state.view.heroes().filter { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.DAMAGE_AFTER,
+            battleView = engine.state.view,
+        )
+
+        val events = buildList {
+            repeat(2) {
+                addAll(
+                    engine.applyChanges(
+                        listOf(ongoingHit(owner, targets[0])),
+                        context,
+                    ),
+                )
+            }
+            addAll(
+                engine.applyChanges(
+                    listOf(ongoingHit(owner, targets[1])),
+                    context,
+                ),
+            )
+        }
+
+        assertEquals(
+            2,
+            events.filterIsInstance<BattleEvent.SkillDamage>().count { it.skillId == 212254 },
+        )
+    }
+
+    @Test
+    fun `xianming immediately ticks an accepted ongoing effect from round three`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100784, 100, listOf(200254), position = 2)),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 3,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val before = requireNotNull(engine.state.view.state(target)).troops
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 3,
+            source = owner,
+            rootSkillId = 200254,
+            currentSkillId = 200254,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        engine.applyChanges(
+            listOf(ongoingDamage(owner, target, detailId = 900011)),
+            context,
+        )
+
+        assertTrue(requireNotNull(engine.state.view.state(target)).troops < before)
+    }
+
+    @Test
+    fun `xianming does not immediately tick a conflict rejected ongoing effect`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100784, 100, listOf(200254), position = 2)),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 3,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 2,
+            source = owner,
+            rootSkillId = 200254,
+            currentSkillId = 200254,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        engine.applyChanges(
+            listOf(ongoingDamage(owner, target, detailId = 900021)),
+            context,
+        )
+        val beforeRejected = requireNotNull(engine.state.view.state(target)).troops
+
+        engine.applyChanges(
+            listOf(ongoingDamage(owner, target, detailId = 900022)),
+            context.copy(round = 3),
+        )
+
+        assertEquals(beforeRejected, requireNotNull(engine.state.view.state(target)).troops)
+    }
+
+    @Test
     fun `zhongke follows attack damage on its marked target at most twice`() {
         val request = BattleRequest(
             attacker = BattleTeam(
@@ -1383,6 +1505,60 @@ class CompleteSkillEngineIntegrationTest {
         troops = 10_000,
         maxTroops = 10_000,
         skillIds = skills,
+    )
+
+    private fun ongoingDamage(
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+        detailId: Int,
+    ): ScheduledDamageEffectChange {
+        val spec = PersistentEffectSpec(
+            source = source,
+            target = target,
+            rootSkillId = 900000,
+            skillId = 900000,
+            skillKind = SkillKind.ACTIVE,
+            rawSkillType = 3,
+            detailId = detailId,
+            effectId = 305,
+            category = com.stzb.server.game.battle.EffectCategory.HARMFUL,
+            conflict = 305,
+            replaceType = 0,
+            bindFlag = 0,
+            maxStacks = 1,
+            delayRound = 0,
+            delayHit = 0,
+            availableRounds = 2,
+            availableHit = 0,
+            clearPerHit = false,
+            startBoundary = EffectStartBoundary.IMMEDIATE,
+            potency = TypedBattlePotency.rate(40),
+        )
+        return ScheduledDamageEffectChange(
+            spec = spec,
+            school = DamageSchool.STRATEGY,
+            origin = DamageOrigin.ACTIVE,
+            tags = setOf(com.stzb.server.game.battle.DamageTag.ONGOING),
+            status = com.stzb.server.game.battle.BattleStatus.BURN,
+            coefficientSource = BattleCoefficientSource.STRATEGY,
+            rawCoefficient = 350,
+            calculationTypes = emptyList(),
+        )
+    }
+
+    private fun ongoingHit(
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+    ) = TroopDamageChange(
+        source = source,
+        target = target,
+        amount = 100,
+        troopsAfter = 9_900,
+        school = DamageSchool.STRATEGY,
+        origin = DamageOrigin.ACTIVE,
+        tags = setOf(com.stzb.server.game.battle.DamageTag.ONGOING),
+        skillId = 900000,
+        effectId = 305,
     )
 
     private fun configRule(

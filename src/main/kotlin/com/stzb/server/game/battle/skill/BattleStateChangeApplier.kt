@@ -24,6 +24,7 @@ class UnsupportedBattleStateChangeException(
 )
 
 sealed interface BattleStateOutput {
+    data class EffectApplied(val spec: PersistentEffectSpec) : BattleStateOutput
     data class EffectRemoved(val effect: ActiveSkillEffect) : BattleStateOutput
     data class EffectExpired(val effect: ActiveSkillEffect) : BattleStateOutput
     data class EffectBlocked(val change: EffectBlockedChange) : BattleStateOutput
@@ -430,6 +431,23 @@ class BattleStateChangeApplier(
         return apply(changes, round)
     }
 
+    fun triggerAppliedOngoingDamage(
+        spec: PersistentEffectSpec,
+        round: Int,
+    ): BattleStateApplyResult {
+        val key = spec.toActiveSkillEffectOrNull()?.key() ?: return BattleStateApplyResult()
+        val behavior = ongoingDamage[key] ?: return BattleStateApplyResult()
+        return apply(
+            listOf(
+                behavior.change.tick(
+                    liveSource = behavior.sourceSnapshot,
+                    liveTarget = state.liveHero(behavior.change.target),
+                ),
+            ),
+            round,
+        )
+    }
+
     fun onRoundEnd(round: Int): BattleStateApplyResult {
         require(round > 0) { "round must be positive: $round" }
         require(round >= maxOf(lastStartedRound, lastEndedRound)) {
@@ -741,7 +759,11 @@ class BattleStateChangeApplier(
         outputs: MutableList<BattleStateOutput>,
         onAccepted: (EffectKey, ActiveSkillEffect) -> Unit = { _, _ -> },
     ) {
-        spec.toActiveSkillEffectOrNull()?.let { applyBehavior(it, outputs, onAccepted) }
+        spec.toActiveSkillEffectOrNull()?.let { effect ->
+            if (applyBehavior(effect, outputs, onAccepted)) {
+                outputs += BattleStateOutput.EffectApplied(spec)
+            }
+        }
     }
 
     private fun applyBehavior(
