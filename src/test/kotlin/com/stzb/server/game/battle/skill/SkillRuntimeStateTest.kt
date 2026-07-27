@@ -120,6 +120,15 @@ class SkillRuntimeStateTest {
     }
 
     @Test
+    fun `zero round marker remains visible for the current cast only`() {
+        val state = SkillRuntimeState()
+        state.recordMarker(refA, 21098402, 0, appliedRound = 3, durationRounds = 0)
+
+        assertTrue(state.hasMarker(refA, 21098402, round = 3))
+        assertEquals(false, state.hasMarker(refA, 21098402, round = 4))
+    }
+
+    @Test
     fun `threshold generations are consumed once per owner and threshold`() {
         val state = SkillRuntimeState()
 

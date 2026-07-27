@@ -105,7 +105,7 @@ class SkillRuntimeState {
         require(durationRounds >= 0) { "Marker duration must be non-negative: $durationRounds" }
         markers[MarkerKey(target, detailId)] = MarkerValue(
             value = value,
-            expiresAtRound = appliedRound + durationRounds,
+            expiresAtRound = appliedRound + durationRounds.coerceAtLeast(1),
         )
     }
 
