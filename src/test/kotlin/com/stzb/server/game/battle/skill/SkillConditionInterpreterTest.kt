@@ -158,6 +158,7 @@ class SkillConditionInterpreterTest {
             || code == SkillConditionCode(210282, SkillConditionField.PRECONDITION, 500)
             || code == SkillConditionCode(210269, SkillConditionField.CONDITION, 25002)
             || code == SkillConditionCode(210269, SkillConditionField.CONDITION, 25003)
+            || code == SkillConditionCode(200989, SkillConditionField.CONDITION, 24001)
             || code == SkillConditionCode(
                 200968,
                 SkillConditionField.CAST_CONDITION,

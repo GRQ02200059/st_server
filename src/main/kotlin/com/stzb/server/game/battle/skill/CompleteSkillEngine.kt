@@ -542,6 +542,55 @@ class DefaultCompleteSkillEngine private constructor(
         )
     }
 
+    private fun chijieDamageBeforeResult(
+        change: TroopDamageChange,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (context.round <= 0) return SkillExecutionResult.EMPTY
+        var result = SkillExecutionResult.EMPTY
+        val sourceOwner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side == change.source.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200989 in state.liveHero(candidate).skillIds
+        }
+        if (sourceOwner != null) {
+            val detailId = when (change.school) {
+                DamageSchool.PHYSICAL -> 21398901
+                DamageSchool.STRATEGY -> 21498901
+            }
+            result += interpreter.executeDetailForEngine(
+                graph.details.single { it.detailId == detailId },
+                context.copy(
+                    source = sourceOwner,
+                    rootSkillId = 200989,
+                    currentSkillId = detailId / 100,
+                    trigger = BattleTrigger.DAMAGE_BEFORE,
+                ),
+                preselectedTargets = listOf(change.source),
+                valueOverride = TypedBattlePotency.flat(10),
+            )
+        }
+        val targetOwner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side == change.target.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200989 in state.liveHero(candidate).skillIds
+        }
+        if (targetOwner != null) {
+            result += interpreter.executeDetailForEngine(
+                graph.details.single { it.detailId == 21598901 },
+                context.copy(
+                    source = targetOwner,
+                    rootSkillId = 200989,
+                    currentSkillId = 215989,
+                    trigger = BattleTrigger.DAMAGE_BEFORE,
+                ),
+                preselectedTargets = listOf(change.target),
+                valueOverride = TypedBattlePotency.flat(10),
+            )
+        }
+        return result
+    }
+
     private fun zhongkeDamageResult(
         output: BattleStateOutput.DamageDealt,
         context: SkillBattleContext,
@@ -1057,6 +1106,10 @@ class DefaultCompleteSkillEngine private constructor(
                     }
                 is BattleStatChange -> {
                     events += apply(juxianStatApplyingResult(change, context), context)
+                    events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
+                }
+                is TroopDamageChange -> {
+                    events += apply(chijieDamageBeforeResult(change, context), context)
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 }
                 is ClearReferencedEffectChange -> {

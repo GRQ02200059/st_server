@@ -807,6 +807,117 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `chijie raises source offense and target defense before damage is applied`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100989, 100, listOf(200989), position = 2),
+                    hero(100017, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(100989, 20, listOf(200989), position = 2),
+                    hero(200001, 10, position = 1),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.heroId == BattleHeroId(100017) }
+        val target = engine.state.view.heroes().single { it.heroId == BattleHeroId(200001) }
+        val sourceBefore = requireNotNull(engine.state.view.state(source)).stats
+        val targetBefore = requireNotNull(engine.state.view.state(target)).stats
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 900000,
+            currentSkillId = 900000,
+            trigger = BattleTrigger.DAMAGE_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        val events = engine.applyChanges(
+            listOf(
+                TroopDamageChange(
+                    source = source,
+                    target = target,
+                    amount = 200,
+                    troopsAfter = 9_800,
+                    school = DamageSchool.STRATEGY,
+                    origin = DamageOrigin.ACTIVE,
+                    tags = emptySet(),
+                    skillId = 900000,
+                    effectId = 302,
+                ),
+            ),
+            context,
+        )
+
+        val damageIndex = events.indexOfFirst { it is BattleEvent.SkillDamage }
+        val statIndices = events.mapIndexedNotNull { index, event ->
+            index.takeIf { event is BattleEvent.StatChanged }
+        }
+        assertTrue(statIndices.isNotEmpty())
+        assertTrue(statIndices.all { it < damageIndex })
+        assertTrue(requireNotNull(engine.state.view.state(source)).stats.strategy > sourceBefore.strategy)
+        assertTrue(requireNotNull(engine.state.view.state(target)).stats.defense > targetBefore.defense)
+    }
+
+    @Test
+    fun `chijie chooses attack instead of strategy for physical damage`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100989, 100, listOf(200989), position = 2),
+                    hero(100017, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.heroId == BattleHeroId(100017) }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val before = requireNotNull(engine.state.view.state(source)).stats
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.DAMAGE_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        engine.applyChanges(
+            listOf(
+                TroopDamageChange(
+                    source = source,
+                    target = target,
+                    amount = 200,
+                    troopsAfter = 9_800,
+                    school = DamageSchool.PHYSICAL,
+                    origin = DamageOrigin.NORMAL,
+                    tags = emptySet(),
+                    skillId = 0,
+                    effectId = 0,
+                ),
+            ),
+            context,
+        )
+
+        val after = requireNotNull(engine.state.view.state(source)).stats
+        assertTrue(after.attack > before.attack)
+        assertEquals(before.strategy, after.strategy)
+    }
+
+    @Test
     fun `zhongke follows attack damage on its marked target at most twice`() {
         val request = BattleRequest(
             attacker = BattleTeam(

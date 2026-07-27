@@ -558,6 +558,9 @@ class SkillConditionInterpreter(
         builtInJuxianStatApplyingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInChijieDamageBeforePlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         builtInZhongkeDamageConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -1246,6 +1249,26 @@ private fun builtInJuxianStatApplyingPlugins(
                 rule: SkillEffectRule,
             ): List<SkillCondition> =
                 listOf(SkillCondition.EventTrigger(BattleTrigger.EFFECT_APPLYING))
+        },
+    )
+}
+
+private fun builtInChijieDamageBeforePlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val code = SkillConditionCode(200989, SkillConditionField.CONDITION, 24001)
+    if (code in overridden || graph.details.none { it.detailId == 20098901 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.chijie-damage-before"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.DAMAGE_BEFORE))
         },
     )
 }
