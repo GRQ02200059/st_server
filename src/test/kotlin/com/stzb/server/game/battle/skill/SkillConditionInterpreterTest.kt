@@ -108,6 +108,7 @@ class SkillConditionInterpreterTest {
                 320026811,
                 320024411, 320024421,
                 321325201,
+                421325701,
             ) ||
             code.field == SkillConditionField.PRECONDITION &&
             code.value in setOf(18, -18) ||
@@ -767,6 +768,13 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.RuntimeMarker(Subject.SOURCE, 21325201),
             interpreter.compile(graph.detail(21425203)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.LACKS_DETAIL_MARKER,
+                21325701,
+            ),
+            interpreter.compile(graph.detail(21425701)).conditions.single(),
         )
     }
 
