@@ -626,6 +626,34 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `dingjun removes opening damage suppression on its owners fourth round action`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(hero(100293, 100, listOf(200293), position = 2))),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 4,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 4,
+            source = owner,
+            rootSkillId = 200293,
+            currentSkillId = 200293,
+            trigger = BattleTrigger.ACTION_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        val third = engine.trigger(BattleTrigger.ACTION_BEFORE, context.copy(round = 3))
+        val fourth = engine.trigger(BattleTrigger.ACTION_BEFORE, context)
+
+        assertTrue(third.none { it is BattleEvent.SkillTriggered && it.skillId == 210293 })
+        assertTrue(fourth.any { it is BattleEvent.SkillTriggered && it.skillId == 210293 })
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(

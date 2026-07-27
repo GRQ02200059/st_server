@@ -87,7 +87,7 @@ class DefaultCompleteSkillEngine private constructor(
             BattleTrigger.PURSUIT_ATTEMPT,
             -> attemptSkills(trigger, scoped)
             BattleTrigger.ACTION_BEFORE ->
-                timing.onAction(scoped) + zhengshiActionResult(scoped)
+                timing.onAction(scoped) + zhengshiActionResult(scoped) + dingjunActionResult(scoped)
             BattleTrigger.BATTLE_PASSIVE,
             BattleTrigger.BATTLE_COMMAND,
             -> executeBattleSkills(trigger, scoped)
@@ -289,6 +289,20 @@ class DefaultCompleteSkillEngine private constructor(
                 rootSkillId = 200294,
                 currentSkillId = 200294,
                 trigger = BattleTrigger.DAMAGE_AFTER,
+            ),
+        )
+    }
+
+    private fun dingjunActionResult(context: SkillBattleContext): SkillExecutionResult {
+        if (context.round != 4 || 200293 !in state.liveHero(context.source).skillIds) {
+            return SkillExecutionResult.EMPTY
+        }
+        return interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 20029307 },
+            context.copy(
+                rootSkillId = 200293,
+                currentSkillId = 200293,
+                trigger = BattleTrigger.ACTION_BEFORE,
             ),
         )
     }

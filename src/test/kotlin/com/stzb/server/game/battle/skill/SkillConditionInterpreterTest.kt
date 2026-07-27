@@ -163,6 +163,7 @@ class SkillConditionInterpreterTest {
                 SkillConditionField.CAST_CONDITION,
                 220096802,
             )
+            || code == SkillConditionCode(200293, SkillConditionField.CONDITION, 5001)
             || code.field == SkillConditionField.PRECONDITION && code.value == 43
 
     @Test
@@ -681,6 +682,20 @@ class SkillConditionInterpreterTest {
                 trigger(),
                 context(view = view()),
             ),
+        )
+    }
+
+    @Test
+    fun `dingjun fourth round branch binds to owner action before`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            listOf(
+                SkillCondition.RoundRange(4, 4),
+                SkillCondition.EventTrigger(BattleTrigger.ACTION_BEFORE),
+            ),
+            interpreter.compile(graph.detail(20029307)).conditions,
         )
     }
 
