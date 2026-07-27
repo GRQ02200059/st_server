@@ -210,6 +210,37 @@ class DefaultCompleteSkillEngine private constructor(
             }
     }
 
+    private fun xinzhanDamageResult(
+        damageSource: BattleHeroRef,
+        damageTarget: BattleHeroRef,
+        damageCount: Int,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (damageCount !in 1..9) return SkillExecutionResult.EMPTY
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side == damageSource.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200275 in state.liveHero(candidate).skillIds
+        } ?: return SkillExecutionResult.EMPTY
+        val listenerContext = context.copy(
+            source = owner,
+            rootSkillId = 200275,
+            currentSkillId = 214275,
+            trigger = BattleTrigger.DAMAGE_AFTER,
+        )
+        val morale = interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 21427501 },
+            listenerContext,
+            preselectedTargets = listOf(damageTarget),
+        )
+        if (damageCount < 9) return morale
+        return morale + interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 20027523 },
+            listenerContext.copy(currentSkillId = 200275),
+            preselectedTargets = listOf(owner),
+        )
+    }
+
     fun secondaryTarget(
         source: BattleHeroRef,
         primary: BattleHeroRef,
@@ -658,8 +689,9 @@ class DefaultCompleteSkillEngine private constructor(
                 is RetriggerSkillChange,
                 is TriggerReferencedEffectChange,
                 is MetaEffectChange,
-                is MoraleEffectChange,
                 -> Unit
+                is MoraleEffectChange ->
+                    events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 is MarkerEffectChange -> Unit
                 is DamageModifierChange ->
                     if (change.durationRounds > 0) {
@@ -696,7 +728,18 @@ class DefaultCompleteSkillEngine private constructor(
         result.outputs.filterIsInstance<BattleStateOutput.DamageDealt>().forEach { output ->
             events += BattleStateApplyResult(listOf(output)).toEvents(context.round)
             val damageContext = context.copy(source = output.source, trigger = BattleTrigger.DAMAGE_AFTER)
-            recordDamageThresholds(output.source, context)
+            if (output.amount > 0) {
+                recordDamageThresholds(output.source, context)
+                events += apply(
+                    xinzhanDamageResult(
+                        output.source,
+                        output.target,
+                        state.runtime.sideCount(output.source.side, BattleTrigger.DAMAGE_AFTER),
+                        damageContext,
+                    ),
+                    damageContext,
+                )
+            }
             events += trigger(BattleTrigger.DAMAGE_AFTER, damageContext)
             val hurtContext = context.copy(source = output.target, trigger = BattleTrigger.HURT_AFTER)
             state.runtime.recordBattleTriggerOccurrence(output.target, BattleTrigger.HURT_AFTER)

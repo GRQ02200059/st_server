@@ -133,6 +133,7 @@ class SkillConditionInterpreterTest {
             || code == SkillConditionCode(200253, SkillConditionField.CONDITION, 5003)
             || code == SkillConditionCode(200244, SkillConditionField.CONDITION, 5003)
             || code == SkillConditionCode(200244, SkillConditionField.CONDITION, 5005)
+            || code == SkillConditionCode(200275, SkillConditionField.CONDITION, 5009)
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -172,6 +173,17 @@ class SkillConditionInterpreterTest {
                 val predicate = interpreter.compile(graph.detail(detailId)).conditions.single()
                 (predicate as SkillCondition.TargetPredicate).value
             },
+        )
+    }
+
+    @Test
+    fun `xinzhan ninth damage listener is restricted to damage events`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER),
+            interpreter.compile(graph.detail(20027523)).conditions.single(),
         )
     }
 

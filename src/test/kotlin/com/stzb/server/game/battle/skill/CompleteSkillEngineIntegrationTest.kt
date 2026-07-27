@@ -242,6 +242,86 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `xinzhan lowers each allied damage target morale for only the first nine hits`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100275, 100, listOf(200275), position = 2),
+                    hero(100001, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 20, position = 2),
+                    hero(200002, 10, position = 1),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val attacker = engine.state.view.heroes().single { it.heroId == BattleHeroId(100001) }
+        val firstTarget = engine.state.view.heroes().single { it.heroId == BattleHeroId(200001) }
+        val secondTarget = engine.state.view.heroes().single { it.heroId == BattleHeroId(200002) }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = attacker,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.NORMAL_ATTACK_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        repeat(8) {
+            engine.applyNormalDamage(1, attacker, firstTarget, 1, context)
+        }
+        engine.applyNormalDamage(1, attacker, secondTarget, 1, context)
+        engine.applyNormalDamage(1, attacker, secondTarget, 1, context)
+
+        assertEquals(60, engine.state.view.currentMorale(firstTarget))
+        assertEquals(95, engine.state.view.currentMorale(secondTarget))
+    }
+
+    @Test
+    fun `xinzhan damage limit is isolated by side`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100275, 100, listOf(200275), position = 2)),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200275, 90, listOf(200275), position = 2),
+                    hero(200001, 80, position = 1),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val attacker = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val defender = engine.state.view.heroes().single { it.heroId == BattleHeroId(200275) }
+        val defenderAlly = engine.state.view.heroes().single { it.heroId == BattleHeroId(200001) }
+        val base = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = attacker,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.NORMAL_ATTACK_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        repeat(9) { engine.applyNormalDamage(1, attacker, defender, 1, base) }
+        engine.applyNormalDamage(1, defenderAlly, attacker, 1, base.copy(source = defenderAlly))
+
+        assertEquals(55, engine.state.view.currentMorale(defender))
+        assertEquals(95, engine.state.view.currentMorale(attacker))
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(

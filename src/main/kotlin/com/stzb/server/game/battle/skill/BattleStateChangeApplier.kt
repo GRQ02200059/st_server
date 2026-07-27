@@ -120,6 +120,7 @@ class SkillBattleState(
         var stats: BattleStats,
         var troops: Int,
         var woundedTroops: Int,
+        var morale: Int,
     )
 
     private val states = mutableMapOf<BattleHeroRef, MutableHeroState>()
@@ -164,7 +165,7 @@ class SkillBattleState(
 
         override fun accumulatedDamageDealt(ref: BattleHeroRef): Int = damageDealt[ref] ?: 0
 
-        override fun currentMorale(ref: BattleHeroRef): Int? = states[ref]?.entry?.morale
+        override fun currentMorale(ref: BattleHeroRef): Int? = states[ref]?.morale
 
         override fun currentAttackRange(ref: BattleHeroRef): Int? = states[ref]?.stats?.hitRange
 
@@ -278,7 +279,13 @@ class SkillBattleState(
             woundedTroops = woundedTroops[ref]?.coerceAtLeast(0) ?: 0,
             modifiers = hero.modifiers.toList(),
         )
-        states[ref] = MutableHeroState(entry, entry.stats, entry.troops, entry.woundedTroops)
+        states[ref] = MutableHeroState(
+            entry,
+            entry.stats,
+            entry.troops,
+            entry.woundedTroops,
+            entry.morale,
+        )
     }
 
     private fun teamFor(side: Side) =
@@ -291,7 +298,7 @@ class SkillBattleState(
         statuses = entry.statuses + effectStore.effectsFor(ref).mapNotNull {
             effectStatuses[it.key()]
         },
-        morale = entry.morale,
+        morale = morale,
         attackRange = stats.hitRange,
         canReceiveEffectsWhenDefeated = entry.canReceiveEffectsWhenDefeated,
         woundedTroops = woundedTroops,
@@ -531,6 +538,10 @@ class BattleStateChangeApplier(
                 requireHero(change.target)
                 require(change.amount >= 0) { "referenced effect use reduction must not be negative" }
             }
+            is MoraleEffectChange -> {
+                requireHero(change.source)
+                requireHero(change.target)
+            }
             else -> throw UnsupportedBattleStateChangeException(change)
         }
     }
@@ -646,6 +657,10 @@ class BattleStateChangeApplier(
             is ReduceReferencedEffectUseChange -> {
                 outputs += synchronize(change.apply(state.effectStore))
                 recalculateStats(change.target)
+            }
+            is MoraleEffectChange -> {
+                val target = state.mutable(change.target)
+                target.morale = (target.morale + change.delta).coerceAtLeast(0)
             }
             else -> throw UnsupportedBattleStateChangeException(change)
         }
