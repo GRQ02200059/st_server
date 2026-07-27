@@ -26,6 +26,7 @@ class SkillRuntimeStateTest {
                 "DAMAGE_BEFORE",
                 "DAMAGE_AFTER",
                 "HURT_AFTER",
+                "RECOVERY_AFTER",
                 "PURSUIT_ATTEMPT",
                 "ACTION_AFTER",
                 "ROUND_END",

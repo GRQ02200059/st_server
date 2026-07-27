@@ -628,6 +628,14 @@ class DefaultCompleteSkillEngine private constructor(
             events += trigger(BattleTrigger.HURT_AFTER, hurtContext)
             events += apply(timing.onHit(damageContext), damageContext)
         }
+        result.outputs.filterIsInstance<BattleStateOutput.TroopsRecovered>()
+            .filter { it.amount > 0 }
+            .forEach { output ->
+                state.runtime.recordBattleTriggerOccurrence(
+                    output.source,
+                    BattleTrigger.RECOVERY_AFTER,
+                )
+            }
         events += result.outputs
             .filterNot { it is BattleStateOutput.DamageDealt || it is BattleStateOutput.HurtReceived }
             .let(::BattleStateApplyResult)

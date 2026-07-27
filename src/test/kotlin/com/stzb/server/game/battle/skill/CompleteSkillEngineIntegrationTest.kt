@@ -76,6 +76,46 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `actual troop recovery records a recovery event occurrence`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100016, 100, listOf(200016), position = 2).copy(
+                        troops = 9_000,
+                        maxTroops = 10_000,
+                    ),
+                    hero(100017, 90, position = 1).copy(
+                        troops = 9_000,
+                        maxTroops = 10_000,
+                    ),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.heroId == BattleHeroId(100016) }
+        engine.state.view.heroes()
+            .filter { it.side == Side.ATTACKER }
+            .forEach { engine.state.mutable(it).woundedTroops = 1_000 }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = source,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        engine.prepareBattle(context)
+
+        assertTrue(engine.state.runtime.count(source, BattleTrigger.RECOVERY_AFTER) > 0)
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(
