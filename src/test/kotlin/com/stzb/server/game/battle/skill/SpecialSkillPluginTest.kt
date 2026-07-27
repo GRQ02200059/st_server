@@ -111,6 +111,7 @@ class SpecialSkillPluginTest {
                 it.field == SkillConditionField.CONDITION &&
                 it.value == 17000 ||
                 it == SkillConditionCode(200016, SkillConditionField.CONDITION, 5003) ||
+                it == SkillConditionCode(200016, SkillConditionField.CONDITION, 21110) ||
                 it == SkillConditionCode(200253, SkillConditionField.CONDITION, 5003) ||
                 it == SkillConditionCode(200244, SkillConditionField.CONDITION, 5003) ||
                 it == SkillConditionCode(200244, SkillConditionField.CONDITION, 5005) ||

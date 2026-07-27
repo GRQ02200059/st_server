@@ -959,12 +959,15 @@ private fun builtInRecoveryEventConditionPlugins(
     graph: SkillRuleGraph,
     overridden: Set<SkillConditionCode>,
 ): List<SpecialSkillPlugin> {
-    val code = SkillConditionCode(200016, SkillConditionField.CONDITION, 5003)
-    if (code in overridden || graph.details.none { it.detailId == 20001602 }) return emptyList()
+    val codes = setOf(
+        SkillConditionCode(200016, SkillConditionField.CONDITION, 5003),
+        SkillConditionCode(200016, SkillConditionField.CONDITION, 21110),
+    ).filterTo(linkedSetOf()) { it !in overridden }
+    if (codes.isEmpty() || graph.details.none { it.detailId == 20001602 }) return emptyList()
     return listOf(
         object : SpecialSkillPlugin {
             override val id: String = "builtin.actual-recovery-event"
-            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
+            override val ownedConditions: Set<SkillConditionCode> = codes
 
             override fun compile(
                 code: SkillConditionCode,

@@ -131,6 +131,7 @@ class SkillConditionInterpreterTest {
             code.field == SkillConditionField.CONDITION &&
             code.value in setOf(20160, 32002, 32011, 18306) ||
             code == SkillConditionCode(200016, SkillConditionField.CONDITION, 5003)
+            || code == SkillConditionCode(200016, SkillConditionField.CONDITION, 21110)
             || code == SkillConditionCode(200253, SkillConditionField.CONDITION, 5003)
             || code == SkillConditionCode(200244, SkillConditionField.CONDITION, 5003)
             || code == SkillConditionCode(200244, SkillConditionField.CONDITION, 5005)
@@ -696,6 +697,17 @@ class SkillConditionInterpreterTest {
                 SkillCondition.EventTrigger(BattleTrigger.ACTION_BEFORE),
             ),
             interpreter.compile(graph.detail(20029307)).conditions,
+        )
+    }
+
+    @Test
+    fun `huangyi successful emergency recovery branch binds to recovery after`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.EventTrigger(BattleTrigger.RECOVERY_AFTER),
+            interpreter.compile(graph.detail(20001603)).conditions.single(),
         )
     }
 
