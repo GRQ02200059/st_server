@@ -712,6 +712,10 @@ private class BuiltInMarkerConditionPlugin(
                 SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
                 value = 21126401,
             )
+            321125401 -> SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
+                value = 21125401,
+            )
             121002401 -> SkillCondition.TargetPredicate(
                 SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
                 value = 21002401,
@@ -735,6 +739,7 @@ private fun builtInMarkerConditionPlugins(
                     321024601, 320024601, 321324601,
                     320025101, 321525101,
                     321226402, 321126401,
+                    321125401,
                 )
         }
         .filterNot(overridden::contains)

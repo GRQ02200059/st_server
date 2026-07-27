@@ -103,6 +103,7 @@ class SkillConditionInterpreterTest {
                 321024601, 320024601, 321324601,
                 320025101, 321525101,
                 321226402, 321126401,
+                321125401,
             ) ||
             code.field == SkillConditionField.PRECONDITION &&
             code.value in setOf(18, -18) ||
@@ -723,6 +724,13 @@ class SkillConditionInterpreterTest {
                 interpreter.compile(graph.detail(21426401)).conditions.single(),
                 interpreter.compile(graph.detail(21526401)).conditions.single(),
             ).map { (it as SkillCondition.TargetPredicate).value },
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
+                21125401,
+            ),
+            interpreter.compile(graph.detail(21225401)).conditions.single(),
         )
     }
 
