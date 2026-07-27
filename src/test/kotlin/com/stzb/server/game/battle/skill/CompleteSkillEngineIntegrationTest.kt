@@ -112,6 +112,49 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `liehuo pursuit applies burn and consumes its target marker`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100251, 100, listOf(200251), position = 2)),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 10, position = 2),
+                    hero(200002, 10, position = 1),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val primary = engine.state.view.heroes().single {
+            it.side == Side.DEFENDER && it.position == 2
+        }
+        engine.recordTarget(source, primary)
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 200251,
+            currentSkillId = 200251,
+            trigger = BattleTrigger.PURSUIT_ATTEMPT,
+            battleView = engine.state.view,
+        )
+
+        val events = engine.trigger(BattleTrigger.PURSUIT_ATTEMPT, context)
+
+        assertTrue(
+            events.filterIsInstance<BattleEvent.StatusApplied>().any {
+                it.target == primary &&
+                    it.status == com.stzb.server.game.battle.BattleStatus.BURN
+            },
+        )
+        assertEquals(false, engine.state.runtime.hasMarker(primary, 20025101, round = 1))
+    }
+
+    @Test
     fun `safe production engine executes known conditions instead of suppressing every conditional detail`() {
         val request = BattleRequest(
             attacker = BattleTeam(

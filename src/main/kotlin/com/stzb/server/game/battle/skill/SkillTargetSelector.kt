@@ -426,6 +426,8 @@ class SkillTargetSelector {
             321024601 -> context.runtime.hasMarker(target, 21024601, context.round)
             320024601 -> context.runtime.hasMarker(target, 20024601, context.round)
             321324601 -> context.runtime.hasMarker(target, 21324601, context.round)
+            320025101 -> context.runtime.hasMarker(target, 20025101, context.round)
+            321525101 -> context.runtime.hasMarker(target, 21525101, context.round)
             else -> true
         }
 
