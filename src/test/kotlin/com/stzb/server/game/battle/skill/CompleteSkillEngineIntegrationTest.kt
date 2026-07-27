@@ -356,6 +356,46 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `huiyan grants its team effects once after six allied damage events`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100294, 100, listOf(200294), position = 2),
+                    hero(100001, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100294) }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100001) }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = ally,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.NORMAL_ATTACK_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        repeat(5) { engine.applyNormalDamage(1, ally, enemy, 1, context) }
+        assertEquals(100, engine.state.view.currentMorale(owner))
+        assertEquals(100, engine.state.view.currentMorale(ally))
+
+        val sixth = engine.applyNormalDamage(1, ally, enemy, 1, context)
+        engine.applyNormalDamage(1, ally, enemy, 1, context)
+
+        assertEquals(100, engine.state.view.currentMorale(owner))
+        assertEquals(106, engine.state.view.currentMorale(ally))
+        assertEquals(1, sixth.filterIsInstance<BattleEvent.SkillTriggered>().count { it.skillId == 211294 })
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(

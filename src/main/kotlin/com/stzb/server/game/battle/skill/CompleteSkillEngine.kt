@@ -271,6 +271,28 @@ class DefaultCompleteSkillEngine private constructor(
             }
     }
 
+    private fun huiyanDamageResult(
+        damageSource: BattleHeroRef,
+        damageCount: Int,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (damageCount != 6) return SkillExecutionResult.EMPTY
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side == damageSource.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200294 in state.liveHero(candidate).skillIds
+        } ?: return SkillExecutionResult.EMPTY
+        return interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 20029402 },
+            context.copy(
+                source = owner,
+                rootSkillId = 200294,
+                currentSkillId = 200294,
+                trigger = BattleTrigger.DAMAGE_AFTER,
+            ),
+        )
+    }
+
     fun secondaryTarget(
         source: BattleHeroRef,
         primary: BattleHeroRef,
@@ -764,6 +786,14 @@ class DefaultCompleteSkillEngine private constructor(
                     xinzhanDamageResult(
                         output.source,
                         output.target,
+                        state.runtime.sideCount(output.source.side, BattleTrigger.DAMAGE_AFTER),
+                        damageContext,
+                    ),
+                    damageContext,
+                )
+                events += apply(
+                    huiyanDamageResult(
+                        output.source,
                         state.runtime.sideCount(output.source.side, BattleTrigger.DAMAGE_AFTER),
                         damageContext,
                     ),

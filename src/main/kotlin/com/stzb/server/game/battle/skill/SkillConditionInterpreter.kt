@@ -510,6 +510,9 @@ class SkillConditionInterpreter(
         builtInShoujingRoundConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInHuiyanDamageConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -1015,6 +1018,26 @@ private fun builtInShoujingRoundConditionPlugins(
                 code: SkillConditionCode,
                 rule: SkillEffectRule,
             ): List<SkillCondition> = listOf(mappings.getValue(code))
+        },
+    )
+}
+
+private fun builtInHuiyanDamageConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val code = SkillConditionCode(200294, SkillConditionField.CONDITION, 5006)
+    if (code in overridden || graph.details.none { it.detailId == 20029402 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.huiyan-sixth-damage"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER))
         },
     )
 }

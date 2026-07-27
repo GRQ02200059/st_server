@@ -136,6 +136,7 @@ class SkillConditionInterpreterTest {
             || code == SkillConditionCode(200275, SkillConditionField.CONDITION, 5009)
             || code == SkillConditionCode(200277, SkillConditionField.CONDITION, 5006)
             || code == SkillConditionCode(200277, SkillConditionField.CONDITION, 5008)
+            || code == SkillConditionCode(200294, SkillConditionField.CONDITION, 5006)
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -201,6 +202,17 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.RoundRange(8, 8),
             interpreter.compile(graph.detail(20027705)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `huiyan sixth allied damage condition is restricted to damage events`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER),
+            interpreter.compile(graph.detail(20029402)).conditions.single(),
         )
     }
 
