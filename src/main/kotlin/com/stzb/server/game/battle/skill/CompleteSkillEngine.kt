@@ -81,7 +81,7 @@ class DefaultCompleteSkillEngine private constructor(
                 }
             }
             BattleTrigger.ROUND_END -> {
-                SkillExecutionResult.EMPTY
+                tianziRoundEndResult(scoped)
             }
             BattleTrigger.ACTIVE_SKILL_ATTEMPT,
             BattleTrigger.PURSUIT_ATTEMPT,
@@ -420,6 +420,27 @@ class DefaultCompleteSkillEngine private constructor(
             ),
             preselectedTargets = listOf(output.target),
         )
+    }
+
+    private fun tianziRoundEndResult(context: SkillBattleContext): SkillExecutionResult {
+        if (200270 !in state.liveHero(context.source).skillIds) return SkillExecutionResult.EMPTY
+        val target = state.view.heroes().firstOrNull { candidate ->
+            candidate.side != context.source.side &&
+                state.runtime.hasMarker(candidate, 21027012, context.round) &&
+                state.runtime.roundHurtCount(candidate, context.round) >= 2
+        } ?: return SkillExecutionResult.EMPTY
+        val listenerContext = context.copy(
+                rootSkillId = 200270,
+                currentSkillId = 212270,
+                trigger = BattleTrigger.ROUND_END,
+        )
+        return graph.rule(212270)!!.details.fold(SkillExecutionResult.EMPTY) { result, detail ->
+            result + interpreter.executeDetailForEngine(
+                detail,
+                listenerContext,
+                preselectedTargets = listOf(target),
+            )
+        }
     }
 
     fun secondaryTarget(
@@ -910,6 +931,7 @@ class DefaultCompleteSkillEngine private constructor(
             events += BattleStateApplyResult(listOf(output)).toEvents(context.round)
             val damageContext = context.copy(source = output.source, trigger = BattleTrigger.DAMAGE_AFTER)
             if (output.amount > 0) {
+                state.runtime.recordRoundHurt(output.target, context.round)
                 recordDamageThresholds(output.source, context)
                 events += apply(
                     huangtianDamageResult(output, damageContext),

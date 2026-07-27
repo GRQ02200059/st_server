@@ -18,6 +18,7 @@ class SkillRuntimeState {
     private val sideTriggerCounts = mutableMapOf<SideTriggerKey, Int>()
     private val consumedThresholdGenerations = mutableMapOf<ThresholdKey, Int>()
     private val limitedOccurrences = mutableMapOf<OccurrenceKey, Int>()
+    private val roundHurtCounts = mutableMapOf<RoundHurtKey, Int>()
     private val pendingSignals = mutableMapOf<SignalKey, Int>()
     private val markers = mutableMapOf<MarkerKey, MarkerValue>()
     private val preparations = mutableListOf<PreparedSkill>()
@@ -118,6 +119,17 @@ class SkillRuntimeState {
         limitedOccurrences[key] = consumed + 1
         return true
     }
+
+    fun recordRoundHurt(target: BattleHeroRef, round: Int): Int {
+        require(round >= 0) { "Hurt round must be non-negative: $round" }
+        val key = RoundHurtKey(target, round)
+        val updated = roundHurtCount(target, round) + 1
+        roundHurtCounts[key] = updated
+        return updated
+    }
+
+    fun roundHurtCount(target: BattleHeroRef, round: Int): Int =
+        roundHurtCounts[RoundHurtKey(target, round)] ?: 0
 
     fun scheduleSignal(
         owner: BattleHeroRef,
@@ -310,6 +322,11 @@ class SkillRuntimeState {
     private data class OccurrenceKey(
         val owner: BattleHeroRef,
         val namespace: String,
+    )
+
+    private data class RoundHurtKey(
+        val target: BattleHeroRef,
+        val round: Int,
     )
 
     private data class MarkerKey(

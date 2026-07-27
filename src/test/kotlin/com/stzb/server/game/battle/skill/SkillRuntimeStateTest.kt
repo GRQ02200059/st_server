@@ -21,6 +21,21 @@ class SkillRuntimeStateTest {
         assertTrue(runtime.consumeLimitedOccurrence(owner, "other", 2))
     }
 
+    @Test
+    fun `round hurt counts isolate target and round`() {
+        val runtime = SkillRuntimeState()
+        val first = BattleHeroRef(Side.DEFENDER, 2, BattleHeroId(1))
+        val second = BattleHeroRef(Side.DEFENDER, 1, BattleHeroId(2))
+
+        runtime.recordRoundHurt(first, 1)
+        runtime.recordRoundHurt(first, 1)
+        runtime.recordRoundHurt(second, 1)
+
+        assertEquals(2, runtime.roundHurtCount(first, 1))
+        assertEquals(1, runtime.roundHurtCount(second, 1))
+        assertEquals(0, runtime.roundHurtCount(first, 2))
+    }
+
     private val refA = ref(Side.ATTACKER, 0, 100017)
     private val refB = ref(Side.ATTACKER, 1, 100018)
 

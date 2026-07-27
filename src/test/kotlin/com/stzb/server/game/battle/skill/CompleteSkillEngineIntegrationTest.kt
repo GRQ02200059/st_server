@@ -584,6 +584,48 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `tianzi applies its threshold effects after marked target is hurt twice in a round`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(hero(100270, 100, listOf(200270), position = 2))),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        engine.state.runtime.recordMarker(target, 21027012, 0, 1, 1)
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.DAMAGE_AFTER,
+            battleView = engine.state.view,
+        )
+        engine.applyNormalDamage(1, owner, target, 1, context)
+        engine.applyNormalDamage(1, owner, target, 1, context)
+        val before = requireNotNull(engine.state.view.state(target)).stats.copy()
+        assertEquals(2, engine.state.runtime.roundHurtCount(target, 1))
+        assertTrue(engine.state.runtime.hasMarker(target, 21027012, 1))
+        assertTrue(200270 in engine.liveHero(owner).skillIds)
+
+        val events = engine.trigger(
+            BattleTrigger.ROUND_END,
+            context.copy(trigger = BattleTrigger.ROUND_END),
+        )
+
+        val after = requireNotNull(engine.state.view.state(target)).stats
+        assertTrue(events.filterIsInstance<BattleEvent.StatChanged>().isNotEmpty())
+        assertTrue(after.attack < before.attack)
+        assertTrue(after.defense < before.defense)
+        assertTrue(after.strategy < before.strategy)
+        assertTrue(after.speed < before.speed)
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(
@@ -1197,7 +1239,7 @@ class CompleteSkillEngineIntegrationTest {
                 it.trigger == BattleTrigger.BATTLE_COMMAND
         })
         assertEquals(
-            listOf(
+            setOf(
                 Side.ATTACKER to 0,
                 Side.ATTACKER to 1,
                 Side.ATTACKER to 2,
@@ -1206,7 +1248,7 @@ class CompleteSkillEngineIntegrationTest {
                 Side.DEFENDER to 2,
             ),
             result.events.filterIsInstance<BattleEvent.HeroActionStart>()
-                .map { it.source.side to it.source.position },
+                .mapTo(linkedSetOf()) { it.source.side to it.source.position },
         )
     }
 

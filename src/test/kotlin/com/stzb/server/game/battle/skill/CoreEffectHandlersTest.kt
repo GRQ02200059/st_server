@@ -659,6 +659,31 @@ class CoreEffectHandlersTest {
     }
 
     @Test
+    fun `tianzi strategy scaled stat percent uses its configured direct scale`() {
+        val config = BattleConfigRepository.loadDefault()
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200270),
+                learnableSaSkillIds = emptySet(),
+            ),
+            config,
+        )
+        val rule = graph.detail(21227003)
+
+        val change = BattleEffectRegistry.strict(graph)
+            .registerCoreEffects(BattleEffectStore())
+            .execute(
+                rule,
+                context().copy(rootSkillId = 200270, currentSkillId = 212270),
+                preselectedTargets = listOf(targetRef),
+            )
+            .stateChanges.single()
+
+        assertIs<BattleStatChange>(change)
+        assertEquals(TypedBattlePotency.percent(-8), change.potency)
+    }
+
+    @Test
     fun `persistent spec snapshots exact identity lifecycle and converts without repository access`() {
         val rule = rule(
             effectId = 207,

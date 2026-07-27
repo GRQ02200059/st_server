@@ -150,6 +150,8 @@ class SkillConditionInterpreterTest {
                 SkillConditionField.CAST_CONDITION,
                 420026822,
             )
+            || code == SkillConditionCode(210270, SkillConditionField.CONDITION, 15002)
+            || code == SkillConditionCode(210270, SkillConditionField.CONDITION, 15003)
             || code.field == SkillConditionField.PRECONDITION && code.value == 43
 
     @Test
@@ -581,6 +583,27 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER),
             interpreter.compile(graph.detail(20026822)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `tianzi current and legacy hurt thresholds bind to round end`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            listOf(
+                SkillCondition.ConfigBranch(false),
+                SkillCondition.EventTrigger(BattleTrigger.ROUND_END),
+            ),
+            interpreter.compile(graph.detail(21027015)).conditions,
+        )
+        assertEquals(
+            listOf(
+                SkillCondition.ConfigBranch(true),
+                SkillCondition.EventTrigger(BattleTrigger.ROUND_END),
+            ),
+            interpreter.compile(graph.detail(21027016)).conditions,
         )
     }
 

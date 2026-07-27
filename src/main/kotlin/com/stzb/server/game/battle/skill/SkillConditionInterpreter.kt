@@ -529,6 +529,9 @@ class SkillConditionInterpreter(
         builtInZhongkeDamageConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInTianziHurtThresholdPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -1145,6 +1148,29 @@ private fun builtInZhongkeDamageConditionPlugins(
                 rule: SkillEffectRule,
             ): List<SkillCondition> =
                 listOf(SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER))
+        },
+    )
+}
+
+private fun builtInTianziHurtThresholdPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = setOf(
+        SkillConditionCode(210270, SkillConditionField.CONDITION, 15002),
+        SkillConditionCode(210270, SkillConditionField.CONDITION, 15003),
+    ).filterTo(linkedSetOf()) { it !in overridden }
+    if (codes.isEmpty() || graph.details.none { it.detailId == 21027016 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.tianzi-round-hurt-threshold"
+            override val ownedConditions: Set<SkillConditionCode> = codes
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.ROUND_END))
         },
     )
 }
