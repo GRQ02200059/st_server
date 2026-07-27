@@ -513,6 +513,9 @@ class SkillConditionInterpreter(
         builtInHuiyanDamageConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInManwangHurtConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -1038,6 +1041,26 @@ private fun builtInHuiyanDamageConditionPlugins(
                 rule: SkillEffectRule,
             ): List<SkillCondition> =
                 listOf(SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER))
+        },
+    )
+}
+
+private fun builtInManwangHurtConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val code = SkillConditionCode(200297, SkillConditionField.CONDITION, 5005)
+    if (code in overridden || graph.details.none { it.detailId == 20029725 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.manwang-fifth-hurt"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.HURT_AFTER))
         },
     )
 }

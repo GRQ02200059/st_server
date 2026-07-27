@@ -396,6 +396,43 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `manwang counter chain triggers on each fifth actual hit to its owner`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100297, 100, listOf(200297), position = 2),
+                    hero(100001, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100297) }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100001) }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = enemy,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.NORMAL_ATTACK_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        repeat(4) { engine.applyNormalDamage(1, enemy, owner, 1, context) }
+        engine.applyNormalDamage(1, enemy, ally, 1, context)
+        val fifth = engine.applyNormalDamage(1, enemy, owner, 1, context)
+        val sixth = engine.applyNormalDamage(1, enemy, owner, 1, context)
+
+        assertEquals(1, fifth.filterIsInstance<BattleEvent.SkillTriggered>().count { it.skillId == 211297 })
+        assertTrue(sixth.none { it is BattleEvent.SkillTriggered && it.skillId == 211297 })
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(

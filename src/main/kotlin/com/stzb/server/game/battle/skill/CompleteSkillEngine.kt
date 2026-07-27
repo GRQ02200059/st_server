@@ -293,6 +293,32 @@ class DefaultCompleteSkillEngine private constructor(
         )
     }
 
+    private fun manwangHurtResult(
+        target: BattleHeroRef,
+        hurtCount: Int,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (200297 !in state.liveHero(target).skillIds ||
+            !state.runtime.consumeThreshold(
+                owner = target,
+                namespace = "skill.200297.actual-hurt",
+                count = hurtCount,
+                threshold = 5,
+            )
+        ) {
+            return SkillExecutionResult.EMPTY
+        }
+        return interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 20029725 },
+            context.copy(
+                source = target,
+                rootSkillId = 200297,
+                currentSkillId = 200297,
+                trigger = BattleTrigger.HURT_AFTER,
+            ),
+        )
+    }
+
     fun secondaryTarget(
         source: BattleHeroRef,
         primary: BattleHeroRef,
@@ -802,7 +828,16 @@ class DefaultCompleteSkillEngine private constructor(
             }
             events += trigger(BattleTrigger.DAMAGE_AFTER, damageContext)
             val hurtContext = context.copy(source = output.target, trigger = BattleTrigger.HURT_AFTER)
-            state.runtime.recordBattleTriggerOccurrence(output.target, BattleTrigger.HURT_AFTER)
+            val hurtCount = state.runtime.recordBattleTriggerOccurrence(
+                output.target,
+                BattleTrigger.HURT_AFTER,
+            )
+            if (output.amount > 0) {
+                events += apply(
+                    manwangHurtResult(output.target, hurtCount, hurtContext),
+                    hurtContext,
+                )
+            }
             events += trigger(BattleTrigger.HURT_AFTER, hurtContext)
             events += apply(timing.onHit(damageContext), damageContext)
         }

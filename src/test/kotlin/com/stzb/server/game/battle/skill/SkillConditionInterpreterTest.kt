@@ -137,6 +137,7 @@ class SkillConditionInterpreterTest {
             || code == SkillConditionCode(200277, SkillConditionField.CONDITION, 5006)
             || code == SkillConditionCode(200277, SkillConditionField.CONDITION, 5008)
             || code == SkillConditionCode(200294, SkillConditionField.CONDITION, 5006)
+            || code == SkillConditionCode(200297, SkillConditionField.CONDITION, 5005)
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -213,6 +214,17 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER),
             interpreter.compile(graph.detail(20029402)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `manwang fifth hit condition is restricted to hurt events`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.EventTrigger(BattleTrigger.HURT_AFTER),
+            interpreter.compile(graph.detail(20029725)).conditions.single(),
         )
     }
 

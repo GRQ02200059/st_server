@@ -116,7 +116,8 @@ class SpecialSkillPluginTest {
                 it == SkillConditionCode(200275, SkillConditionField.CONDITION, 5009) ||
                 it == SkillConditionCode(200277, SkillConditionField.CONDITION, 5006) ||
                 it == SkillConditionCode(200277, SkillConditionField.CONDITION, 5008) ||
-                it == SkillConditionCode(200294, SkillConditionField.CONDITION, 5006)
+                it == SkillConditionCode(200294, SkillConditionField.CONDITION, 5006) ||
+                it == SkillConditionCode(200297, SkillConditionField.CONDITION, 5005)
         }
         assertEquals(
             (ScopedConditionCodeCatalog.codes - resolvedTargetCodes)
