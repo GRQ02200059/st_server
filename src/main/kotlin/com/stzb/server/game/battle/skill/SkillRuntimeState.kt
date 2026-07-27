@@ -37,6 +37,11 @@ class SkillRuntimeState {
     fun attemptCount(source: BattleHeroRef, trigger: BattleTrigger, skillId: Int): Int =
         attemptCounts[RuntimeKey(source, trigger, skillId)] ?: 0
 
+    fun attemptCount(source: BattleHeroRef, trigger: BattleTrigger): Int =
+        attemptCounts.entries.sumOf { (key, value) ->
+            if (key.source == source && key.trigger == trigger) value else 0
+        }
+
     fun recordAttempt(
         source: BattleHeroRef,
         trigger: BattleTrigger,

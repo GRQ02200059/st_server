@@ -55,6 +55,20 @@ class SkillRuntimeStateTest {
     }
 
     @Test
+    fun `attempt totals aggregate skills but retain hero and trigger isolation`() {
+        val state = SkillRuntimeState()
+
+        state.recordAttempt(refA, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1, round = 1)
+        state.recordAttempt(refA, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 2, round = 1)
+        state.recordAttempt(refA, BattleTrigger.PURSUIT_ATTEMPT, 3, round = 1)
+        state.recordAttempt(refB, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1, round = 1)
+
+        assertEquals(2, state.attemptCount(refA, BattleTrigger.ACTIVE_SKILL_ATTEMPT))
+        assertEquals(1, state.attemptCount(refA, BattleTrigger.PURSUIT_ATTEMPT))
+        assertEquals(1, state.attemptCount(refB, BattleTrigger.ACTIVE_SKILL_ATTEMPT))
+    }
+
+    @Test
     fun `Task 12 battle event counter interface records every required trigger independently`() {
         val state = SkillRuntimeState()
         val requiredTask12Events = listOf(
