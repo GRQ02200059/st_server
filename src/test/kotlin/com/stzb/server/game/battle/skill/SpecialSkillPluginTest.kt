@@ -135,6 +135,7 @@ class SpecialSkillPluginTest {
                 it == SkillConditionCode(210270, SkillConditionField.CONDITION, 15002) ||
                 it == SkillConditionCode(210270, SkillConditionField.CONDITION, 15003) ||
                 it == SkillConditionCode(214254, SkillConditionField.CONDITION, 25011) ||
+                it == SkillConditionCode(210282, SkillConditionField.PRECONDITION, 500) ||
                 it == SkillConditionCode(
                     200968,
                     SkillConditionField.CAST_CONDITION,

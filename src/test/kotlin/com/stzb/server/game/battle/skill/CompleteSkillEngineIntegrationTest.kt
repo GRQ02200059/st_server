@@ -668,6 +668,64 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `qixurulin splashes strategy damage only to enemies adjacent to the original target`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100282, 100, listOf(200282), position = 2),
+                    hero(100017, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 30, position = 2),
+                    hero(200002, 20, position = 1),
+                    hero(200003, 10, position = 0),
+                ),
+            ),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.heroId == BattleHeroId(100017) }
+        val original = engine.state.view.heroes().single {
+            it.side == Side.DEFENDER && it.position == 1
+        }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 900000,
+            currentSkillId = 900000,
+            trigger = BattleTrigger.DAMAGE_AFTER,
+            battleView = engine.state.view,
+        )
+
+        val events = engine.applyChanges(
+            listOf(
+                TroopDamageChange(
+                    source = source,
+                    target = original,
+                    amount = 200,
+                    troopsAfter = 9_800,
+                    school = DamageSchool.STRATEGY,
+                    origin = DamageOrigin.ACTIVE,
+                    tags = emptySet(),
+                    skillId = 900000,
+                    effectId = 302,
+                ),
+            ),
+            context,
+        )
+
+        val splash = events.filterIsInstance<BattleEvent.SkillDamage>()
+            .filter { it.skillId == 210282 }
+        assertEquals(setOf(0, 2), splash.mapTo(linkedSetOf()) { it.target.position })
+        assertTrue(splash.none { it.target == original })
+    }
+
+    @Test
     fun `zhongke follows attack damage on its marked target at most twice`() {
         val request = BattleRequest(
             attacker = BattleTeam(

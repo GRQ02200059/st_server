@@ -463,6 +463,59 @@ class DefaultCompleteSkillEngine private constructor(
         )
     }
 
+    private fun qixurulinStrategySplashResult(
+        output: BattleStateOutput.DamageDealt,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (context.round <= 0 ||
+            output.amount <= 0 ||
+            output.school != DamageSchool.STRATEGY ||
+            output.skillId == 210282
+        ) {
+            return SkillExecutionResult.EMPTY
+        }
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side == output.source.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200282 in state.liveHero(candidate).skillIds
+        } ?: return SkillExecutionResult.EMPTY
+        val adjacent = state.view.heroes().filter { candidate ->
+            candidate.side == output.target.side &&
+                candidate != output.target &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                kotlin.math.abs(candidate.position - output.target.position) == 1
+        }
+        val amount = (output.amount * 50 / 100).coerceAtLeast(1)
+        return SkillExecutionResult.immutable(
+            stateChanges = adjacent.map { target ->
+                TroopDamageChange(
+                    source = output.source,
+                    target = target,
+                    amount = amount,
+                    troopsAfter = (
+                        requireNotNull(state.view.state(target)).troops - amount
+                        ).coerceAtLeast(0),
+                    school = DamageSchool.STRATEGY,
+                    origin = output.origin,
+                    tags = output.tags,
+                    skillId = 210282,
+                    effectId = 302,
+                )
+            },
+            events = listOf(
+                SkillTriggered(
+                    round = context.round,
+                    source = owner,
+                    rootSkillId = 200282,
+                    skillId = 210282,
+                    trigger = BattleTrigger.DAMAGE_AFTER,
+                ),
+            ),
+            executedSkillIds = listOf(210282),
+            diagnostics = emptyList(),
+        )
+    }
+
     private fun zhongkeDamageResult(
         output: BattleStateOutput.DamageDealt,
         context: SkillBattleContext,
@@ -1016,6 +1069,10 @@ class DefaultCompleteSkillEngine private constructor(
                 )
                 events += apply(
                     xianmingOngoingDamageResult(output, damageContext),
+                    damageContext,
+                )
+                events += apply(
+                    qixurulinStrategySplashResult(output, damageContext),
                     damageContext,
                 )
                 events += apply(

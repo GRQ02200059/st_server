@@ -552,6 +552,9 @@ class SkillConditionInterpreter(
         builtInXianmingEffectAppliedPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInQixurulinStrategySplashPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         builtInZhongkeDamageConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -1197,6 +1200,26 @@ private fun builtInXianmingEffectAppliedPlugins(
                     SkillCondition.RoundRange(3, Int.MAX_VALUE),
                     SkillCondition.EventTrigger(BattleTrigger.EFFECT_APPLIED),
                 )
+        },
+    )
+}
+
+private fun builtInQixurulinStrategySplashPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val code = SkillConditionCode(210282, SkillConditionField.PRECONDITION, 500)
+    if (code in overridden || graph.details.none { it.detailId == 21028202 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.qixurulin-strategy-damage-splash"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER))
         },
     )
 }
