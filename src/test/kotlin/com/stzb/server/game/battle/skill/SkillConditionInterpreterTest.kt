@@ -130,6 +130,7 @@ class SkillConditionInterpreterTest {
             code.field == SkillConditionField.CONDITION &&
             code.value in setOf(20160, 32002, 32011, 18306) ||
             code == SkillConditionCode(200016, SkillConditionField.CONDITION, 5003)
+            || code == SkillConditionCode(200253, SkillConditionField.CONDITION, 5003)
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -1154,6 +1155,22 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.EventTrigger(BattleTrigger.RECOVERY_AFTER),
             interpreter.compile(graph.detail(20001602)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `bingzhe threshold detail is restricted to active and pursuit attempts`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.EventTriggerSet(
+                setOf(
+                    BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                    BattleTrigger.PURSUIT_ATTEMPT,
+                ),
+            ),
+            interpreter.compile(graph.detail(20025301)).conditions.single(),
         )
     }
 

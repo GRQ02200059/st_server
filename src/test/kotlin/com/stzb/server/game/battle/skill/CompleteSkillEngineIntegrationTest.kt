@@ -155,6 +155,50 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `bingzhe listener fires once after three active or pursuit attempts`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(
+                        100253,
+                        100,
+                        listOf(200253, 200001, 200002, 200251),
+                        position = 2,
+                    ),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val base = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            battleView = engine.state.view,
+        )
+
+        val events = engine.trigger(BattleTrigger.ACTIVE_SKILL_ATTEMPT, base) +
+            engine.trigger(
+                BattleTrigger.PURSUIT_ATTEMPT,
+                base.copy(trigger = BattleTrigger.PURSUIT_ATTEMPT),
+            )
+
+        assertEquals(3, engine.state.runtime.attemptCount(source, BattleTrigger.ACTIVE_SKILL_ATTEMPT) +
+            engine.state.runtime.attemptCount(source, BattleTrigger.PURSUIT_ATTEMPT))
+        assertEquals(
+            1,
+            events.filterIsInstance<BattleEvent.SkillTriggered>().count { it.skillId == 211253 },
+        )
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(

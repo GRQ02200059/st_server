@@ -297,6 +297,7 @@ class DefaultCompleteSkillEngine private constructor(
         context: SkillBattleContext,
     ): SkillExecutionResult =
         skillsFor(context.source, trigger).fold(SkillExecutionResult.EMPTY) { result, skillId ->
+            val attemptsBefore = activePursuitAttemptCount(context.source)
             val key = context.source to skillId
             if ((cooldownUntilRound[key] ?: 0) >= context.round) {
                 result
@@ -313,9 +314,40 @@ class DefaultCompleteSkillEngine private constructor(
                 if (skillId == DISORDER_SKILL_ID && attempt.executedSkillIds.isNotEmpty()) {
                     cooldownUntilRound[key] = context.round + 3
                 }
-                result + attempt
+                result + attempt + attemptThresholdResult(
+                    context,
+                    attemptsBefore,
+                    activePursuitAttemptCount(context.source),
+                )
             }
         }
+
+    private fun activePursuitAttemptCount(source: BattleHeroRef): Int =
+        state.runtime.attemptCount(source, BattleTrigger.ACTIVE_SKILL_ATTEMPT) +
+            state.runtime.attemptCount(source, BattleTrigger.PURSUIT_ATTEMPT)
+
+    private fun attemptThresholdResult(
+        context: SkillBattleContext,
+        before: Int,
+        after: Int,
+    ): SkillExecutionResult {
+        if (after <= before || 200253 !in state.liveHero(context.source).skillIds) {
+            return SkillExecutionResult.EMPTY
+        }
+        if (!state.runtime.consumeThreshold(
+                owner = context.source,
+                namespace = "skill.200253.active-pursuit-attempt",
+                count = after,
+                threshold = 3,
+            )
+        ) {
+            return SkillExecutionResult.EMPTY
+        }
+        return interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 20025301 },
+            context.copy(rootSkillId = 200253, currentSkillId = 200253),
+        )
+    }
 
     private fun withSuccessfulSkillPluginResponses(
         result: SkillExecutionResult,
