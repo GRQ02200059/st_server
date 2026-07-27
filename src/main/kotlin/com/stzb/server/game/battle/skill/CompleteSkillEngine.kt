@@ -987,6 +987,12 @@ class DefaultCompleteSkillEngine private constructor(
             }
             events += trigger(BattleTrigger.HURT_AFTER, hurtContext)
             events += apply(timing.onHit(damageContext), damageContext)
+            if (output.amount > 0) {
+                events += apply(
+                    tongchouHurtResult(output.target, hurtContext),
+                    hurtContext,
+                )
+            }
         }
         result.outputs.filterIsInstance<BattleStateOutput.TroopsRecovered>()
             .filter { it.amount > 0 }
@@ -1022,6 +1028,35 @@ class DefaultCompleteSkillEngine private constructor(
             .let(::BattleStateApplyResult)
             .toEvents(context.round)
         return events
+    }
+
+    private fun tongchouHurtResult(
+        hurtTarget: BattleHeroRef,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side == hurtTarget.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                201006 in state.liveHero(candidate).skillIds
+        } ?: return SkillExecutionResult.EMPTY
+        val targets = state.view.heroes().filter { candidate ->
+            candidate.side == hurtTarget.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                kotlin.math.abs(candidate.position - hurtTarget.position) <= 1
+        }
+        val listenerContext = context.copy(
+            source = owner,
+            rootSkillId = 201006,
+            currentSkillId = 201006,
+            trigger = BattleTrigger.HURT_AFTER,
+        )
+        return listOf(20100601, 20100602).fold(SkillExecutionResult.EMPTY) { result, detailId ->
+            result + interpreter.executeDetailForEngine(
+                graph.details.single { it.detailId == detailId },
+                listenerContext,
+                preselectedTargets = targets,
+            )
+        }
     }
 
     private fun BattleStateApplyResult.toEvents(round: Int): List<BattleEvent> =

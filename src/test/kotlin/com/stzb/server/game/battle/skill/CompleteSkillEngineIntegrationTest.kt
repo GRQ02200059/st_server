@@ -654,6 +654,49 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `tongchou buffs only allies within one position after actual hurt`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100006, 100, listOf(201006), position = 2),
+                    hero(100007, 90, position = 1),
+                    hero(100008, 80, position = 0),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val hurt = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 2
+        }
+        val near = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 1
+        }
+        val far = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 0
+        }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = enemy,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.DAMAGE_AFTER,
+            battleView = engine.state.view,
+        )
+
+        engine.applyNormalDamage(1, enemy, hurt, 1, context)
+
+        assertTrue(engine.state.effectStore.effectsFor(hurt).any { it.skillId == 223006 })
+        assertTrue(engine.state.effectStore.effectsFor(near).any { it.skillId == 223006 })
+        assertTrue(engine.state.effectStore.effectsFor(far).none { it.skillId == 223006 })
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(

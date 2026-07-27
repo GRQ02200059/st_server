@@ -561,6 +561,9 @@ class SkillConditionInterpreter(
         builtInDingjunActionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInTongchouHurtPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -1282,6 +1285,26 @@ private fun builtInDingjunActionPlugins(
                     SkillCondition.RoundRange(4, 4),
                     SkillCondition.EventTrigger(BattleTrigger.ACTION_BEFORE),
                 )
+        },
+    )
+}
+
+private fun builtInTongchouHurtPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val code = SkillConditionCode(201006, SkillConditionField.CONDITION, 24001)
+    if (code in overridden || graph.details.none { it.detailId == 20100601 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.tongchou-ally-hurt"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.HURT_AFTER))
         },
     )
 }

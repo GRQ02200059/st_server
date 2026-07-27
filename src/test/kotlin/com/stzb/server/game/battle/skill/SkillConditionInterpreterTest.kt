@@ -165,6 +165,7 @@ class SkillConditionInterpreterTest {
                 220096802,
             )
             || code == SkillConditionCode(200293, SkillConditionField.CONDITION, 5001)
+            || code == SkillConditionCode(201006, SkillConditionField.CONDITION, 24001)
             || code.field == SkillConditionField.PRECONDITION && code.value == 43
 
     @Test
@@ -709,6 +710,19 @@ class SkillConditionInterpreterTest {
             SkillCondition.EventTrigger(BattleTrigger.RECOVERY_AFTER),
             interpreter.compile(graph.detail(20001603)).conditions.single(),
         )
+    }
+
+    @Test
+    fun `tongchou branches bind to actual hurt after`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        listOf(20100601, 20100602).forEach { detailId ->
+            assertEquals(
+                SkillCondition.EventTrigger(BattleTrigger.HURT_AFTER),
+                interpreter.compile(graph.detail(detailId)).conditions.single(),
+            )
+        }
     }
 
     @Test
