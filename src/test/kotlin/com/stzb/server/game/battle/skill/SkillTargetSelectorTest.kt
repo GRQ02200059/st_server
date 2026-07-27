@@ -1,11 +1,14 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleConfigRepository
+import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroId
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleRandom
+import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleStats
 import com.stzb.server.game.battle.BattleStatus
+import com.stzb.server.game.battle.BattleTeam
 import com.stzb.server.game.battle.FixedBattleRandom
 import com.stzb.server.game.battle.Side
 import com.stzb.server.game.battle.SkillDetailConfig
@@ -852,6 +855,38 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `precondition 43 keeps only allies whose inherent skill is active`() {
+        val active = BattleHero(
+            id = allyBase.heroId,
+            position = allyBase.position,
+            stats = BattleStats(100, 100, 100, 100, 0, 5),
+            troops = 10_000,
+            maxTroops = 10_000,
+            skillIds = listOf(200003),
+        )
+        val command = BattleHero(
+            id = allyMiddle.heroId,
+            position = allyMiddle.position,
+            stats = BattleStats(100, 100, 100, 100, 0, 5),
+            troops = 10_000,
+            maxTroops = 10_000,
+            skillIds = listOf(200016),
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(active, command)),
+            defender = BattleTeam(emptyList()),
+        )
+
+        assertEquals(
+            listOf(allyBase),
+            select(
+                rule(attackType = 23, attackMax = 3, precondition = 43),
+                context(view(sourceRange = 5), request = request),
+            ),
+        )
+    }
+
+    @Test
     fun `metadata filters fail explicitly when live metadata is absent`() {
         val context = context(view(metadata = emptyMap(), sourceRange = 5))
 
@@ -912,11 +947,12 @@ class SkillTargetSelectorTest {
         view: SkillBattleView,
         random: BattleRandom = FixedBattleRandom(0),
         runtime: SkillRuntimeState = SkillRuntimeState(),
-    ) = SkillBattleContext(
-        request = com.stzb.server.game.battle.BattleRequest(
-            attacker = com.stzb.server.game.battle.BattleTeam(emptyList()),
-            defender = com.stzb.server.game.battle.BattleTeam(emptyList()),
+        request: BattleRequest = BattleRequest(
+            attacker = BattleTeam(emptyList()),
+            defender = BattleTeam(emptyList()),
         ),
+    ) = SkillBattleContext(
+        request = request,
         runtime = runtime,
         random = random,
         round = 1,

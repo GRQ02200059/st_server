@@ -1,15 +1,19 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleConfigRepository
 import com.stzb.server.game.battle.BattleStatus
 import com.stzb.server.game.battle.Side
+import com.stzb.server.game.battle.SkillKind
 import com.stzb.server.game.battle.opposite
 
 fun interface CompiledTargetSelector {
     fun select(context: SkillBattleContext): List<BattleHeroRef>
 }
 
-class SkillTargetSelector {
+class SkillTargetSelector(
+    private val config: BattleConfigRepository = BattleConfigRepository.loadDefault(),
+) {
     fun compile(rule: SkillEffectRule): CompiledTargetSelector {
         val raw = rule.raw
         require(raw.targetType in TARGET_TYPES) {
@@ -268,8 +272,21 @@ class SkillTargetSelector {
             3100 -> morale(target, context) <= HIGH_MORALE_THRESHOLD
             6000 -> hasSpecialTroopCategory(target, context)
             -6000 -> !hasSpecialTroopCategory(target, context)
+            43 -> hasInherentActiveSkill(target, context)
             else -> true
         }
+
+    private fun hasInherentActiveSkill(
+        target: BattleHeroRef,
+        context: SkillBattleContext,
+    ): Boolean {
+        val team = if (target.side == Side.ATTACKER) context.request.attacker else context.request.defender
+        val hero = team.heroes.singleOrNull {
+            it.id == target.heroId && it.position == target.position
+        } ?: return false
+        val inherentSkillId = hero.skillIds.firstOrNull() ?: return false
+        return config.skill(inherentSkillId)?.kind == SkillKind.ACTIVE
+    }
 
     private fun hasSpecialTroopCategory(
         target: BattleHeroRef,

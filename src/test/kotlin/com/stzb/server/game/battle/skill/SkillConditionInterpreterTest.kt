@@ -139,6 +139,7 @@ class SkillConditionInterpreterTest {
             || code == SkillConditionCode(200294, SkillConditionField.CONDITION, 5006)
             || code == SkillConditionCode(200297, SkillConditionField.CONDITION, 5005)
             || code == SkillConditionCode(200950, SkillConditionField.CONDITION, 5007)
+            || code.field == SkillConditionField.PRECONDITION && code.value == 43
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -244,6 +245,22 @@ class SkillConditionInterpreterTest {
             ),
             interpreter.compile(graph.detail(20095002)).conditions.single(),
         )
+    }
+
+    @Test
+    fun `nanzhi precondition requires an inherent active skill target`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        listOf(21082801, 21082802, 21082803, 21182801, 21182802, 21182803, 21382801)
+            .forEach { detailId ->
+                assertEquals(
+                    SkillCondition.TargetPredicate(
+                        SkillCondition.TargetPredicate.Kind.INHERENT_ACTIVE_SKILL,
+                    ),
+                    interpreter.compile(graph.detail(detailId)).conditions.single(),
+                )
+            }
     }
 
     @Test

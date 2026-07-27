@@ -83,6 +83,7 @@ sealed interface SkillCondition {
             COUNTRY_DIFFERENT_FROM_SOURCE,
             HAS_DETAIL_MARKER,
             LACKS_DETAIL_MARKER,
+            INHERENT_ACTIVE_SKILL,
         }
     }
 
@@ -463,6 +464,9 @@ class SkillConditionInterpreter(
         val all = linkedMapOf<SkillConditionCode, SpecialSkillPlugin>()
         all.putAll(custom)
         builtInTargetConditionPlugins(graph, custom.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
+        builtInInherentActiveSkillTargetPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
         builtInRoundConditionPlugins(graph, all.keys).forEach { plugin ->
@@ -1517,6 +1521,34 @@ private fun builtInTargetConditionPlugins(
     } else {
         listOf(BuiltInTargetConditionPlugin("builtin.target-precondition", codes))
     }
+}
+
+private fun builtInInherentActiveSkillTargetPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter { it.field == SkillConditionField.PRECONDITION && it.value == 43 }
+        .filterNot(overridden::contains)
+        .toSet()
+    if (codes.isEmpty()) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.inherent-active-skill-target"
+            override val ownedConditions: Set<SkillConditionCode> = codes
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(
+                    SkillCondition.TargetPredicate(
+                        SkillCondition.TargetPredicate.Kind.INHERENT_ACTIVE_SKILL,
+                    ),
+                )
+        },
+    )
 }
 
 private class PendingSpecialSkillPlugin(
