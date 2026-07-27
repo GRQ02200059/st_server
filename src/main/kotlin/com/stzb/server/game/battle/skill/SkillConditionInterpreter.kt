@@ -516,6 +516,9 @@ class SkillConditionInterpreter(
         builtInManwangHurtConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInQibuActionConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -1061,6 +1064,34 @@ private fun builtInManwangHurtConditionPlugins(
                 rule: SkillEffectRule,
             ): List<SkillCondition> =
                 listOf(SkillCondition.EventTrigger(BattleTrigger.HURT_AFTER))
+        },
+    )
+}
+
+private fun builtInQibuActionConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val code = SkillConditionCode(200950, SkillConditionField.CONDITION, 5007)
+    if (code in overridden || graph.details.none { it.detailId == 20095002 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.qibu-seventh-team-action"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(
+                    SkillCondition.EventTriggerSet(
+                        setOf(
+                            BattleTrigger.NORMAL_ATTACK_AFTER,
+                            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                            BattleTrigger.PURSUIT_ATTEMPT,
+                        ),
+                    ),
+                )
         },
     )
 }

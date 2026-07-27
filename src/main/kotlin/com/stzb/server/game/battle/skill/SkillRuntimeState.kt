@@ -43,6 +43,11 @@ class SkillRuntimeState {
             if (key.source == source && key.trigger == trigger) value else 0
         }
 
+    fun sideAttemptCount(side: Side, trigger: BattleTrigger): Int =
+        attemptCounts.entries.sumOf { (key, value) ->
+            if (key.source.side == side && key.trigger == trigger) value else 0
+        }
+
     fun recordAttempt(
         source: BattleHeroRef,
         trigger: BattleTrigger,

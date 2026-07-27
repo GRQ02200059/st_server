@@ -433,6 +433,48 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `qibu recovers allies on every seventh team normal or skill attempt`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100950, 100, listOf(200950), position = 2),
+                    hero(100001, 90, position = 1).copy(troops = 9_000),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100950) }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100001) }
+        engine.state.mutable(ally).woundedTroops = 1_000
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = ally,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+            battleView = engine.state.view,
+        )
+
+        repeat(6) {
+            engine.state.runtime.recordBattleTriggerOccurrence(ally, BattleTrigger.NORMAL_ATTACK_AFTER)
+            engine.trigger(BattleTrigger.NORMAL_ATTACK_AFTER, context)
+        }
+        engine.state.runtime.recordBattleTriggerOccurrence(ally, BattleTrigger.NORMAL_ATTACK_AFTER)
+        val seventh = engine.trigger(BattleTrigger.NORMAL_ATTACK_AFTER, context)
+        engine.state.runtime.recordBattleTriggerOccurrence(owner, BattleTrigger.NORMAL_ATTACK_AFTER)
+        val eighth = engine.trigger(BattleTrigger.NORMAL_ATTACK_AFTER, context.copy(source = owner))
+
+        assertEquals(1, seventh.filterIsInstance<BattleEvent.SkillTriggered>().count { it.skillId == 212950 })
+        assertTrue(eighth.none { it is BattleEvent.SkillTriggered && it.skillId == 212950 })
+        assertTrue(requireNotNull(engine.state.view.state(ally)).troops > 9_000)
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(

@@ -138,6 +138,7 @@ class SkillConditionInterpreterTest {
             || code == SkillConditionCode(200277, SkillConditionField.CONDITION, 5008)
             || code == SkillConditionCode(200294, SkillConditionField.CONDITION, 5006)
             || code == SkillConditionCode(200297, SkillConditionField.CONDITION, 5005)
+            || code == SkillConditionCode(200950, SkillConditionField.CONDITION, 5007)
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -225,6 +226,23 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.EventTrigger(BattleTrigger.HURT_AFTER),
             interpreter.compile(graph.detail(20029725)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `qibu seventh team action condition accepts its three event families`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.EventTriggerSet(
+                setOf(
+                    BattleTrigger.NORMAL_ATTACK_AFTER,
+                    BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                    BattleTrigger.PURSUIT_ATTEMPT,
+                ),
+            ),
+            interpreter.compile(graph.detail(20095002)).conditions.single(),
         )
     }
 

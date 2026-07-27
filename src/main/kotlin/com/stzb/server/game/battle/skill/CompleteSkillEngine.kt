@@ -92,7 +92,7 @@ class DefaultCompleteSkillEngine private constructor(
             BattleTrigger.BATTLE_COMMAND,
             -> executeBattleSkills(trigger, scoped)
             else -> SkillExecutionResult.EMPTY
-        }
+        } + qibuActionResult(scoped)
         events += apply(withSuccessfulSkillPluginResponses(result, scoped), scoped)
         return events
     }
@@ -315,6 +315,49 @@ class DefaultCompleteSkillEngine private constructor(
                 rootSkillId = 200297,
                 currentSkillId = 200297,
                 trigger = BattleTrigger.HURT_AFTER,
+            ),
+        )
+    }
+
+    private fun qibuActionResult(context: SkillBattleContext): SkillExecutionResult {
+        if (context.trigger !in setOf(
+                BattleTrigger.NORMAL_ATTACK_AFTER,
+                BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                BattleTrigger.PURSUIT_ATTEMPT,
+            )
+        ) {
+            return SkillExecutionResult.EMPTY
+        }
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side == context.source.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200950 in state.liveHero(candidate).skillIds
+        } ?: return SkillExecutionResult.EMPTY
+        val count = state.runtime.sideCount(
+            context.source.side,
+            BattleTrigger.NORMAL_ATTACK_AFTER,
+        ) + state.runtime.sideAttemptCount(
+            context.source.side,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+        ) + state.runtime.sideAttemptCount(
+            context.source.side,
+            BattleTrigger.PURSUIT_ATTEMPT,
+        )
+        if (!state.runtime.consumeThreshold(
+                owner = owner,
+                namespace = "skill.200950.team-actions",
+                count = count,
+                threshold = 7,
+            )
+        ) {
+            return SkillExecutionResult.EMPTY
+        }
+        return interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 20095002 },
+            context.copy(
+                source = owner,
+                rootSkillId = 200950,
+                currentSkillId = 200950,
             ),
         )
     }

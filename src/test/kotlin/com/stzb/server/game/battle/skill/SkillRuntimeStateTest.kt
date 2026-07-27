@@ -69,6 +69,21 @@ class SkillRuntimeStateTest {
     }
 
     @Test
+    fun `attempt totals aggregate by side across heroes and skills`() {
+        val defender = ref(Side.DEFENDER, 0, 100019)
+        val state = SkillRuntimeState()
+
+        state.recordAttempt(refA, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1, round = 1)
+        state.recordAttempt(refB, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 2, round = 1)
+        state.recordAttempt(refB, BattleTrigger.PURSUIT_ATTEMPT, 3, round = 1)
+        state.recordAttempt(defender, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 1, round = 1)
+
+        assertEquals(2, state.sideAttemptCount(Side.ATTACKER, BattleTrigger.ACTIVE_SKILL_ATTEMPT))
+        assertEquals(1, state.sideAttemptCount(Side.ATTACKER, BattleTrigger.PURSUIT_ATTEMPT))
+        assertEquals(1, state.sideAttemptCount(Side.DEFENDER, BattleTrigger.ACTIVE_SKILL_ATTEMPT))
+    }
+
+    @Test
     fun `Task 12 battle event counter interface records every required trigger independently`() {
         val state = SkillRuntimeState()
         val requiredTask12Events = listOf(
