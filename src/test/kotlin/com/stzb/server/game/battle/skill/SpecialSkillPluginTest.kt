@@ -102,6 +102,7 @@ class SpecialSkillPluginTest {
                     121384301, 221384301,
                     220097913,
                     320092602, 221095712,
+                    121196601, 421196601,
                 )
                 || it.field == SkillConditionField.PRECONDITION &&
                 it.value in setOf(18, -18) ||
