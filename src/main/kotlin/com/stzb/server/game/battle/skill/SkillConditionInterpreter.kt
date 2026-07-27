@@ -652,6 +652,14 @@ private class BuiltInMarkerConditionPlugin(
                 SkillCondition.TargetPredicate.Kind.LACKS_DETAIL_MARKER,
                 value = 21001701,
             )
+            420024301 -> SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.LACKS_DETAIL_MARKER,
+                value = 20024301,
+            )
+            420024302 -> SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.LACKS_DETAIL_MARKER,
+                value = 20024302,
+            )
             121002401 -> SkillCondition.TargetPredicate(
                 SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
                 value = 21002401,
@@ -669,7 +677,10 @@ private fun builtInMarkerConditionPlugins(
         .flatMap(::conditionCodes)
         .filter {
             it.field == SkillConditionField.CAST_CONDITION &&
-                it.value in setOf(320000301, 121002401, 321001701, 421001701)
+                it.value in setOf(
+                    320000301, 121002401, 321001701, 421001701,
+                    420024301, 420024302,
+                )
         }
         .filterNot(overridden::contains)
         .toSet()
