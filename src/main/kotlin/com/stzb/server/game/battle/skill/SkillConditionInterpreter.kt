@@ -523,6 +523,9 @@ class SkillConditionInterpreter(
         builtInQibuActionConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInHuangtianDamageConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -584,7 +587,7 @@ class SkillConditionInterpreter(
                 "Plugin ${plugin.id} returned no condition for $code detail=${rule.detailId}"
             }
             compiled
-        }
+        }.distinct()
         return CompiledSkillCondition(rule.detailId, conditions)
     }
 
@@ -1096,6 +1099,29 @@ private fun builtInQibuActionConditionPlugins(
                         ),
                     ),
                 )
+        },
+    )
+}
+
+private fun builtInHuangtianDamageConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = setOf(
+        SkillConditionCode(200008, SkillConditionField.CAST_CONDITION, 420000802),
+        SkillConditionCode(200008, SkillConditionField.CONDITION, 26636),
+    ).filterTo(linkedSetOf()) { it !in overridden }
+    if (codes.isEmpty() || graph.details.none { it.detailId == 20000802 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.huangtian-own-hex-damage"
+            override val ownedConditions: Set<SkillConditionCode> = codes
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER))
         },
     )
 }

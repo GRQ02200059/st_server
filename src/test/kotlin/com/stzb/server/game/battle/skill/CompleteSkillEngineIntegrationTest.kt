@@ -9,6 +9,8 @@ import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleStats
 import com.stzb.server.game.battle.BattleTeam
+import com.stzb.server.game.battle.DamageOrigin
+import com.stzb.server.game.battle.DamageSchool
 import com.stzb.server.game.battle.FixedBattleRandom
 import com.stzb.server.game.battle.Side
 import com.stzb.server.game.battle.SkillKind
@@ -472,6 +474,75 @@ class CompleteSkillEngineIntegrationTest {
         assertEquals(1, seventh.filterIsInstance<BattleEvent.SkillTriggered>().count { it.skillId == 212950 })
         assertTrue(eighth.none { it is BattleEvent.SkillTriggered && it.skillId == 212950 })
         assertTrue(requireNotNull(engine.state.view.state(ally)).troops > 9_000)
+    }
+
+    @Test
+    fun `huangtian recovers its caster only after its own sorcery damage ticks`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100008, 100, listOf(200008), position = 2).copy(troops = 9_000),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        engine.state.mutable(source).woundedTroops = 1_000
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 200008,
+            currentSkillId = 200008,
+            trigger = BattleTrigger.ROUND_START,
+            battleView = engine.state.view,
+        )
+        val spec = PersistentEffectSpec(
+            source = source,
+            target = target,
+            rootSkillId = 200008,
+            skillId = 200008,
+            skillKind = SkillKind.ACTIVE,
+            rawSkillType = 3,
+            detailId = 20000811,
+            effectId = 306,
+            category = com.stzb.server.game.battle.EffectCategory.HARMFUL,
+            conflict = 306,
+            replaceType = 0,
+            bindFlag = 0,
+            maxStacks = 1,
+            delayRound = 0,
+            delayHit = 0,
+            availableRounds = 2,
+            availableHit = 0,
+            clearPerHit = false,
+            startBoundary = EffectStartBoundary.IMMEDIATE,
+            potency = TypedBattlePotency.rate(40),
+        )
+        engine.applyChanges(
+            listOf(
+                ScheduledDamageEffectChange(
+                    spec = spec,
+                    school = DamageSchool.STRATEGY,
+                    origin = DamageOrigin.ACTIVE,
+                    tags = setOf(com.stzb.server.game.battle.DamageTag.ONGOING),
+                    status = com.stzb.server.game.battle.BattleStatus.HEX,
+                    coefficientSource = BattleCoefficientSource.STRATEGY,
+                    rawCoefficient = 350,
+                    calculationTypes = emptyList(),
+                ),
+            ),
+            context,
+        )
+
+        engine.trigger(BattleTrigger.ROUND_START, context)
+
+        assertTrue(requireNotNull(engine.state.view.state(source)).troops > 9_000)
     }
 
     @Test

@@ -362,6 +362,30 @@ class DefaultCompleteSkillEngine private constructor(
         )
     }
 
+    private fun huangtianDamageResult(
+        output: BattleStateOutput.DamageDealt,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (output.amount <= 0 ||
+            output.skillId != 200008 ||
+            output.effectId != 306 ||
+            DamageTag.ONGOING !in output.tags ||
+            200008 !in state.liveHero(output.source).skillIds
+        ) {
+            return SkillExecutionResult.EMPTY
+        }
+        return interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 20000802 },
+            context.copy(
+                source = output.source,
+                rootSkillId = 200008,
+                currentSkillId = 200008,
+                trigger = BattleTrigger.DAMAGE_AFTER,
+            ),
+            preselectedTargets = listOf(output.source),
+        )
+    }
+
     fun secondaryTarget(
         source: BattleHeroRef,
         primary: BattleHeroRef,
@@ -851,6 +875,10 @@ class DefaultCompleteSkillEngine private constructor(
             val damageContext = context.copy(source = output.source, trigger = BattleTrigger.DAMAGE_AFTER)
             if (output.amount > 0) {
                 recordDamageThresholds(output.source, context)
+                events += apply(
+                    huangtianDamageResult(output, damageContext),
+                    damageContext,
+                )
                 events += apply(
                     xinzhanDamageResult(
                         output.source,

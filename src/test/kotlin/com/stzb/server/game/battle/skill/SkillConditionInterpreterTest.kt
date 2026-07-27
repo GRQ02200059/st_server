@@ -139,6 +139,12 @@ class SkillConditionInterpreterTest {
             || code == SkillConditionCode(200294, SkillConditionField.CONDITION, 5006)
             || code == SkillConditionCode(200297, SkillConditionField.CONDITION, 5005)
             || code == SkillConditionCode(200950, SkillConditionField.CONDITION, 5007)
+            || code == SkillConditionCode(
+                200008,
+                SkillConditionField.CAST_CONDITION,
+                420000802,
+            )
+            || code == SkillConditionCode(200008, SkillConditionField.CONDITION, 26636)
             || code.field == SkillConditionField.PRECONDITION && code.value == 43
 
     @Test
@@ -147,25 +153,8 @@ class SkillConditionInterpreterTest {
         val interpreter = SkillConditionInterpreter(graph)
 
         assertEquals(
-            listOf(
-                SpecialConditionRequirement(
-                    SkillConditionCode(
-                        200008,
-                        SkillConditionField.CAST_CONDITION,
-                        420000802,
-                    ),
-                    "skill.200008",
-                ),
-                SpecialConditionRequirement(
-                    SkillConditionCode(
-                        200008,
-                        SkillConditionField.CONDITION,
-                        26636,
-                    ),
-                    "skill.200008",
-                ),
-            ),
-            interpreter.compile(graph.detail(20000802)).conditions,
+            SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER),
+            interpreter.compile(graph.detail(20000802)).conditions.single(),
         )
         assertEquals(
             SkillCondition.FormationRoster(
@@ -566,6 +555,17 @@ class SkillConditionInterpreterTest {
         expected.forEach { (detailId, predicate) ->
             assertTrue(predicate in interpreter.compile(graph.detail(detailId)).conditions)
         }
+    }
+
+    @Test
+    fun `huangtian recovery conditions compile to its sorcery damage event`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER),
+            interpreter.compile(graph.detail(20000802)).conditions.single(),
+        )
     }
 
     @Test

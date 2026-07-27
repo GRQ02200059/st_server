@@ -119,6 +119,12 @@ class SpecialSkillPluginTest {
                 it == SkillConditionCode(200294, SkillConditionField.CONDITION, 5006) ||
                 it == SkillConditionCode(200297, SkillConditionField.CONDITION, 5005) ||
                 it == SkillConditionCode(200950, SkillConditionField.CONDITION, 5007) ||
+                it == SkillConditionCode(
+                    200008,
+                    SkillConditionField.CAST_CONDITION,
+                    420000802,
+                ) ||
+                it == SkillConditionCode(200008, SkillConditionField.CONDITION, 26636) ||
                 it.field == SkillConditionField.PRECONDITION && it.value == 43
         }
         assertEquals(
