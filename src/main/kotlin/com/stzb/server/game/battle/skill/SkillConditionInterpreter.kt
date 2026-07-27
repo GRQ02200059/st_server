@@ -152,6 +152,16 @@ sealed interface SkillCondition {
         val negated: Boolean,
     ) : SkillCondition
 
+    data class HasAnyEffect(
+        val subject: Subject,
+        val effectIds: Set<Int>,
+        val negated: Boolean,
+    ) : SkillCondition {
+        init {
+            require(effectIds.isNotEmpty()) { "Effect set must not be empty" }
+        }
+    }
+
     data class HasStatus(
         val subject: Subject,
         val status: BattleStatus,
@@ -242,6 +252,7 @@ class CompiledSkillCondition internal constructor(
                 is SkillCondition.StatComparison -> matchesStatComparison(condition, context)
                 is SkillCondition.ConfigBranch -> condition.enabled
                 is SkillCondition.HasEffect -> matchesEffect(condition, context)
+                is SkillCondition.HasAnyEffect -> matchesAnyEffect(condition, context)
                 is SkillCondition.HasStatus -> matchesStatus(condition, context)
                 is SkillCondition.TriggerCount -> matchesTriggerCount(condition, context)
                 is SkillCondition.HeroId -> matchesHeroId(condition, context)
@@ -356,6 +367,18 @@ class CompiledSkillCondition internal constructor(
             return false
         }
         val present = condition.effectId in context.battleView.activeEffectIds(ref)
+        return if (condition.negated) !present else present
+    }
+
+    private fun matchesAnyEffect(
+        condition: SkillCondition.HasAnyEffect,
+        context: SkillBattleContext,
+    ): Boolean {
+        val ref = subject(condition.subject, context) ?: return false
+        if (SkillBattleViewCapability.ACTIVE_EFFECTS !in context.battleView.capabilities) {
+            return false
+        }
+        val present = context.battleView.activeEffectIds(ref).any(condition.effectIds::contains)
         return if (condition.negated) !present else present
     }
 
@@ -530,6 +553,9 @@ class SkillConditionInterpreter(
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
         builtInTianziHurtThresholdPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
+        builtInLianhuanTargetStatePlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
@@ -1171,6 +1197,57 @@ private fun builtInTianziHurtThresholdPlugins(
                 rule: SkillEffectRule,
             ): List<SkillCondition> =
                 listOf(SkillCondition.EventTrigger(BattleTrigger.ROUND_END))
+        },
+    )
+}
+
+private fun builtInLianhuanTargetStatePlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val strategyCode = SkillConditionCode(
+        200968,
+        SkillConditionField.CAST_CONDITION,
+        220096801,
+    )
+    val berserkCode = SkillConditionCode(
+        200968,
+        SkillConditionField.CAST_CONDITION,
+        220096802,
+    )
+    val codes = setOf(strategyCode, berserkCode)
+        .filterTo(linkedSetOf()) { it !in overridden }
+    if (codes.isEmpty() || graph.details.none { it.detailId == 20096801 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.lianhuan-original-target-state"
+            override val ownedConditions: Set<SkillConditionCode> = codes
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(
+                    when (code) {
+                        strategyCode -> SkillCondition.StatComparison(
+                            left = SkillCondition.StatRef(
+                                Subject.CURRENT_TARGET,
+                                SkillCondition.CombatStat.STRATEGY,
+                            ),
+                            comparison = Comparison.LESS_THAN,
+                            right = SkillCondition.StatRef(
+                                Subject.SOURCE,
+                                SkillCondition.CombatStat.STRATEGY,
+                            ),
+                        )
+                        berserkCode -> SkillCondition.HasAnyEffect(
+                            Subject.CURRENT_TARGET,
+                            effectIds = setOf(503, 703, 903),
+                            negated = false,
+                        )
+                        else -> error("Unsupported lianhuan condition $code")
+                    },
+                )
         },
     )
 }

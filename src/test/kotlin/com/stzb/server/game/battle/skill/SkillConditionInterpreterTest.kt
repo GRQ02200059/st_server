@@ -152,6 +152,16 @@ class SkillConditionInterpreterTest {
             )
             || code == SkillConditionCode(210270, SkillConditionField.CONDITION, 15002)
             || code == SkillConditionCode(210270, SkillConditionField.CONDITION, 15003)
+            || code == SkillConditionCode(
+                200968,
+                SkillConditionField.CAST_CONDITION,
+                220096801,
+            )
+            || code == SkillConditionCode(
+                200968,
+                SkillConditionField.CAST_CONDITION,
+                220096802,
+            )
             || code.field == SkillConditionField.PRECONDITION && code.value == 43
 
     @Test
@@ -604,6 +614,72 @@ class SkillConditionInterpreterTest {
                 SkillCondition.EventTrigger(BattleTrigger.ROUND_END),
             ),
             interpreter.compile(graph.detail(21027016)).conditions,
+        )
+    }
+
+    @Test
+    fun `lianhuan branches inspect the original target strategy and berserk state`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.StatComparison(
+                left = SkillCondition.StatRef(
+                    Subject.CURRENT_TARGET,
+                    SkillCondition.CombatStat.STRATEGY,
+                ),
+                comparison = Comparison.LESS_THAN,
+                right = SkillCondition.StatRef(
+                    Subject.SOURCE,
+                    SkillCondition.CombatStat.STRATEGY,
+                ),
+            ),
+            interpreter.compile(graph.detail(20096801)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.HasAnyEffect(
+                Subject.CURRENT_TARGET,
+                effectIds = setOf(503, 703, 903),
+                negated = false,
+            ),
+            interpreter.compile(graph.detail(20096802)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `lianhuan branch predicates fail closed and match only qualifying original target`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+        val lowerStrategyTarget = state().copy(stats = STATS.copy(strategy = 90))
+        val higherStrategyTarget = state().copy(stats = STATS.copy(strategy = 110))
+
+        assertTrue(
+            interpreter.matches(
+                graph.detail(20096801),
+                trigger(),
+                context(view = view(targetState = lowerStrategyTarget)),
+            ),
+        )
+        assertFalse(
+            interpreter.matches(
+                graph.detail(20096801),
+                trigger(),
+                context(view = view(targetState = higherStrategyTarget)),
+            ),
+        )
+        assertTrue(
+            interpreter.matches(
+                graph.detail(20096802),
+                trigger(),
+                context(view = view(effects = mapOf(TARGET to setOf(703)))),
+            ),
+        )
+        assertFalse(
+            interpreter.matches(
+                graph.detail(20096802),
+                trigger(),
+                context(view = view()),
+            ),
         )
     }
 
