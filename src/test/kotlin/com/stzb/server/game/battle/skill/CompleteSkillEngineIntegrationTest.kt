@@ -322,6 +322,40 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `shoujing triggers its configured children once at rounds six and eight`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100277, 100, listOf(200277), position = 2)),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 8,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 5,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.ROUND_START,
+            battleView = engine.state.view,
+        )
+
+        val roundFive = engine.trigger(BattleTrigger.ROUND_START, context)
+        val roundSix = engine.trigger(BattleTrigger.ROUND_START, context.copy(round = 6))
+        val repeatedSix = engine.trigger(BattleTrigger.ROUND_START, context.copy(round = 6))
+        val roundEight = engine.trigger(BattleTrigger.ROUND_START, context.copy(round = 8))
+
+        assertTrue(roundFive.none { it is BattleEvent.SkillTriggered && it.skillId in setOf(210277, 211277) })
+        assertEquals(1, roundSix.filterIsInstance<BattleEvent.SkillTriggered>().count { it.skillId == 210277 })
+        assertTrue(repeatedSix.none { it is BattleEvent.SkillTriggered && it.skillId == 210277 })
+        assertEquals(1, roundEight.filterIsInstance<BattleEvent.SkillTriggered>().count { it.skillId == 211277 })
+    }
+
+    @Test
     fun `same cast marker branches observe and consume earlier detail markers`() {
         val request = BattleRequest(
             attacker = BattleTeam(

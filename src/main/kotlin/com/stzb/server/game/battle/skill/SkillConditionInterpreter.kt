@@ -507,6 +507,9 @@ class SkillConditionInterpreter(
         builtInXinzhanEventConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInShoujingRoundConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         defaultPendingPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -986,6 +989,32 @@ private fun builtInXinzhanEventConditionPlugins(
                 rule: SkillEffectRule,
             ): List<SkillCondition> =
                 listOf(SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER))
+        },
+    )
+}
+
+private fun builtInShoujingRoundConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val mappings = mapOf(
+        SkillConditionCode(200277, SkillConditionField.CONDITION, 5006) to
+            SkillCondition.RoundRange(6, 6),
+        SkillConditionCode(200277, SkillConditionField.CONDITION, 5008) to
+            SkillCondition.RoundRange(8, 8),
+    ).filterKeys { code ->
+        code !in overridden && graph.details.any { it.detailId / 100 == code.skillId }
+    }
+    if (mappings.isEmpty()) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.shoujing-round-boundaries"
+            override val ownedConditions: Set<SkillConditionCode> = mappings.keys
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> = listOf(mappings.getValue(code))
         },
     )
 }

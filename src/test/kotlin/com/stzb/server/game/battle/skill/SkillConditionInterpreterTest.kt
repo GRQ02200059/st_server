@@ -134,6 +134,8 @@ class SkillConditionInterpreterTest {
             || code == SkillConditionCode(200244, SkillConditionField.CONDITION, 5003)
             || code == SkillConditionCode(200244, SkillConditionField.CONDITION, 5005)
             || code == SkillConditionCode(200275, SkillConditionField.CONDITION, 5009)
+            || code == SkillConditionCode(200277, SkillConditionField.CONDITION, 5006)
+            || code == SkillConditionCode(200277, SkillConditionField.CONDITION, 5008)
 
     @Test
     fun `real unresolved rows retain exact field code and skill plugin ownership`() {
@@ -184,6 +186,21 @@ class SkillConditionInterpreterTest {
         assertEquals(
             SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER),
             interpreter.compile(graph.detail(20027523)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `shoujing condition codes compile to exact sixth and eighth rounds`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.RoundRange(6, 6),
+            interpreter.compile(graph.detail(20027704)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.RoundRange(8, 8),
+            interpreter.compile(graph.detail(20027705)).conditions.single(),
         )
     }
 

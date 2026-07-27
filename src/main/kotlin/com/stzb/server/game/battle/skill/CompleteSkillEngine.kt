@@ -75,7 +75,7 @@ class DefaultCompleteSkillEngine private constructor(
                     events += apply(timingResult, scoped)
                     val roundOutputs = applier.onRoundStart(scoped.round)
                     events += processDamageOutputs(roundOutputs, scoped)
-                    SkillExecutionResult.EMPTY
+                    shoujingRoundResult(scoped)
                 } else {
                     SkillExecutionResult.EMPTY
                 }
@@ -239,6 +239,36 @@ class DefaultCompleteSkillEngine private constructor(
             listenerContext.copy(currentSkillId = 200275),
             preselectedTargets = listOf(owner),
         )
+    }
+
+    private fun shoujingRoundResult(context: SkillBattleContext): SkillExecutionResult {
+        val detailId = when (context.round) {
+            6 -> 20027704
+            8 -> 20027705
+            else -> return SkillExecutionResult.EMPTY
+        }
+        return state.view.heroes()
+            .filter { owner ->
+                state.view.state(owner)?.troops?.let { it > 0 } == true &&
+                    200277 in state.liveHero(owner).skillIds &&
+                    state.runtime.consumeThreshold(
+                        owner = owner,
+                        namespace = "skill.200277.round.${context.round}",
+                        count = 1,
+                        threshold = 1,
+                    )
+            }
+            .fold(SkillExecutionResult.EMPTY) { result, owner ->
+                result + interpreter.executeDetailForEngine(
+                    graph.details.single { it.detailId == detailId },
+                    context.copy(
+                        source = owner,
+                        rootSkillId = 200277,
+                        currentSkillId = 200277,
+                        trigger = BattleTrigger.ROUND_START,
+                    ),
+                )
+            }
     }
 
     fun secondaryTarget(
