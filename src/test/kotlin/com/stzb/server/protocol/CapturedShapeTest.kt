@@ -30,4 +30,55 @@ class CapturedShapeTest {
             ShapeAssert.assertSameShape("[]", "{}")
         }
     }
+
+    // 以下为抓包形状对照：正式服真实 recv 顶层类型 vs 私服兜底输出。
+
+    @Test
+    fun `captured null commands answer json null`() {
+        listOf(24, 933, 2600, 2601, 4326, 4966).forEach { cmd ->
+            assertEquals("null", NetworkResponsePolicy.fallbackBody(cmd), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `captured scalar number commands keep number kind`() {
+        mapOf(5069 to "200", 750 to "0", 752 to "6500").forEach { (cmd, expected) ->
+            val body = NetworkResponsePolicy.fallbackBody(cmd)!!
+            assertEquals("number", ShapeAssert.topLevelKind(body), "cmd=$cmd")
+            assertEquals(expected, body, "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `captured opaque string commands keep string kind`() {
+        listOf(671, 40004, 40016).forEach { cmd ->
+            val body = NetworkResponsePolicy.fallbackBody(cmd)!!
+            assertEquals("string", ShapeAssert.topLevelKind(body), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `captured object command keeps object kind`() {
+        val body = NetworkResponsePolicy.fallbackBody(40008)!!
+        assertEquals("object", ShapeAssert.topLevelKind(body), "cmd=40008")
+    }
+
+    @Test
+    fun `captured fixed tuples keep captured arity`() {
+        val expectedSizes = mapOf(
+            2604 to 2,
+            3928 to 2,
+            8009 to 6,
+            40003 to 3,
+            40018 to 2,
+            40020 to 5,
+            40021 to 1,
+            40022 to 2,
+        )
+        expectedSizes.forEach { (cmd, size) ->
+            val body = NetworkResponsePolicy.fallbackBody(cmd)!!
+            assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
+            assertEquals(size, ShapeAssert.tupleSize(body), "cmd=$cmd")
+        }
+    }
 }
