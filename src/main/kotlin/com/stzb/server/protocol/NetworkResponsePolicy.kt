@@ -12,8 +12,8 @@ object NetworkResponsePolicy {
     private val mapper = jacksonObjectMapper()
 
     private val noOpArrayCommands = setOf(
-        22, 220, 509, 700, 701, 714, 780, 959, 963, 974,
-        3846, 4331, 4967, 5043, 5044, 5045, 5070, 5082, 5201, 6067, 9099,
+        22, 92, 103, 143, 171, 220, 509, 700, 701, 711, 714, 780, 871, 959, 963, 974,
+        3846, 4331, 4967, 5043, 5044, 5045, 5070, 5082, 5201, 6067, 6256, 9099,
     )
 
     fun fallbackBody(cmdId: Int, requestBody: String? = null): String? =

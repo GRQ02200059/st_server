@@ -99,4 +99,14 @@ class CapturedShapeTest {
             assertEquals(size, ShapeAssert.tupleSize(body), "cmd=$cmd")
         }
     }
+
+    @Test
+    fun `captured list iterated commands stay empty arrays`() {
+        // 这些命令客户端整体遍历列表，空 [] 即结构正确（保结构不保数值）。
+        listOf(92, 103, 143, 171, 711, 871, 6256).forEach { cmd ->
+            val body = NetworkResponsePolicy.fallbackBody(cmd)!!
+            assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
+            assertEquals(0, ShapeAssert.tupleSize(body), "cmd=$cmd")
+        }
+    }
 }
