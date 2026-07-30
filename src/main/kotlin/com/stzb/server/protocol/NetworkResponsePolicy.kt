@@ -40,7 +40,7 @@ object NetworkResponsePolicy {
         }
 
     private val booleanCommands = setOf(
-        191, 748, 888, 2311,
+        191, 748, 888, 981, 2311, 4087,
     )
 
     /**
@@ -52,6 +52,8 @@ object NetworkResponsePolicy {
         875,
         885,
         933,
+        2402,
+        2404,
         2405,
         2600,
         2601,
@@ -73,17 +75,18 @@ object NetworkResponsePolicy {
 
     /** 抓包确认返回顶层字符串（不透明 token/序列化串）的命令，兜底回空串。 */
     private val stringCommands = setOf(
-        671, 40004, 40016,
+        671, 980, 40004, 40016,
     )
 
     private val dictionaryCommands = setOf(
-        510, 6053, 6068, 6219, 6239, 40008,
+        510, 5021, 6053, 6068, 6219, 6239, 40008,
     )
 
     private val fixedTupleCommands = mapOf(
         135 to "[[],{},{},{},{}]",
         142 to "[[]]",
         172 to "[200,\"\"]",
+        204 to "[0,\"\",\"\",\"\",\"\",\"\",0,0,0,\"\",\"\",\"\",\"\",0,0,\"\"]",
         261 to "[{}]",
         262 to "[{}]",
         700 to "[0,-1,{},0,[],null]",

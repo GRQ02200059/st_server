@@ -226,6 +226,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
             Cmd.GET_WORLD_SCENCE_INFO -> {
                 logIn(msg)
+                sendRecordedAcknowledgement(ctx, msg)
                 sendWorldSceneFullInfo(ctx, session)
             }
 
@@ -239,7 +240,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendArmyRelatedFort(ctx)
             }
 
-            Cmd.SET_CLIENT_RED_DOT_DATA,
+            Cmd.SET_CLIENT_RED_DOT_DATA -> {
+                logIn(msg)
+                sendRecordedAcknowledgement(ctx, msg)
+            }
+
             Cmd.SET_FRONT_UNLOCK_ANIM -> {
                 logIn(msg)
                 sendNoOpSuccess(ctx, msg)
@@ -674,7 +679,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             targetWid = targetWid,
             armyId = armyId,
         )
-        ctx.writeAndFlush(DownPacket.json(Cmd.ARMY_BATTLE, GameResponses.emptyArray(), dataType = DownType.PLAIN))
+        ctx.writeAndFlush(DownPacket.json(Cmd.ARMY_BATTLE, "null", dataType = DownType.PLAIN))
         if (result != null) {
             PlayerStateRepository.save(state)
             sendArmyStateNotify(ctx, userId, state, armyId)
@@ -801,18 +806,30 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     }
 
     private fun logUnhandledOrFallback(ctx: ChannelHandlerContext, msg: UpPacket) {
-        val fallback = NetworkResponsePolicy.fallbackBody(msg.cmdId)
+        val fallback = NetworkResponsePolicy.fallbackBody(msg.cmdId, msg.bodyText)
         if (fallback == null) {
             log.warn("⚠ 未处理系统 cmd=${msg.cmdId} idx=${msg.cmdIndex} uid=${msg.userId} flag=${msg.flag} checkOk=${msg.checkOk}")
             if (msg.body.isNotEmpty()) log.warn("   body: ${msg.bodyText}")
             return
         }
 
-        log.warn("⚠ 未精确实现 cmd=${msg.cmdId}，已按业务兜底返回空数组 idx=${msg.cmdIndex} uid=${msg.userId}")
+        log.warn(
+            "⚠ 未精确实现 cmd=${msg.cmdId}，已按协议形状兜底返回 ${responseShape(fallback)} " +
+                "idx=${msg.cmdIndex} uid=${msg.userId}",
+        )
         if (msg.body.isNotEmpty()) log.warn("   body: ${msg.bodyText}")
         ctx.writeAndFlush(DownPacket.json(msg.cmdId, fallback, dataType = DownType.PLAIN))
         log.info(">> cmd=${msg.cmdId} 业务兜底已应答")
     }
+
+    private fun responseShape(json: String): String =
+        when {
+            json == "null" -> "null"
+            json == "true" || json == "false" -> "boolean"
+            json.startsWith("[") -> "array"
+            json.startsWith("{") -> "object"
+            else -> "scalar"
+        }
 
     private fun sendServerTime(ctx: ChannelHandlerContext) {
         val json = GameResponses.serverTime(System.currentTimeMillis() / 1000)
@@ -865,6 +882,13 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     private fun sendNoOpSuccess(ctx: ChannelHandlerContext, msg: UpPacket) {
         ctx.writeAndFlush(DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN))
         log.info(">> cmd=${msg.cmdId} 记录类请求已应答")
+    }
+
+    private fun sendRecordedAcknowledgement(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val response = NetworkResponsePolicy.fallbackBody(msg.cmdId, msg.bodyText)
+            ?: GameResponses.emptyArray()
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, response, dataType = DownType.PLAIN))
+        log.info(">> cmd=${msg.cmdId} 协议确认已应答 (${responseShape(response)})")
     }
 
     private fun requestedRoleName(msg: UpPacket): String? =

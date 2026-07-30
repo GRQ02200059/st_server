@@ -26,8 +26,11 @@ DONE — strict compile gate only; conditioned-row execution remains pending.
 - Added defaulted active-effect view access and a side/trigger-isolated runtime
   counter contract needed by typed predicates. Task 10 does not integrate
   counters into `BattleEngine`: Task 12 must call
-  `recordBattleTriggerOccurrence` at `NORMAL_ATTACK_AFTER`, `DAMAGE_AFTER`,
-  `HURT_AFTER`, `ACTIVE_SKILL_ATTEMPT`, and `PURSUIT_ATTEMPT` events.
+  `recordBattleTriggerOccurrence` only at `NORMAL_ATTACK_AFTER`,
+  `DAMAGE_AFTER`, and `HURT_AFTER`. Successful active and pursuit executions
+  are already counted after probability resolution by
+  `SkillRuleInterpreter.recordSuccessfulExecution`; Task 12 must not record
+  those triggers again.
   `recordTrigger` remains only as a deprecated compatibility alias.
 
 ## Inventory

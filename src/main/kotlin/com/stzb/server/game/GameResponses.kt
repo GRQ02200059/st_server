@@ -163,7 +163,12 @@ object GameResponses {
         mapper.writeValueAsString(nf.arrayNode().add(epochMillis))
 
     fun armyRelatedFort(): String =
-        mapper.writeValueAsString(nf.objectNode().apply { putArray("4") })
+        mapper.writeValueAsString(
+            nf.objectNode().apply {
+                putArray("33")
+                putArray("4")
+            },
+        )
 
     fun landInfo(wid: Int): String {
         val root = nf.arrayNode()

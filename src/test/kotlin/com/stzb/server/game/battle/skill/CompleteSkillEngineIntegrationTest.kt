@@ -918,6 +918,32 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `configured battle applies chijie before a real normal attack`() {
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(
+                    listOf(
+                        hero(100989, 200, listOf(200989), position = 2),
+                        hero(100017, 190, position = 1),
+                    ),
+                ),
+                defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+                maxRounds = 1,
+            ),
+            config,
+            FixedBattleRandom(0),
+        )
+
+        val normalIndex = result.events.indexOfFirst { it is BattleEvent.NormalAttack }
+        val attackBuffIndex = result.events.indexOfFirst {
+            it is BattleEvent.StatChanged &&
+                it.stat == com.stzb.server.game.battle.BattleStat.ATTACK &&
+                it.target.heroId == BattleHeroId(100989)
+        }
+        assertTrue(attackBuffIndex in 0 until normalIndex)
+    }
+
+    @Test
     fun `zhongke follows attack damage on its marked target at most twice`() {
         val request = BattleRequest(
             attacker = BattleTeam(

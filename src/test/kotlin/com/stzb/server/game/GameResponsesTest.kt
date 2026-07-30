@@ -10,6 +10,17 @@ class GameResponsesTest {
     private val mapper = jacksonObjectMapper()
 
     @Test
+    fun `army related fort response keeps all recorded dictionary buckets`() {
+        val response = mapper.readTree(GameResponses.armyRelatedFort())
+
+        assertTrue(response.isObject)
+        assertTrue(response["33"].isArray)
+        assertTrue(response["4"].isArray)
+        assertEquals(0, response["33"].size())
+        assertEquals(0, response["4"].size())
+    }
+
+    @Test
     fun `card recruit response matches client result parser shape`() {
         val json = GameResponses.cardRecruit(
             userId = 42,
