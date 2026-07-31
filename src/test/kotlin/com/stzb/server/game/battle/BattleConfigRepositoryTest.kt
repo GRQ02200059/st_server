@@ -137,6 +137,7 @@ class BattleConfigRepositoryTest {
         assertEquals(1, detail(20000200).selectFlag)
         assertEquals(1, detail(20000802).inherent)
         assertEquals(true, detail(20019601).moraleAffected)
+        assertEquals(50, detail(20019801).initEffectRatio)
         assertEquals(0, detail(20000101).calculationType)
         assertEquals(
             listOf(1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11),

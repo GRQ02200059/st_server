@@ -2,6 +2,7 @@ package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleConfigRepository
 import com.stzb.server.game.battle.BattleEvent
+import com.stzb.server.game.battle.BattleHero
 import java.util.Collections
 
 fun interface BattleEffectHandler {
@@ -66,6 +67,11 @@ data class EffectInvocation(
     val preselectedTargets: List<com.stzb.server.game.battle.BattleHeroRef>? = null,
     val valueOverride: TypedBattlePotency.Resolved? = null,
 )
+
+internal fun EffectInvocation.rootSkillLevel(source: BattleHero): Int {
+    val index = source.skillIds.indexOf(context.rootSkillId)
+    return source.skillLevels.getOrElse(index) { 1 }.coerceIn(1, 10)
+}
 
 data class EffectExecution(
     val stateChanges: List<BattleStateChange>,

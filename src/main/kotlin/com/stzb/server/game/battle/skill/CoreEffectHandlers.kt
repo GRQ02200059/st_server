@@ -5,6 +5,7 @@ import com.stzb.server.game.battle.BattleEffectValueUnit
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleStatus
+import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.ConfiguredBattleEffectValue
 import com.stzb.server.game.battle.DamageOrigin
 import com.stzb.server.game.battle.DamageSchool
@@ -342,7 +343,11 @@ data class EffectBlockedChange(
 ) : BattleStateChange
 
 interface BattleValueCalculator {
-    fun effectValue(rule: SkillEffectRule, source: BattleHero): TypedBattlePotency
+    fun effectValue(
+        rule: SkillEffectRule,
+        source: BattleHero,
+        skillLevel: Int = 1,
+    ): TypedBattlePotency
     fun physicalDamage(invocation: EffectInvocation): Int
     fun strategyDamage(invocation: EffectInvocation, ongoing: Boolean): Int
     fun recovery(invocation: EffectInvocation): Int
@@ -360,7 +365,11 @@ interface BattleValueCalculator {
 class DefaultBattleValueCalculator(
     private val targetSelector: SkillTargetSelector = SkillTargetSelector(),
 ) : BattleValueCalculator {
-    override fun effectValue(rule: SkillEffectRule, source: BattleHero): TypedBattlePotency {
+    override fun effectValue(
+        rule: SkillEffectRule,
+        source: BattleHero,
+        skillLevel: Int,
+    ): TypedBattlePotency {
         val configured = rule.configuredValue ?: ConfiguredBattleEffectValue(
             unit = BattleEffectValueUnit.FLAT,
             rawValueType = BattleEffectValueUnit.FLAT.rawValueType,
@@ -370,6 +379,14 @@ class DefaultBattleValueCalculator(
             rawCalcPosition = rule.raw.calcPos,
             rawCalcParameter = rule.raw.calcParam,
         )
+        if (rule.effectId in 521..534 && configured.unit == BattleEffectValueUnit.RATE) {
+            val level = skillLevel.coerceIn(1, 10)
+            val ratio = rule.raw.initEffectRatio +
+                (level - 1) * (100 - rule.raw.initEffectRatio) / 9.0
+            val raw = configured.rawConstant +
+                configured.rawCoefficient * source.stats.precise(BattleStat.STRATEGY) / 200.0
+            return TypedBattlePotency.rate((ratio * raw / 100.0).roundToInt())
+        }
         val scale = when (configured.unit) {
             BattleEffectValueUnit.FLAT -> 1.0
             BattleEffectValueUnit.RATE -> 1.0
@@ -545,7 +562,11 @@ private class CoreEffectHandler(
         val effectId = invocation.rule.effectId
         val sourceHero = invocation.liveHero(invocation.context.source)
         val potency = invocation.valueOverride
-            ?: calculator.effectValue(invocation.rule, sourceHero).requireResolved(invocation)
+            ?: calculator.effectValue(
+                invocation.rule,
+                sourceHero,
+                invocation.rootSkillLevel(sourceHero),
+            ).requireResolved(invocation)
         return when (effectId) {
             in 101..106 -> listOf(statChange(invocation, target, potency, increase = true))
             in 201..206 -> listOf(statChange(invocation, target, potency, increase = false))

@@ -291,6 +291,7 @@ private class ControlEffectHandler(
         val potency = when (val value = calculator.effectValue(
             invocation.rule,
             invocation.liveSourceHero(),
+            invocation.rootSkillLevel(invocation.liveSourceHero()),
         )) {
             is TypedBattlePotency.Resolved -> value
             is TypedBattlePotency.Deferred -> throw UnsupportedConfiguredBattleValueException(

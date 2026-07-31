@@ -464,7 +464,12 @@ private class MetaEffectHandler(
             )
 
     private fun configuredPotency(invocation: EffectInvocation): TypedBattlePotency.Resolved {
-        val calculated = calculator.effectValue(invocation.rule, sourceHero(invocation))
+        val source = sourceHero(invocation)
+        val calculated = calculator.effectValue(
+            invocation.rule,
+            source,
+            invocation.rootSkillLevel(source),
+        )
         return when (calculated) {
             is TypedBattlePotency.Resolved -> calculated
             is TypedBattlePotency.Deferred -> throw UnsupportedConfiguredBattleValueException(

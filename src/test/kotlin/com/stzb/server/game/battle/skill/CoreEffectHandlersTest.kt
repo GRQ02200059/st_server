@@ -564,7 +564,47 @@ class CoreEffectHandlersTest {
     }
 
     @Test
-    fun `real configured values preserve rate percent and unsupported raw encodings without magnitude guesses`() {
+    fun `damage modifier value uses skill level and precise live strategy`() {
+        val config = BattleConfigRepository.loadDefault()
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200198),
+                learnableSaSkillIds = emptySet(),
+            ),
+            config,
+        )
+        val calculator = DefaultBattleValueCalculator()
+        fun source(strategyHundredths: Int) = hero(id = 1, position = 2).copy(
+            stats = BattleStats.fromHundredths(
+                attack = 14_000,
+                defense = 10_000,
+                strategy = strategyHundredths,
+                speed = 8_000,
+                siege = 2_000,
+                hitRange = 5,
+            ),
+        )
+
+        assertEquals(
+            TypedBattlePotency.rate(53),
+            calculator.effectValue(
+                graph.detail(20019801),
+                source(23_640),
+                skillLevel = 10,
+            ),
+        )
+        assertEquals(
+            TypedBattlePotency.rate(56),
+            calculator.effectValue(
+                graph.detail(20019801),
+                source(33_000),
+                skillLevel = 7,
+            ),
+        )
+    }
+
+    @Test
+    fun `real configured values resolve official rates and preserve unsupported raw encodings`() {
         val config = BattleConfigRepository.loadDefault()
         val graph = SkillRuleCatalog.build(
             SkillScope(
@@ -581,7 +621,7 @@ class CoreEffectHandlersTest {
             calculator.effectValue(graph.detail(20095701), source),
         )
         assertEquals(
-            TypedBattlePotency.rate(36),
+            TypedBattlePotency.rate(25),
             calculator.effectValue(graph.detail(20000712), source),
         )
         assertEquals(
