@@ -446,7 +446,7 @@ private data class ArmyRow(
     val heroUids: List<Int>,
 )
 
-private class MemoryPackTable private constructor(
+internal class MemoryPackTable private constructor(
     val strings: List<String?>,
     val keys: List<Int>,
     val reader: LittleEndianReader,
@@ -475,7 +475,7 @@ private class MemoryPackTable private constructor(
     }
 }
 
-private class LittleEndianReader(bytes: ByteArray) {
+internal class LittleEndianReader(bytes: ByteArray) {
     private val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
 
     val position: Int
