@@ -5,10 +5,8 @@ package com.stzb.server.game
  * tables. These are configuration IDs, not display or item IDs.
  */
 object FacadeCatalog {
-    val armyFacadeIds: List<Int> = listOf(
-        101138, 101156, 101174, 101216, 101239, 101342,
-        101417, 101460, 101554, 101565, 101611, 101682,
-    )
+    val armyFacadeIds: List<Int>
+        get() = ArmyFacadeCatalog.standardFacadeIds()
 
     val cityFacadeIds: List<Int> = listOf(
         111213, 112112, 112205, 112206, 112207, 112208, 112209, 112210, 112211, 112214,
