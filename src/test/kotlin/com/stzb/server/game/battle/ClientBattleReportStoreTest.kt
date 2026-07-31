@@ -96,6 +96,23 @@ class ClientBattleReportStoreTest {
     }
 
     @Test
+    fun `a user cannot resolve another users battle report`() {
+        val store = ClientBattleReportStore.createDefault(nowSec = 1_700_000_000)
+        val base = store.getOrCreateDefault(ownerUserId = 10001)
+        val owned = store.record(
+            ownerUserId = 10001,
+            wid = 1,
+            timeSec = 1_700_000_000,
+            result = base.result,
+        )
+
+        val resolved = store.findOrDefault(ownerUserId = 10002, battleId = owned.battleId)
+
+        assertNotEquals(owned.battleId, resolved.battleId)
+        assertEquals(10002, resolved.ownerUserId)
+    }
+
+    @Test
     fun `provides client profile response for requested battle ids`() {
         val store = ClientBattleReportStore.createDefault(nowSec = 1_700_000_000)
         val report = store.getOrCreateDefault()

@@ -47,7 +47,21 @@ class PlayerBattleService(
         if (participants.isEmpty()) return null
 
         participants.forEach { (_, hero) -> hero.stamina = PlayerHero.MAX_STAMINA }
-        state.startMarch(targetWid = targetWid, nowSec = nowSec, armyId = armyId)
+        state.startMarch(
+            targetWid = targetWid,
+            nowSec = nowSec,
+            armyId = armyId,
+            participants = participants.map { (position, hero) ->
+                PlayerMarchHero(
+                    heroUid = hero.heroUid,
+                    position = position,
+                    heroId = hero.heroId,
+                    troops = hero.troops,
+                    level = hero.level,
+                    skillIds = hero.normalizedSkillIds(),
+                )
+            },
+        )
         return PlayerBattleLaunchResult(battleId = 0, targetWid = targetWid)
     }
 
@@ -57,53 +71,94 @@ class PlayerBattleService(
         nowSec: Int = (System.currentTimeMillis() / 1000).toInt(),
     ): PlayerBattleLaunchResult? {
         val march = state.completeMarchIfDue(nowSec, armyId) ?: return null
-        val participants = state.teamHeroes(armyId)
-            .withIndex()
-            .mapNotNull { (position, heroUid) ->
-                state.hero(heroUid)
-                    ?.takeIf { it.troops > 0 }
-                    ?.let { position to it }
-            }
+        val participants = march.participants.ifEmpty {
+            state.teamHeroes(armyId)
+                .withIndex()
+                .mapNotNull { (position, heroUid) ->
+                    state.hero(heroUid)
+                        ?.takeIf { it.troops > 0 }
+                        ?.let { hero ->
+                            PlayerMarchHero(
+                                heroUid = hero.heroUid,
+                                position = position,
+                                heroId = hero.heroId,
+                                troops = hero.troops,
+                                level = hero.level,
+                                skillIds = hero.normalizedSkillIds(),
+                            )
+                        }
+                }
+        }
         if (participants.isEmpty()) return null
 
         var attacker = builder.build(
-            participants.map { (position, hero) ->
+            participants.map { participant ->
                 BattleHeroSpec(
-                    heroId = hero.heroId,
-                    position = position,
-                    troops = hero.troops.coerceAtMost(PlayerHero.MAX_TROOPS),
-                    level = hero.level,
-                    extraSkillIds = hero.normalizedSkillIds().drop(1).filter { it > 0 },
+                    heroId = participant.heroId,
+                    position = participant.position,
+                    troops = participant.troops.coerceAtMost(PlayerHero.MAX_TROOPS),
+                    level = participant.level,
+                    extraSkillIds = participant.skillIds.drop(1).filter { it > 0 },
+                    skillLevels = participant.skillIds.filter { it > 0 }
+                        .map { PlayerHero.MAX_SKILL_LEVEL },
                 )
             },
         )
         var result: BattleResult? = null
+        var report = null as com.stzb.server.game.battle.ClientBattleReport?
         for ((index, defenderSpecs) in defenderFactory.teamsForWid(march.targetWid).withIndex()) {
             val defender = builder.build(defenderSpecs)
             result = BattleEngine.resolve(
                 BattleRequest(attacker = attacker, defender = defender, maxRounds = 8),
                 config,
-                battleRandomFactory(march.targetWid xor nowSec xor index),
+                battleRandomFactory(stableBattleSeed(march, index)),
             )
-            attacker = result.attacker
+            report = reportStore.record(
+                ownerUserId = state.userId,
+                wid = march.targetWid,
+                timeSec = nowSec,
+                result = result,
+            )
+            attacker = builder.build(
+                participants.map { participant ->
+                    val remainingTroops = result.attacker.heroes
+                        .firstOrNull { it.position == participant.position }
+                        ?.troops
+                        ?: 0
+                    BattleHeroSpec(
+                        heroId = participant.heroId,
+                        position = participant.position,
+                        troops = remainingTroops,
+                        level = participant.level,
+                        extraSkillIds = participant.skillIds.drop(1).filter { it > 0 },
+                        skillLevels = participant.skillIds.filter { it > 0 }
+                            .map { PlayerHero.MAX_SKILL_LEVEL },
+                    )
+                },
+            )
             if (result.outcome != BattleOutcome.ATTACKER_WIN) break
         }
         val finalResult = requireNotNull(result)
 
         finalResult.attacker.heroes.forEach { battleHero ->
-            val heroUid = state.teamHeroes(armyId).getOrElse(battleHero.position) { 0 }
+            val heroUid = participants.firstOrNull { it.position == battleHero.position }?.heroUid ?: 0
             state.hero(heroUid)?.troops =
                 battleHero.troops.coerceIn(0, PlayerHero.MAX_TROOPS)
         }
         if (finalResult.outcome == BattleOutcome.ATTACKER_WIN) {
             state.occupyLand(march.targetWid)
         }
-        val report = reportStore.record(wid = march.targetWid, timeSec = nowSec, result = finalResult)
         return PlayerBattleLaunchResult(
-            battleId = report.battleId,
+            battleId = requireNotNull(report).battleId,
             targetWid = march.targetWid,
             outcome = finalResult.outcome,
         )
     }
 
+    private fun stableBattleSeed(march: PlayerMarch, defenderIndex: Int): Int =
+        march.armyId * 31 xor
+            march.fromWid * 17 xor
+            march.targetWid xor
+            march.beginSec xor
+            defenderIndex
 }

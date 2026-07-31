@@ -3,10 +3,33 @@ package com.stzb.server.game.battle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class BattleConfigRepositoryTest {
     private val repo = BattleConfigRepository.loadDefault()
+
+    @Test
+    fun `default battle configuration is packaged with the server`() {
+        val loader = BattleConfigRepository::class.java.classLoader
+
+        listOf(
+            "battle-config/hero_table.csv",
+            "battle-config/skill_table.csv",
+            "battle-config/skill_detail_table.csv",
+            "battle-config/skill_effect_table.csv",
+            "battle-config/hero_extra.json",
+            "battle-config/skill_extra.json",
+            "battle-config/army_extra.json",
+        ).forEach { resource ->
+            assertNotNull(loader.getResource(resource), "missing packaged resource $resource")
+        }
+    }
+
+    @Test
+    fun `default battle configuration is parsed only once`() {
+        assertSame(BattleConfigRepository.loadDefault(), BattleConfigRepository.loadDefault())
+    }
 
     @Test
     fun `loads hero config from parsed client csv`() {
@@ -21,6 +44,8 @@ class BattleConfigRepositoryTest {
         assertEquals(29, luBu.stats.strategy)
         assertEquals(77, luBu.stats.speed)
         assertEquals(9, luBu.stats.siege)
+        assertEquals(3.01, luBu.growth.precise(BattleStat.ATTACK))
+        assertEquals(1.42, luBu.growth.precise(BattleStat.SPEED))
         assertEquals(200012, luBu.initialSkillId)
     }
 

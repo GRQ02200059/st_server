@@ -2,6 +2,7 @@ package com.stzb.server.protocol
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.game.GenericGameResponses
+import com.stzb.server.game.ProfileResponses
 
 /**
  * 客户端大量 UI 请求没有服务端响应时会卡在等待态。这里集中管理协议兜底策略：
@@ -13,13 +14,16 @@ object NetworkResponsePolicy {
 
     private val noOpArrayCommands = setOf(
         22, 92, 103, 143, 171, 220, 509, 700, 701, 711, 714, 780, 871, 959, 963, 974,
-        3846, 4331, 4967, 5043, 5044, 5045, 5070, 5082, 5201, 6067, 6256, 9099,
+        3846, 4331, 4967, 5043, 5044, 5045, 5049, 5070, 5082, 6067, 6256, 9099,
     )
 
     fun fallbackBody(cmdId: Int, requestBody: String? = null): String? =
         when {
             cmdId == 100 -> GenericGameResponses.unionInfoUnavailable()
+            cmdId == 102 -> "${GameServerConfig.SERVER_ID}" // UNION_CREATE: 回单个新盟 id，客户端随后打开主界面发 100
             cmdId == 212 -> GenericGameResponses.userLookup()
+            cmdId == 502 -> "[1,\"\"]"  // GET_USER_PROFILE(他人)：num=1(非0非2) => 客户端提示"无结果"并关闭，不崩
+            cmdId == 3686 -> ProfileResponses.homepageInfo() // GET_HOMEPAGE_INFO(自己主页)：完整字典，空 {} 会崩
             cmdId == 5013 -> roleLookup(requestBody)
             cmdId == 4979 -> nameLookup(requestBody)
             cmdId in booleanCommands -> "true"
@@ -94,10 +98,10 @@ object NetworkResponsePolicy {
         1436 to "[200,\"\",\"\"]",
         2529 to "[0,0,[]]",
         2604 to "[0,[]]",
-        3686 to "[200,{}]",
         3787 to "[[0,0],[]]",
         3928 to "[\"\",\"\"]",
         5210 to "[0,[]]",
+        5201 to "[0]",
         6242 to "[0]",
         6243 to "[[]]",
         6244 to "[[]]",

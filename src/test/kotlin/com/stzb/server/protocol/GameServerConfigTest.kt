@@ -5,8 +5,13 @@ import kotlin.test.assertEquals
 
 class GameServerConfigTest {
     @Test
-    fun `server keeps the client bundled login config while user tables declare conquest`() {
-        assertEquals(2001, GameServerConfig.CFG_DB_ID)
+    fun `login config selects a season map bundled in the client with non-empty card packs`() {
+        // index 5 is a regular season whose map (map_game_data/5) is already
+        // cached on the client, so login does not stall at 100%. Unlike 984
+        // (conquest X season), index 5 maps tb_cfg_card_extract -> a full
+        // ~55KB bin, so the summon card packs and the warfare-skill tab that
+        // hangs off a category==3 pack both stay visible.
+        assertEquals(5, GameServerConfig.CFG_DB_ID)
     }
 
     @Test

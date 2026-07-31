@@ -49,7 +49,16 @@ class BattleReportCodecTest {
             defender = BattleTeam(listOf(hero(2, 0))),
             events = listOf(
                 BattleEvent.Recovery(1, source, source, 10, 100, skillId = 200001),
-                BattleEvent.StatusApplied(1, source, target, BattleStatus.BURN, 2, skillId = 200002),
+                BattleEvent.StatusApplied(
+                    1,
+                    source,
+                    target,
+                    BattleStatus.BURN,
+                    2,
+                    power = 37,
+                    statDelta = BattleStats(1, 2, 3, 4, 5, 6),
+                    skillId = 200002,
+                ),
                 BattleEvent.OngoingDamage(2, source, target, BattleStatus.BURN, 10, 90, skillId = 200002),
                 BattleEvent.StatChanged(1, source, source, BattleStat.ATTACK, 10, 2, skillId = 200036),
             ),
@@ -61,6 +70,8 @@ class BattleReportCodecTest {
         assertTrue(json.contains("\"skillId\":200001"))
         assertTrue(json.contains("\"skillId\":200002"))
         assertTrue(json.contains("\"skillId\":200036"))
+        assertTrue(json.contains("\"power\":37"))
+        assertTrue(json.contains("\"statDelta\":{\"attack\":1"))
     }
 
     private fun sampleResult(): BattleResult =

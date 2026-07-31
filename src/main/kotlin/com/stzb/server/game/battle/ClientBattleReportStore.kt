@@ -11,6 +11,7 @@ import java.util.concurrent.ThreadLocalRandom
 
 data class ClientBattleReport(
     val battleId: Int,
+    val ownerUserId: Int,
     val wid: Int,
     val timeSec: Int,
     val result: BattleResult,
@@ -21,22 +22,35 @@ class ClientBattleReportStore private constructor(
     private val reports: ConcurrentHashMap<Int, ClientBattleReport>,
     private val battleRandomFactory: (Int) -> BattleRandom,
 ) {
-    private val defaultBattleId = nextBattleIdRange()
-    private val battleSeq = AtomicInteger(reports.keys.maxOrNull() ?: defaultBattleId)
+    private val battleSeq = AtomicInteger(maxOf(reports.keys.maxOrNull() ?: 0, nextBattleIdRange()))
+    private val defaultBattleIds = ConcurrentHashMap<Int, Int>()
 
-    fun getOrCreateDefault(): ClientBattleReport =
-        reports[defaultBattleId] ?: createDefaultReport(
-            nowSec,
-            defaultBattleId,
-            battleRandomFactory,
+    fun getOrCreateDefault(ownerUserId: Int): ClientBattleReport {
+        val battleId = defaultBattleIds.computeIfAbsent(ownerUserId) {
+            battleSeq.incrementAndGet()
+        }
+        return reports[battleId] ?: createDefaultReport(
+            nowSec = nowSec,
+            battleId = battleId,
+            ownerUserId = ownerUserId,
+            battleRandomFactory = battleRandomFactory,
         ).also { reports[it.battleId] = it }
+    }
 
-    fun findOrDefault(battleId: Int): ClientBattleReport =
-        reports[battleId] ?: getOrCreateDefault()
+    internal fun getOrCreateDefault(): ClientBattleReport =
+        getOrCreateDefault(LEGACY_TEST_USER_ID)
 
-    fun record(wid: Int, timeSec: Int, result: BattleResult): ClientBattleReport {
+    fun findOrDefault(ownerUserId: Int, battleId: Int): ClientBattleReport =
+        reports[battleId]?.takeIf { it.ownerUserId == ownerUserId }
+            ?: getOrCreateDefault(ownerUserId)
+
+    internal fun findOrDefault(battleId: Int): ClientBattleReport =
+        reports[battleId] ?: getOrCreateDefault(LEGACY_TEST_USER_ID)
+
+    fun record(ownerUserId: Int, wid: Int, timeSec: Int, result: BattleResult): ClientBattleReport {
         val report = ClientBattleReport(
             battleId = battleSeq.incrementAndGet(),
+            ownerUserId = ownerUserId,
             wid = wid,
             timeSec = timeSec,
             result = result,
@@ -45,28 +59,58 @@ class ClientBattleReportStore private constructor(
         return report
     }
 
-    fun profileResponse(battleIds: List<Int>, serverId: Int): String {
-        val ids = battleIds.ifEmpty { listOf(getOrCreateDefault().battleId) }
+    internal fun record(wid: Int, timeSec: Int, result: BattleResult): ClientBattleReport =
+        record(LEGACY_TEST_USER_ID, wid, timeSec, result)
+
+    fun profileResponse(ownerUserId: Int, battleIds: List<Int>, serverId: Int): String {
+        val ids = battleIds.ifEmpty { listOf(getOrCreateDefault(ownerUserId).battleId) }
+        return profileResponseForReports(
+            ids.map { findOrDefault(ownerUserId, it) },
+            serverId,
+        )
+    }
+
+    private fun profileResponseForReports(selectedReports: List<ClientBattleReport>, serverId: Int): String {
         val root = nf.arrayNode()
         root.add(serverId)
         root.add(nf.arrayNode().apply {
-            ids.map(::findOrDefault).distinctBy { it.battleId }.forEach { add(it.toProfileNode()) }
+            selectedReports.distinctBy { it.battleId }
+                .forEach { add(it.toProfileNode()) }
         })
         return mapper.writeValueAsString(root)
     }
 
-    fun detailResponse(battleId: Int, serverId: Int): String {
-        val report = findOrDefault(battleId)
+    internal fun profileResponse(battleIds: List<Int>, serverId: Int): String =
+        profileResponseForReports(
+            battleIds.ifEmpty { listOf(getOrCreateDefault(LEGACY_TEST_USER_ID).battleId) }
+                .map(::findOrDefault),
+            serverId,
+        )
+
+    fun detailResponse(ownerUserId: Int, battleId: Int, serverId: Int, compressed: Boolean = true): String {
+        val report = findOrDefault(ownerUserId, battleId)
+        return detailResponse(report, serverId, compressed)
+    }
+
+    private fun detailResponse(report: ClientBattleReport, serverId: Int, compressed: Boolean): String {
+        val replay = if (compressed) {
+            BattleReportCodec.toCompressedClientReport(report.result)
+        } else {
+            ClientReportTextEncoder.encode(report.result)
+        }
         val root = nf.arrayNode()
         root.add(serverId)
         root.add(
             nf.objectNode()
                 .put("battle_id", report.battleId)
-                .put("report", BattleReportCodec.toCompressedClientReport(report.result)),
+                .put("report", replay),
         )
         root.add(1)
         return mapper.writeValueAsString(root)
     }
+
+    internal fun detailResponse(battleId: Int, serverId: Int, compressed: Boolean = true): String =
+        detailResponse(findOrDefault(battleId), serverId, compressed)
 
     private fun ClientBattleReport.toProfileNode(): ObjectNode {
         val attacker = result.attacker.heroes.sortedBy { it.position }
@@ -159,6 +203,7 @@ class ClientBattleReportStore private constructor(
         private const val MIN_BATTLE_ID = 100_000_000
         private const val MAX_BATTLE_ID = 2_000_000_000
         private const val BATTLE_ID_RANGE_SIZE = 10_000
+        private const val LEGACY_TEST_USER_ID = 10001
         private val nextBattleIdRangeStart = AtomicInteger(
             ThreadLocalRandom.current().nextInt(MIN_BATTLE_ID, MAX_BATTLE_ID - BATTLE_ID_RANGE_SIZE),
         )
@@ -169,7 +214,7 @@ class ClientBattleReportStore private constructor(
             nowSec: Int = (System.currentTimeMillis() / 1000).toInt(),
             battleRandomFactory: (Int) -> BattleRandom = ::SeededBattleRandom,
         ): ClientBattleReportStore =
-            ClientBattleReportStore(nowSec, ConcurrentHashMap(), battleRandomFactory).also { it.getOrCreateDefault() }
+            ClientBattleReportStore(nowSec, ConcurrentHashMap(), battleRandomFactory)
 
         fun createEmpty(nowSec: Int = (System.currentTimeMillis() / 1000).toInt()): ClientBattleReportStore =
             ClientBattleReportStore(nowSec, ConcurrentHashMap(), ::SeededBattleRandom)
@@ -184,6 +229,7 @@ class ClientBattleReportStore private constructor(
         private fun createDefaultReport(
             nowSec: Int,
             battleId: Int,
+            ownerUserId: Int,
             battleRandomFactory: (Int) -> BattleRandom,
         ): ClientBattleReport {
             val config = BattleConfigRepository.loadDefault()
@@ -205,6 +251,7 @@ class ClientBattleReportStore private constructor(
             )
             return ClientBattleReport(
                 battleId = battleId,
+                ownerUserId = ownerUserId,
                 wid = GameServerConfig.CITY_WID + 1,
                 timeSec = nowSec,
                 result = BattleEngine.resolve(

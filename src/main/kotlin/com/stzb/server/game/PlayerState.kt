@@ -64,6 +64,16 @@ data class PlayerMarch(
     val targetWid: Int,
     val beginSec: Int,
     val endSec: Int,
+    val participants: List<PlayerMarchHero> = emptyList(),
+)
+
+data class PlayerMarchHero(
+    val heroUid: Int,
+    val position: Int,
+    val heroId: Int,
+    val troops: Int,
+    val level: Int,
+    val skillIds: List<Int>,
 )
 
 data class PlayerHeroSnapshot(
@@ -86,6 +96,7 @@ data class PlayerMarchSnapshot(
     val targetWid: Int,
     val beginSec: Int,
     val endSec: Int,
+    val participants: List<PlayerMarchHero> = emptyList(),
 )
 
 data class PlayerStateSnapshot(
@@ -241,6 +252,7 @@ class PlayerState(
         targetWid: Int,
         nowSec: Int,
         armyId: Int = primaryArmyId(),
+        participants: List<PlayerMarchHero> = emptyList(),
     ): PlayerMarch {
         val beginSec = nowSec.coerceAtLeast(1)
         return PlayerMarch(
@@ -249,6 +261,7 @@ class PlayerState(
             targetWid = targetWid,
             beginSec = beginSec,
             endSec = beginSec + MARCH_DURATION_SECONDS,
+            participants = participants,
         ).also { marches[it.armyId] = it }
     }
 
@@ -307,6 +320,7 @@ class PlayerState(
                     targetWid = it.targetWid,
                     beginSec = it.beginSec,
                     endSec = it.endSec,
+                    participants = it.participants,
                 )
             },
             marches = marches.mapValues { (_, march) ->
@@ -316,6 +330,7 @@ class PlayerState(
                     targetWid = march.targetWid,
                     beginSec = march.beginSec,
                     endSec = march.endSec,
+                    participants = march.participants,
                 )
             },
             occupiedLands = lands.toSet(),
@@ -441,6 +456,7 @@ class PlayerState(
                         targetWid = saved.targetWid,
                         beginSec = saved.beginSec,
                         endSec = saved.endSec,
+                        participants = saved.participants,
                     )
                 }
                 state.lands.clear()

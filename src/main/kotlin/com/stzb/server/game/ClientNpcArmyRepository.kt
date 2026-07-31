@@ -14,6 +14,13 @@ data class ClientNpcHero(
     val level: Int,
     val troops: Int,
     val skillIds: List<Int>,
+    val skillLevels: List<Int>,
+    val troopFeatureIds: List<Int>,
+    val equipmentIds: List<Int>,
+    val equipmentSkillIds: List<Int>,
+    val equipmentSkillLevels: List<Int>,
+    val equipmentFeatureSkillIds: List<Int>,
+    val equipmentFeatureSkillLevels: List<Int>,
 )
 
 data class ClientNpcArmy(
@@ -21,6 +28,158 @@ data class ClientNpcArmy(
     val pool: Int,
     val heroes: List<ClientNpcHero>,
 )
+
+class ClientTroopFeatureRepository private constructor(
+    private val skillIdsByFeatureId: Map<Int, List<Int>>,
+) {
+    fun skillIds(featureId: Int): List<Int> = skillIdsByFeatureId[featureId].orEmpty()
+
+    companion object {
+        fun loadDefault(): ClientTroopFeatureRepository {
+            val resourcePath = "/client-config/tb_cfg_hero_type_feature.bin"
+            val bytes = ClientTroopFeatureRepository::class.java.getResourceAsStream(resourcePath)
+                ?.use { it.readBytes() }
+                ?: Files.readAllBytes(resolveDefaultTable())
+            return load(bytes)
+        }
+
+        fun load(path: Path): ClientTroopFeatureRepository =
+            load(Files.readAllBytes(path))
+
+        private fun load(bytes: ByteArray): ClientTroopFeatureRepository {
+            val table = MemoryPackTable.open(bytes, "tb_cfg_hero_type_feature.bin")
+            val mappings = buildMap {
+                table.keys.forEach {
+                    require(table.reader.byte().toInt() and 0xff == 11) {
+                        "invalid Tcfg_hero_type_feature row"
+                    }
+                    val featureId = table.reader.int()
+                    table.reader.int() // max_learn_num
+                    table.reader.int() // expired
+                    table.reader.int() // balance_activity_id
+                    table.reader.byte() // group
+                    table.reader.int() // name
+                    table.reader.int() // desc
+                    table.reader.int() // icon_id
+                    val skillIds = parseIds(table.string(table.reader.int()).orEmpty())
+                    table.reader.int() // effect_id
+                    table.reader.int() // hero_type
+                    put(featureId, skillIds)
+                }
+            }
+            return ClientTroopFeatureRepository(mappings)
+        }
+
+        private fun resolveDefaultTable(): Path {
+            val cwd = Path.of("").toAbsolutePath().normalize()
+            val relativePath = Path.of(
+                "assets",
+                "npk_extracted_all",
+                "others",
+                "res",
+                "csharp",
+                "data",
+                "tcfg",
+                "default",
+                "tb_cfg_hero_type_feature.bin",
+            )
+            generateSequence(cwd) { it.parent }.take(6).forEach { root ->
+                if (!root.isDirectory()) return@forEach
+                Files.list(root).use { children ->
+                    val table = children
+                        .filter { it.isDirectory() && it.name.startsWith("stzb_9.2.2_out_branch_") }
+                        .map { it.resolve(relativePath) }
+                        .filter { it.exists() }
+                        .sorted()
+                        .findFirst()
+                        .orElse(null)
+                    if (table != null) return table
+                }
+            }
+            error("无法定位客户端兵种特性配置表，请从项目目录启动服务: $cwd")
+        }
+
+        private fun parseIds(value: String): List<Int> =
+            value.split(',', ';')
+                .mapNotNull(String::toIntOrNull)
+                .filter { it > 0 }
+    }
+}
+
+class ClientEquipmentSkillRepository private constructor(
+    private val skillSlotsByEquipmentId: Map<Int, List<IdLevel>>,
+) {
+    fun skillSlots(equipmentId: Int): List<Pair<Int, Int>> =
+        skillSlotsByEquipmentId[equipmentId].orEmpty().map { it.id to it.level }
+
+    companion object {
+        fun loadDefault(): ClientEquipmentSkillRepository {
+            val resourcePath = "/client-config/tb_cfg_gear.bin"
+            val bytes = ClientEquipmentSkillRepository::class.java.getResourceAsStream(resourcePath)
+                ?.use { it.readBytes() }
+                ?: Files.readAllBytes(resolveDefaultTable())
+            return load(bytes)
+        }
+
+        private fun load(bytes: ByteArray): ClientEquipmentSkillRepository {
+            val table = MemoryPackTable.open(bytes, "tb_cfg_gear.bin")
+            val mappings = buildMap {
+                table.keys.forEach {
+                    require(table.reader.byte().toInt() and 0xff == 22) {
+                        "invalid Tcfg_gear row"
+                    }
+                    val equipmentId = table.reader.int()
+                    repeat(7) { table.reader.int() }
+                    repeat(3) { table.reader.byte() }
+                    table.reader.int() // name
+                    table.reader.int() // defective_gear_id
+                    val skillSlots = parseIdLevels(table.string(table.reader.int()).orEmpty())
+                    repeat(8) { table.reader.int() }
+                    put(equipmentId, skillSlots)
+                }
+            }
+            return ClientEquipmentSkillRepository(mappings)
+        }
+
+        private fun resolveDefaultTable(): Path {
+            val cwd = Path.of("").toAbsolutePath().normalize()
+            val relativePath = Path.of(
+                "assets",
+                "npk_extracted_all",
+                "others",
+                "res",
+                "csharp",
+                "data",
+                "tcfg",
+                "default",
+                "tb_cfg_gear.bin",
+            )
+            generateSequence(cwd) { it.parent }.take(6).forEach { root ->
+                if (!root.isDirectory()) return@forEach
+                Files.list(root).use { children ->
+                    val table = children
+                        .filter { it.isDirectory() && it.name.startsWith("stzb_9.2.2_out_branch_") }
+                        .map { it.resolve(relativePath) }
+                        .filter { it.exists() }
+                        .sorted()
+                        .findFirst()
+                        .orElse(null)
+                    if (table != null) return table
+                }
+            }
+            error("无法定位客户端装备配置表，请从项目目录启动服务: $cwd")
+        }
+
+        private fun parseIdLevels(value: String): List<IdLevel> =
+            value.split(';')
+                .mapNotNull { item ->
+                    val parts = item.split(',')
+                    val id = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
+                    val level = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
+                    IdLevel(id, level).takeIf { it.id > 0 && it.level > 0 }
+                }
+    }
+}
 
 /**
  * Reads the client's MemoryPack configuration tables used by resource-land NPCs.
@@ -53,6 +212,8 @@ class ClientNpcArmyRepository private constructor(
             load(
                 armyBytes = readClientResource("tb_cfg_army.bin"),
                 heroBytes = readClientResource("tb_cfg_hero_u.bin"),
+                gearBytes = readClientResource("tb_cfg_gear_u.bin"),
+                gearFeatureBytes = readClientResource("tb_cfg_gear_feature.bin"),
                 armyCountBytes = readClientResource("tb_cfg_army_count.bin"),
             )
 
@@ -60,6 +221,10 @@ class ClientNpcArmyRepository private constructor(
             return load(
                 armyBytes = Files.readAllBytes(tableRoot.resolve("tb_cfg_army.bin")),
                 heroBytes = Files.readAllBytes(tableRoot.resolve("tb_cfg_hero_u.bin")),
+                gearBytes = Files.readAllBytes(tableRoot.resolve("tb_cfg_gear_u.bin")),
+                gearFeatureBytes = Files.readAllBytes(
+                    tableRoot.resolve("default").resolve("tb_cfg_gear_feature.bin"),
+                ),
                 armyCountBytes = Files.readAllBytes(tableRoot.resolve("tb_cfg_army_count.bin")),
             )
         }
@@ -67,9 +232,14 @@ class ClientNpcArmyRepository private constructor(
         private fun load(
             armyBytes: ByteArray,
             heroBytes: ByteArray,
+            gearBytes: ByteArray,
+            gearFeatureBytes: ByteArray,
             armyCountBytes: ByteArray,
         ): ClientNpcArmyRepository {
-            val heroes = parseHeroes(heroBytes)
+            val heroes = parseHeroes(
+                heroBytes,
+                parseEquipment(gearBytes, parseEquipmentFeatures(gearFeatureBytes)),
+            )
             val armies = parseArmies(armyBytes)
                 .map { row ->
                     ClientNpcArmy(
@@ -79,7 +249,7 @@ class ClientNpcArmyRepository private constructor(
                     )
                 }
                 .filter { army ->
-                    army.pool in 1..9 &&
+                    army.pool > 0 &&
                         army.armyId / 100 == army.pool &&
                         army.heroes.isNotEmpty()
                 }
@@ -145,7 +315,10 @@ class ClientNpcArmyRepository private constructor(
             }
         }
 
-        private fun parseHeroes(bytes: ByteArray): Map<Int, ClientNpcHero> {
+        private fun parseHeroes(
+            bytes: ByteArray,
+            equipmentByUid: Map<Int, ClientEquipment>,
+        ): Map<Int, ClientNpcHero> {
             val table = MemoryPackTable.open(bytes, "tb_cfg_hero_u.bin")
             return buildMap {
                 table.keys.forEach {
@@ -156,9 +329,11 @@ class ClientNpcArmyRepository private constructor(
                     val troops = table.reader.int()
                     table.reader.int() // hero_type
                     table.reader.int() // hero_feature
-                    table.reader.int() // gearid_u
+                    val equipmentUid = table.reader.int()
                     val skill = table.string(table.reader.int()).orEmpty()
-                    table.reader.int() // hero_type_feature string-table index
+                    val troopFeatures = table.string(table.reader.int()).orEmpty()
+                    val skills = parseIdLevels(skill)
+                    val equipment = equipmentByUid[equipmentUid]
                     put(
                         heroUid,
                         ClientNpcHero(
@@ -166,9 +341,61 @@ class ClientNpcArmyRepository private constructor(
                             heroId = heroId,
                             level = level,
                             troops = troops,
-                            skillIds = parseSkillIds(skill),
+                            skillIds = skills.map(IdLevel::id),
+                            skillLevels = skills.map(IdLevel::level),
+                            troopFeatureIds = parseIds(troopFeatures),
+                            equipmentIds = listOfNotNull(equipment?.baseId),
+                            equipmentSkillIds = equipment?.skills.orEmpty().map(IdLevel::id),
+                            equipmentSkillLevels = equipment?.skills.orEmpty().map(IdLevel::level),
+                            equipmentFeatureSkillIds =
+                                equipment?.featureSkills.orEmpty().map(IdLevel::id),
+                            equipmentFeatureSkillLevels =
+                                equipment?.featureSkills.orEmpty().map(IdLevel::level),
                         ),
                     )
+                }
+            }
+        }
+
+        private fun parseEquipment(
+            bytes: ByteArray,
+            features: Map<Int, List<IdLevel>>,
+        ): Map<Int, ClientEquipment> {
+            val table = MemoryPackTable.open(bytes, "tb_cfg_gear_u.bin")
+            return buildMap {
+                table.keys.forEach {
+                    require(table.reader.byte().toInt() and 0xff == 6) { "invalid Tcfg_gear_u row" }
+                    val equipmentUid = table.reader.int()
+                    val baseId = table.reader.int()
+                    val featureId = table.reader.int()
+                    table.reader.int() // level
+                    table.reader.int() // phase
+                    val equipment = table.string(table.reader.int()).orEmpty()
+                    put(
+                        equipmentUid,
+                        ClientEquipment(
+                            baseId,
+                            parseIdLevels(equipment),
+                            features[featureId].orEmpty(),
+                        ),
+                    )
+                }
+            }
+        }
+
+        private fun parseEquipmentFeatures(bytes: ByteArray): Map<Int, List<IdLevel>> {
+            val table = MemoryPackTable.open(bytes, "tb_cfg_gear_feature.bin")
+            return buildMap {
+                table.keys.forEach {
+                    require(table.reader.byte().toInt() and 0xff == 11) {
+                        "invalid Tcfg_gear_feature row"
+                    }
+                    val featureId = table.reader.int()
+                    repeat(7) { table.reader.int() }
+                    val skills = parseIdLevels(table.string(table.reader.int()).orEmpty())
+                    table.reader.int() // desc
+                    table.reader.int() // policy
+                    put(featureId, skills)
                 }
             }
         }
@@ -186,12 +413,32 @@ class ClientNpcArmyRepository private constructor(
             }
         }
 
-        private fun parseSkillIds(value: String): List<Int> =
+        private fun parseIdLevels(value: String): List<IdLevel> =
             value.split(';')
-                .mapNotNull { item -> item.substringBefore(',').toIntOrNull() }
+                .mapNotNull { item ->
+                    val parts = item.split(',')
+                    val id = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
+                    val level = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
+                    IdLevel(id, level).takeIf { it.id > 0 && it.level > 0 }
+                }
+
+        private fun parseIds(value: String): List<Int> =
+            value.split(',', ';')
+                .mapNotNull(String::toIntOrNull)
                 .filter { it > 0 }
     }
 }
+
+private data class IdLevel(
+    val id: Int,
+    val level: Int,
+)
+
+private data class ClientEquipment(
+    val baseId: Int,
+    val skills: List<IdLevel>,
+    val featureSkills: List<IdLevel>,
+)
 
 private data class ArmyRow(
     val armyId: Int,

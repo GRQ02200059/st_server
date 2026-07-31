@@ -1,7 +1,9 @@
 package com.stzb.server.handler
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.game.FilePlayerRepository
 import com.stzb.server.game.PlayerStateRepository
+import com.stzb.server.game.battle.ClientBattleReportStore
 import com.stzb.server.protocol.Cmd
 import com.stzb.server.protocol.DownPacket
 import com.stzb.server.protocol.UpFlag
@@ -16,9 +18,13 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class GameServerHandlerProtocolTest {
+    private val mapper = jacksonObjectMapper()
     private lateinit var repositoryRoot: Path
 
     @BeforeTest
@@ -60,13 +66,53 @@ class GameServerHandlerProtocolTest {
         channel.finishAndReleaseAll()
     }
 
+    @Test
+    fun `short battle detail returns replay actions without inner zzz compression`() {
+        val channel = newChannel()
+        channel.writeInbound(upPacket(Cmd.BATTLE_REPORT_SHORT_DETAIL, "[0,0,0]"))
+
+        val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.BATTLE_REPORT_SHORT_DETAIL, response.cmd)
+        val report = mapper.readTree(response.body)[1]["report"].asText()
+        assertFalse(report.startsWith("zzz"))
+        assertTrue(report.split("#").any { it == "04" })
+        assertTrue(report.split("#").any { it.startsWith("09") })
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `battle detail resolves reports for the authenticated session instead of packet user id`() {
+        val foreignUserId = 987654
+        val store = ClientBattleReportStore.global()
+        val foreignDefault = store.getOrCreateDefault(foreignUserId)
+        val foreignReport = store.record(
+            ownerUserId = foreignUserId,
+            wid = foreignDefault.wid,
+            timeSec = foreignDefault.timeSec,
+            result = foreignDefault.result,
+        )
+        val channel = newChannel()
+
+        channel.writeInbound(
+            upPacket(
+                cmdId = Cmd.BATTLE_REPORT_DETAIL,
+                json = "[${foreignReport.battleId},0,0]",
+                userId = foreignUserId,
+            ),
+        )
+
+        val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+        val returnedBattleId = mapper.readTree(response.body)[1]["battle_id"].asInt()
+        assertNotEquals(foreignReport.battleId, returnedBattleId)
+        channel.finishAndReleaseAll()
+    }
+
     private fun newChannel(): EmbeddedChannel =
         EmbeddedChannel(GameServerHandler()).also { channel ->
             ReferenceCountUtil.release(assertIs<ByteBuf>(channel.readOutbound<Any>()))
         }
 
-    private fun upPacket(cmdId: Int, json: String): UpPacket {
-        val userId = 10001
+    private fun upPacket(cmdId: Int, json: String, userId: Int = 10001): UpPacket {
         val cmdIndex = 1
         return UpPacket(
             serverId = 1001,

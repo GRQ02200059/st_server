@@ -1,5 +1,6 @@
 package com.stzb.server.game
 
+import com.stzb.server.protocol.GameServerConfig
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -149,7 +150,11 @@ class UserInitTableBuilderTest {
             it[0].asInt() to it[1].asText()
         }
         assertEquals("4", sysParams[12], "CurrentSeason must declare the server as conquest/XP season")
-        assertEquals("344", sysParams[26], "CurrentSeasonCfgDBId must match the conquest packet")
+        assertEquals(
+            GameServerConfig.CFG_DB_ID.toString(),
+            sysParams[26],
+            "CurrentSeasonCfgDBId must match the advertised login cfgDataIndex",
+        )
     }
 
     @Test

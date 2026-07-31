@@ -1,5 +1,6 @@
 package com.stzb.server.game
 
+import com.stzb.server.protocol.GameServerConfig
 import java.util.zip.InflaterInputStream
 
 data class LandTileConfig(
@@ -16,7 +17,7 @@ data class LandTileConfig(
  * The wid is only decoded into coordinates; no digit of it represents level.
  */
 class LandMapRepository private constructor(
-    private val mapSize: Int,
+    val mapSize: Int,
     private val resourcesInMap: ByteArray,
 ) {
     fun tile(wid: Int): LandTileConfig? {
@@ -35,19 +36,31 @@ class LandMapRepository private constructor(
 
     companion object {
         private const val WID_COORDINATE_BASE = 10_000
-        private const val DEFAULT_MAP_SIZE = 1_001
-        private const val DEFAULT_RESOURCE = "/map/2001/resources_in_map.mbd"
 
-        fun loadDefault(): LandMapRepository {
-            val compressed = requireNotNull(LandMapRepository::class.java.getResourceAsStream(DEFAULT_RESOURCE)) {
-                "missing map resource $DEFAULT_RESOURCE"
+        /**
+         * Loads the resource-land map for the given login cfgDataIndex.
+         *
+         * The map size is derived from the decompressed resources_in_map length
+         * (mapSize = sqrt(len)) so different seasons with different dimensions
+         * (2001=1001, 2002=1201, 5=3001, 984=4001, ...) all load without a
+         * hard-coded size. The .mbd on disk is zlib compressed just like the
+         * client cache, so it is inflated here.
+         */
+        fun load(cfgIndex: Int): LandMapRepository {
+            val resource = "/map/$cfgIndex/resources_in_map.mbd"
+            val compressed = requireNotNull(LandMapRepository::class.java.getResourceAsStream(resource)) {
+                "missing map resource $resource"
             }
             val decoded = compressed.use { InflaterInputStream(it).readBytes() }
-            require(decoded.size == DEFAULT_MAP_SIZE * DEFAULT_MAP_SIZE) {
-                "invalid resources_in_map size: ${decoded.size}"
+            val mapSize = Math.sqrt(decoded.size.toDouble()).toInt()
+            require(mapSize * mapSize == decoded.size) {
+                "resources_in_map for cfgIndex=$cfgIndex is not square: ${decoded.size}"
             }
-            return LandMapRepository(DEFAULT_MAP_SIZE, decoded)
+            return LandMapRepository(mapSize, decoded)
         }
+
+        /** Loads the map that matches the login cfgDataIndex the server advertises. */
+        fun loadDefault(): LandMapRepository = load(GameServerConfig.CFG_DB_ID)
 
         private fun decodeResourceType(encoded: Int): Int? {
             if (encoded >= 100) {

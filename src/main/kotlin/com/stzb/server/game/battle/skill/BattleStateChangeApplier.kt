@@ -7,6 +7,7 @@ import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleRequest
+import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.BattleStats
 import com.stzb.server.game.battle.BattleStatus
 import com.stzb.server.game.battle.DamageOrigin
@@ -61,6 +62,15 @@ sealed interface BattleStateOutput {
 
     data class StatChanged(
         val change: BattleStatChange,
+        val strength: Int,
+        val delta: Int,
+        val valueAfter: Int,
+        val deltaExact: Double = delta.toDouble(),
+        val valueAfterExact: Double = valueAfter.toDouble(),
+    ) : BattleStateOutput
+
+    data class ModifierApplied(
+        val change: DamageModifierChange,
     ) : BattleStateOutput
 }
 
@@ -611,6 +621,7 @@ class BattleStateChangeApplier(
                 target.woundedTroops = (target.woundedTroops + change.delta).coerceAtLeast(0)
             }
             is BattleStatChange -> {
+                val valueBefore = state.mutable(change.target).stats.preciseValue(change.kind)
                 val effect = statEffect(change)
                 val accepted = applyBehavior(effect, outputs) { key, _ ->
                     statModifiers[key] = StatModifier(
@@ -621,12 +632,20 @@ class BattleStateChangeApplier(
                 }
                 if (accepted) {
                     recalculateStats(change.target)
-                    outputs += BattleStateOutput.StatChanged(change)
+                    val valueAfter = state.mutable(change.target).stats.preciseValue(change.kind)
+                    outputs += BattleStateOutput.StatChanged(
+                        change = change,
+                        strength = kotlin.math.abs(change.potency.value),
+                        delta = (valueAfter - valueBefore).toInt(),
+                        valueAfter = valueAfter.toInt(),
+                        deltaExact = valueAfter - valueBefore,
+                        valueAfterExact = valueAfter,
+                    )
                 }
             }
             is DamageModifierChange -> {
                 val effect = modifierEffect(change)
-                applyBehavior(effect, outputs) { key, _ ->
+                val accepted = applyBehavior(effect, outputs) { key, _ ->
                     damageModifiers[key] = DamageModifier(
                         change.direction,
                         change.school,
@@ -636,6 +655,7 @@ class BattleStateChangeApplier(
                     )
                     state.effectModifiers[key] = change.toBattleModifier()
                 }
+                if (accepted) outputs += BattleStateOutput.ModifierApplied(change)
             }
             is ApplyBattleEffectChange -> applyEffect(change.spec, outputs) { key, _ ->
                 statusFor(change.spec.effectId)?.let { state.effectStatuses[key] = it }
@@ -821,7 +841,7 @@ class BattleStateChangeApplier(
             val mutable = state.mutable(ref)
             val entry = mutable.entry.stats
             val values = BattleStatChange.Kind.entries.associateWith { kind ->
-                val base = entry.value(kind)
+                val base = entry.preciseValue(kind)
                 val modifiers = activeEntries(statModifiers)
                     .filter { (key, modifier) -> key.target == ref && modifier.kind == kind }
                 val flat = modifiers
@@ -830,15 +850,15 @@ class BattleStateChangeApplier(
                 val percent = modifiers
                     .filter { (_, modifier) -> modifier.unit == BattleEffectValueUnit.PERCENT }
                     .sumOf { (key, modifier) -> key.strength() * modifier.sign }
-                (base + base * percent / 100.0 + flat).roundToInt()
+                base + base * percent / 100.0 + flat
             }
-            mutable.stats = BattleStats(
-                attack = values.getValue(BattleStatChange.Kind.ATTACK),
-                defense = values.getValue(BattleStatChange.Kind.DEFENSE),
-                strategy = values.getValue(BattleStatChange.Kind.STRATEGY),
-                speed = values.getValue(BattleStatChange.Kind.SPEED),
-                siege = values.getValue(BattleStatChange.Kind.SIEGE),
-                hitRange = values.getValue(BattleStatChange.Kind.ATTACK_RANGE),
+            mutable.stats = BattleStats.fromHundredths(
+                attack = (values.getValue(BattleStatChange.Kind.ATTACK) * 100).roundToInt(),
+                defense = (values.getValue(BattleStatChange.Kind.DEFENSE) * 100).roundToInt(),
+                strategy = (values.getValue(BattleStatChange.Kind.STRATEGY) * 100).roundToInt(),
+                speed = (values.getValue(BattleStatChange.Kind.SPEED) * 100).roundToInt(),
+                siege = (values.getValue(BattleStatChange.Kind.SIEGE) * 100).roundToInt(),
+                hitRange = values.getValue(BattleStatChange.Kind.ATTACK_RANGE).roundToInt(),
             )
         }
     }
@@ -983,6 +1003,15 @@ class BattleStateChangeApplier(
         BattleStatChange.Kind.SPEED -> speed
         BattleStatChange.Kind.SIEGE -> siege
         BattleStatChange.Kind.ATTACK_RANGE -> hitRange
+    }
+
+    private fun BattleStats.preciseValue(kind: BattleStatChange.Kind): Double = when (kind) {
+        BattleStatChange.Kind.ATTACK -> precise(BattleStat.ATTACK)
+        BattleStatChange.Kind.DEFENSE -> precise(BattleStat.DEFENSE)
+        BattleStatChange.Kind.STRATEGY -> precise(BattleStat.STRATEGY)
+        BattleStatChange.Kind.SPEED -> precise(BattleStat.SPEED)
+        BattleStatChange.Kind.SIEGE -> precise(BattleStat.SIEGE)
+        BattleStatChange.Kind.ATTACK_RANGE -> hitRange.toDouble()
     }
 }
 

@@ -43,7 +43,18 @@ tasks.processResources {
     from(
         "../stzb_9.2.2_out_branch_9.1.1776213/assets/npk_extracted_all/others/res/csharp/data/tcfg/default",
     ) {
-        include("tb_cfg_card_extract*.bin")
+        include(
+            "tb_cfg_card_extract*.bin",
+            "tb_cfg_gear.bin",
+            "tb_cfg_gear_feature.bin",
+            "tb_cfg_hero_type_feature.bin",
+        )
+        into("client-config")
+    }
+    from(
+        "../stzb_9.2.2_out_branch_9.1.1776213/assets/npk_extracted_all/others/res/csharp/data/tcfg",
+    ) {
+        include("tb_cfg_gear_u.bin")
         into("client-config")
     }
     from(

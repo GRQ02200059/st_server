@@ -7,6 +7,7 @@ import com.stzb.server.game.battle.BattleDamageCalculator
 import com.stzb.server.game.battle.BattleEvent
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleRandom
 import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.DamageOrigin
 import com.stzb.server.game.battle.DamageSchool
@@ -149,6 +150,43 @@ class DefaultCompleteSkillEngine private constructor(
             round,
         )
         return processDamageOutputs(result, context.copy(round = round, source = source))
+    }
+
+    fun resolveNormalAttack(
+        round: Int,
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+        random: BattleRandom,
+        context: SkillBattleContext,
+    ): List<BattleEvent> {
+        val prospective = TroopDamageChange(
+            source = source,
+            target = target,
+            amount = 0,
+            troopsAfter = requireNotNull(state.view.state(target)).troops,
+            school = DamageSchool.PHYSICAL,
+            origin = DamageOrigin.NORMAL,
+            tags = emptySet(),
+            skillId = 0,
+            effectId = 0,
+        )
+        val events = mutableListOf<BattleEvent>()
+        events += apply(
+            chijieDamageBeforeResult(
+                prospective,
+                context.copy(
+                    round = round,
+                    source = source,
+                    trigger = BattleTrigger.DAMAGE_BEFORE,
+                ),
+            ),
+            context,
+        )
+        val liveSource = liveHero(source)
+        val liveTarget = liveHero(target)
+        val amount = actionResolver.normalAttackDamage(liveSource, liveTarget, random)
+        events += applyNormalDamage(round, source, target, amount, context)
+        return events
     }
 
     internal fun schedule(
@@ -1338,7 +1376,7 @@ class DefaultCompleteSkillEngine private constructor(
                 )
                 is BattleStateOutput.StatChanged -> buildList {
                     val change = output.change
-                    add(change.toEvent(round))
+                    add(output.toEvent(round))
                     statusForStat(change.effectId)?.let { status ->
                         add(
                             BattleEvent.StatusApplied(
@@ -1353,6 +1391,19 @@ class DefaultCompleteSkillEngine private constructor(
                         )
                     }
                 }
+                is BattleStateOutput.ModifierApplied -> listOf(
+                    output.change.let { change ->
+                        BattleEvent.ModifierApplied(
+                            round = round,
+                            source = change.source,
+                            target = change.target,
+                            skillId = change.skillId,
+                            effectId = change.effectId,
+                            amount = change.percent,
+                            durationRounds = change.durationRounds,
+                        )
+                    },
+                )
                 is BattleStateOutput.EffectRemoved -> listOf(
                     BattleEvent.StatusRemoved(
                         round,
@@ -1386,12 +1437,13 @@ class DefaultCompleteSkillEngine private constructor(
             }
         }
 
-    private fun BattleStatChange.toEvent(round: Int): BattleEvent.StatChanged =
-        BattleEvent.StatChanged(
+    private fun BattleStateOutput.StatChanged.toEvent(round: Int): BattleEvent.StatChanged {
+        val change = change
+        return BattleEvent.StatChanged(
             round,
-            source,
-            target,
-            when (kind) {
+            change.source,
+            change.target,
+            when (change.kind) {
                 BattleStatChange.Kind.ATTACK -> BattleStat.ATTACK
                 BattleStatChange.Kind.DEFENSE -> BattleStat.DEFENSE
                 BattleStatChange.Kind.STRATEGY -> BattleStat.STRATEGY
@@ -1399,10 +1451,16 @@ class DefaultCompleteSkillEngine private constructor(
                 BattleStatChange.Kind.SIEGE -> BattleStat.SIEGE
                 BattleStatChange.Kind.ATTACK_RANGE -> BattleStat.HIT_RANGE
             },
-            potency.value,
-            durationRounds,
-            skillId,
+            delta,
+            change.durationRounds,
+            change.skillId,
+            change.effectId,
+            strength = strength,
+            valueAfter = valueAfter,
+            deltaExact = deltaExact,
+            valueAfterExact = valueAfterExact,
         )
+    }
 
     companion object {
         private const val DISORDER_SKILL_ID = 200002

@@ -126,7 +126,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
             Cmd.BATTLE_REPORT_PROFILE -> {
                 logIn(msg)
-                sendBattleReportProfile(ctx, msg)
+                sendBattleReportProfile(ctx, session, msg)
             }
 
             Cmd.ARMY_BATTLE -> {
@@ -137,7 +137,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.BATTLE_REPORT_DETAIL,
             Cmd.BATTLE_REPORT_SHORT_DETAIL -> {
                 logIn(msg)
-                sendBattleReportDetail(ctx, msg)
+                sendBattleReportDetail(ctx, session, msg)
             }
 
             Cmd.BUILD_BUILDING,
@@ -649,20 +649,27 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         log.info(">> cmd=9026 普通配队推荐已应答 (heroId=$heroId)")
     }
 
-    private fun sendBattleReportProfile(ctx: ChannelHandlerContext, msg: UpPacket) {
+    private fun sendBattleReportProfile(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
         val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
         val battleIds = body?.get(0)?.takeIf { it.isArray }?.mapNotNull { it.asInt().takeIf { id -> id > 0 } }.orEmpty()
         val serverId = body?.get(2)?.asInt() ?: 0
-        val json = ClientBattleReportStore.global().profileResponse(battleIds, serverId)
+        val json = ClientBattleReportStore.global().profileResponse(userId, battleIds, serverId)
         ctx.writeAndFlush(DownPacket.json(Cmd.BATTLE_REPORT_PROFILE, json, dataType = DownType.ZLIB))
         log.info(">> cmd=10 战报摘要已下发 (battleIds=$battleIds, serverId=$serverId, ${json.length}B)")
     }
 
-    private fun sendBattleReportDetail(ctx: ChannelHandlerContext, msg: UpPacket) {
+    private fun sendBattleReportDetail(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
         val body = runCatching { mapper.readTree(msg.body) }.getOrNull()
         val battleId = body?.get(0)?.asInt()?.takeIf { it > 0 } ?: 0
         val serverId = body?.get(2)?.asInt() ?: 0
-        val json = ClientBattleReportStore.global().detailResponse(battleId, serverId)
+        val json = ClientBattleReportStore.global().detailResponse(
+            ownerUserId = userId,
+            battleId = battleId,
+            serverId = serverId,
+            compressed = msg.cmdId != Cmd.BATTLE_REPORT_SHORT_DETAIL,
+        )
         ctx.writeAndFlush(DownPacket.json(msg.cmdId, json, dataType = DownType.ZLIB))
         log.info(">> cmd=${msg.cmdId} 战报详情已下发 (battleId=$battleId, serverId=$serverId, ${json.length}B)")
     }

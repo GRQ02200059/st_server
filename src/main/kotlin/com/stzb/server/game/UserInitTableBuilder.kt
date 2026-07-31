@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.stzb.server.protocol.GameServerConfig
 
 /*
  * 构造 99991 登录响应里的 UserInitTable (数据库初始快照)。
@@ -103,7 +104,7 @@ object UserInitTableBuilder {
             table(
                 "Tb_sys_param",
                 tbSysParam(12, "4"),
-                tbSysParam(26, "344"),
+                tbSysParam(26, GameServerConfig.CFG_DB_ID.toString()),
             ),
         )
         root.add(
@@ -211,7 +212,7 @@ object UserInitTableBuilder {
             .i(22, state.resources.freeYuanBao) // free_yuan_bao_cur
             .i(38, 1000)                  // power
             .i(39, 1)                     // newbie_guide (已过新手引导)
-            .i(55, 1)                     // force = 有效势力 (1)
+            .i(55, 0)                     // force = UserForceType.NORMAL(0) 正式军 (1=BANDIT 流浪军)
             .arr
 
     /** Tb_user_res: 0=userid, 2=money_cur, 3~6=木石铁粮 cur, 9~12=木石铁粮 max。 */

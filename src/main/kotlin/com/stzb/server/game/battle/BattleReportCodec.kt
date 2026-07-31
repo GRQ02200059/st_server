@@ -148,6 +148,8 @@ object BattleReportCodec {
                 "target" to target.toReportMap(),
                 "status" to status.name,
                 "durationRounds" to durationRounds,
+                "power" to power,
+                "statDelta" to statDelta.toReportMap(),
                 "skillId" to skillId,
             )
             is BattleEvent.OngoingDamage -> mapOf(
@@ -197,6 +199,31 @@ object BattleReportCodec {
                 "delta" to delta,
                 "durationRounds" to durationRounds,
                 "skillId" to skillId,
+                "effectId" to effectId,
+                "strength" to strength,
+                "valueAfter" to (valueAfter ?: 0),
+                "deltaExact" to deltaExact,
+                "valueAfterExact" to (valueAfterExact ?: valueAfter ?: 0),
+            )
+            is BattleEvent.ModifierApplied -> mapOf(
+                "type" to "ModifierApplied",
+                "round" to round,
+                "source" to source.toReportMap(),
+                "target" to target.toReportMap(),
+                "skillId" to skillId,
+                "effectId" to effectId,
+                "amount" to amount,
+                "durationRounds" to durationRounds,
             )
         }
+
+    private fun BattleStats.toReportMap(): Map<String, Any> =
+        mapOf(
+            "attack" to attack,
+            "defense" to defense,
+            "strategy" to strategy,
+            "speed" to speed,
+            "siege" to siege,
+            "hitRange" to hitRange,
+        )
 }

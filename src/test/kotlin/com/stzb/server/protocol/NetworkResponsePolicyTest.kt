@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class NetworkResponsePolicyTest {
     private val mapper = jacksonObjectMapper()
@@ -96,6 +97,16 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `server ip port query returns a non success tuple the client can index`() {
+        // InnerIpPortInfo.OnGetIpPortInfo reads val[0] unconditionally and only
+        // touches val[1..3] when val[0] == 200. An empty array crashed the client
+        // with ArgumentOutOfRangeException on the 4001-map (conquest) login path.
+        val response = mapper.readTree(NetworkResponsePolicy.fallbackBody(5201))
+        assertEquals(1, response.size())
+        assertEquals(0, response[0].asInt())
+    }
+
+    @Test
     fun `recorded name lookup echoes requested name with empty result lists`() {
         val response = mapper.readTree(
             NetworkResponsePolicy.fallbackBody(4979, """["查找目标"]"""),
@@ -118,6 +129,57 @@ class NetworkResponsePolicyTest {
     @Test
     fun `union info returns non success tuple to avoid complex union parser`() {
         assertEquals("[1,[]]", NetworkResponsePolicy.fallbackBody(100))
+    }
+
+    @Test
+    fun `create union returns a single int id the client casts directly`() {
+        // UnionCreateData.ReciveUnionId does `int unionID = (int)package;` then
+        // opens the union main UI (which fires cmd 100). A single int keeps the
+        // create-then-open path alive without an ArgumentException.
+        val response = mapper.readTree(NetworkResponsePolicy.fallbackBody(102))
+        assertTrue(response.isInt, "cmd 102 must return a bare int, got $response")
+    }
+
+    @Test
+    fun `join union side lists never return null so the enumerator stays safe`() {
+        // UnionJoinUI.OnShow fires 5049/111/4080; 5049 OnOtherDataCb enumerates
+        // the packet with no null guard, so an empty array (not null) is required.
+        assertEquals("[]", NetworkResponsePolicy.fallbackBody(5049))
+        assertEquals("[]", NetworkResponsePolicy.fallbackBody(111))
+        assertEquals("[]", NetworkResponsePolicy.fallbackBody(4080))
+    }
+
+    @Test
+    fun `other player profile returns a non success tuple that closes gracefully`() {
+        // RoleForcesDetailUI._ReceiveUserProfile reads val[0]; only 0/2 refresh
+        // the view, anything else shows a "not found" tip and closes. [1,""] is
+        // safe (client reads val[1] only through the Count>1 guarded branch).
+        val response = mapper.readTree(NetworkResponsePolicy.fallbackBody(502))
+        assertEquals(1, response[0].asInt())
+    }
+
+    @Test
+    fun `homepage info returns a full dict so UpdateData does not crash`() {
+        // UserMainView.ResponseData calls UpdateData(val[1]) when val[0] != 0, and
+        // UpdateData does unguarded casts on the personal(22)/union(14)/server(4)/
+        // zanAndvistor(3) sub-lists plus 11 required dict keys. Empty {} crashes.
+        val response = mapper.readTree(NetworkResponsePolicy.fallbackBody(3686))
+        assertTrue(response[0].asInt() != 0, "status code must be non-zero to trigger UpdateData")
+        val dict = response[1]
+        // 11 required keys UpdateData reads with unguarded index/cast.
+        for (key in listOf(
+            "personal", "union", "server", "history", "zanAndvistor",
+            "show_type", "history_choice", "fashion", "populartiy", "city_card", "area_rank_title",
+        )) {
+            assertTrue(dict.has(key), "homepage dict missing required key: $key")
+        }
+        // personal must expose indices 0..21 (unguarded segment).
+        assertTrue(dict["personal"].size() >= 22, "personal needs >=22 elements")
+        assertTrue(dict["union"].size() >= 14, "union needs >=14 elements")
+        assertTrue(dict["server"].size() >= 4, "server needs >=4 elements")
+        assertTrue(dict["zanAndvistor"].size() >= 3, "zanAndvistor needs >=3 elements")
+        // area_rank_title is read via .ToString(); must not be JSON null.
+        assertTrue(!dict["area_rank_title"].isNull, "area_rank_title must not be null")
     }
 
     @Test

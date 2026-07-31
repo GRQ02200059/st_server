@@ -28,18 +28,28 @@ internal object ClientBattleTextReplayAdapter {
                 result.defender.heroes.map { Side.DEFENDER to it }
             )
             .sortedBy { (side, hero) -> ClientBattleTextReplayProtocol.position(side, hero.position) }
+        val entryHeroes = (
+            (result.entryAttacker ?: result.attacker).heroes.map { Side.ATTACKER to it } +
+                (result.entryDefender ?: result.defender).heroes.map { Side.DEFENDER to it }
+            )
+            .sortedBy { (side, hero) -> ClientBattleTextReplayProtocol.position(side, hero.position) }
         heroes.forEach { (side, hero) ->
             actions += ClientReportAction(
                 ClientBattleTextReplayProtocol.HERO_NAME,
                 listOf(ClientBattleTextReplayProtocol.position(side, hero.position), hero.id.value),
             )
         }
-        heroes.forEach { (side, hero) ->
+        entryHeroes.forEach { (side, hero) ->
             actions += heroInfo(side, hero)
         }
-        actions += ClientReportAction(ClientBattleTextReplayProtocol.PREPARE)
+        val attackerEntry = result.entryAttacker ?: result.attacker
+        val defenderEntry = result.entryDefender ?: result.defender
+        BattlePreparationStage.entries.forEach { stage ->
+            actions += preparationEffects(Side.ATTACKER, attackerEntry, stage)
+            actions += preparationEffects(Side.DEFENDER, defenderEntry, stage)
+        }
 
-        result.events.forEach { event ->
+        fun appendEvent(event: BattleEvent) {
             when (event) {
                 is BattleEvent.RoundStart -> actions += ClientReportAction(
                     ClientBattleTextReplayProtocol.ROUND,
@@ -67,13 +77,7 @@ internal object ClientBattleTextReplayAdapter {
                         event.skillId,
                     ),
                 )
-                is BattleEvent.SkillTriggered -> actions += ClientReportAction(
-                    event.trigger.clientSkillAction(),
-                    listOf(
-                        ClientBattleTextReplayProtocol.position(event.source),
-                        event.skillId,
-                    ),
-                )
+                is BattleEvent.SkillTriggered -> actions += skillTriggered(event)
                 is BattleEvent.StatusRemoved -> actions += removedStatus(event)
                 is BattleEvent.EffectExpired -> actions += ClientReportAction(
                     ClientBattleTextReplayProtocol.STATUS_REMOVED,
@@ -155,8 +159,12 @@ internal object ClientBattleTextReplayAdapter {
                     }
                 }
                 is BattleEvent.StatusApplied -> {
-                    if (event.skillId > 0) {
-                        actions += appliedStatusActions(event)
+                    if (event.skillId > 0 && !event.status.isStatChangeStatus()) {
+                        actions += if (event.round == 0) {
+                            preparationStatus(event)
+                        } else {
+                            appliedStatusActions(event)
+                        }
                     }
                 }
                 is BattleEvent.OngoingDamage -> {
@@ -179,11 +187,20 @@ internal object ClientBattleTextReplayAdapter {
                     listOf(ClientBattleTextReplayProtocol.position(event.target)),
                 )
                 is BattleEvent.StatChanged -> {
-                    val effectId = ClientBattleTextReplayProtocol.effectId(event.stat, event.delta)
-                    if (event.skillId > 0 && effectId != 0) {
-                        actions += skillCast(event.target, event.skillId)
+                    if (event.skillId > 0) {
+                        actions += statChanged(event)
                     }
                 }
+                is BattleEvent.ModifierApplied -> actions += ClientReportAction(
+                    ClientBattleTextReplayProtocol.MODIFIER_APPLIED,
+                    listOf(
+                        ClientBattleTextReplayProtocol.position(event.source),
+                        event.skillId,
+                        ClientBattleTextReplayProtocol.position(event.target),
+                        event.effectId,
+                        event.amount,
+                    ),
+                )
                 is BattleEvent.UnsupportedSkillEffect -> {
                     unsupported(
                         "Unsupported skill effect projection: skill=${event.skillId} " +
@@ -205,14 +222,68 @@ internal object ClientBattleTextReplayAdapter {
                 -> Unit
             }
         }
+        val firstRoundIndex = result.events.indexOfFirst { it is BattleEvent.RoundStart }
+            .let { if (it < 0) result.events.size else it }
+        val preparationEvents = result.events.take(firstRoundIndex)
+        val battleEvents = result.events.drop(firstRoundIndex)
+        val firstCommandIndex = preparationEvents.indexOfFirst {
+            it is BattleEvent.SkillTriggered &&
+                it.trigger == BattleTrigger.BATTLE_COMMAND &&
+                it.rootSkillId == it.skillId
+        }.let { if (it < 0) preparationEvents.size else it }
+        preparationEvents.take(firstCommandIndex).forEach(::appendEvent)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.PASSIVE_STAGE_END)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.PREPARE)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.COMMAND_STAGE_BEGIN)
+
+        val commandEventsBySource = linkedMapOf<BattleHeroRef, MutableList<BattleEvent>>()
+        var commandSource: BattleHeroRef? = null
+        preparationEvents.drop(firstCommandIndex).forEach { event ->
+            if (
+                event is BattleEvent.SkillTriggered &&
+                event.trigger == BattleTrigger.BATTLE_COMMAND &&
+                event.rootSkillId == event.skillId
+            ) {
+                commandSource = event.source
+            }
+            commandSource?.let { source ->
+                commandEventsBySource.getOrPut(source) { mutableListOf() } += event
+            }
+        }
+        entryHeroes
+            .sortedWith(
+                compareByDescending<Pair<Side, BattleHero>> { (_, hero) -> hero.stats.speed }
+                    .thenBy { (side, _) -> side.ordinal }
+                    .thenBy { (_, hero) -> hero.position },
+            )
+            .forEach { (side, hero) ->
+                val source = BattleHeroRef(side, hero.position, hero.id)
+                val position = ClientBattleTextReplayProtocol.position(source)
+                actions += ClientReportAction(
+                    ClientBattleTextReplayProtocol.PREPARATION_HERO,
+                    listOf(position),
+                )
+                actions += ClientReportAction(
+                    ClientBattleTextReplayProtocol.COMMAND_HERO_BEGIN,
+                    listOf(position),
+                )
+                commandEventsBySource[source].orEmpty().forEach(::appendEvent)
+                actions += ClientReportAction(
+                    ClientBattleTextReplayProtocol.COMMAND_HERO_END,
+                    listOf(position),
+                )
+            }
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_END)
+        battleEvents.forEach(::appendEvent)
         appendFinalization(actions, result)
         return actions
     }
 
     private fun BattleTrigger.clientSkillAction(): Int = when (this) {
-        BattleTrigger.BATTLE_PASSIVE,
-        BattleTrigger.BATTLE_COMMAND,
-        -> ClientBattleTextReplayProtocol.SKILL_TRIGGERED_PASSIVE
+        BattleTrigger.BATTLE_PASSIVE ->
+            ClientBattleTextReplayProtocol.SKILL_TRIGGERED_PASSIVE
+        BattleTrigger.BATTLE_COMMAND ->
+            ClientBattleTextReplayProtocol.SKILL_TRIGGERED_COMMAND
         BattleTrigger.ACTIVE_SKILL_ATTEMPT ->
             ClientBattleTextReplayProtocol.SKILL_TRIGGERED_ACTIVE
         BattleTrigger.PURSUIT_ATTEMPT ->
@@ -221,6 +292,19 @@ internal object ClientBattleTextReplayAdapter {
             "SkillTriggered cannot use trigger=$this",
         )
     }
+
+    private fun skillTriggered(event: BattleEvent.SkillTriggered): ClientReportAction =
+        ClientReportAction(
+            if (event.skillId != event.rootSkillId) {
+                ClientBattleTextReplayProtocol.DERIVED_SKILL_TRIGGERED
+            } else {
+                event.trigger.clientSkillAction()
+            },
+            listOf(
+                ClientBattleTextReplayProtocol.position(event.source),
+                event.skillId,
+            ),
+        )
 
     private fun removedStatus(event: BattleEvent.StatusRemoved) = ClientReportAction(
         ClientBattleTextReplayProtocol.STATUS_REMOVED,
@@ -270,12 +354,27 @@ internal object ClientBattleTextReplayAdapter {
      * they must be present even when the server has no feature data.
      */
     private fun heroInfo(side: Side, hero: BattleHero): ClientReportAction {
-        val skills = hero.skillIds
-            .take(3)
-            .flatMap { skillId -> listOf(skillId, DEFAULT_SKILL_LEVEL) }
+        val skills = hero.skillIds.take(SKILL_SLOT_COUNT)
+            .flatMapIndexed { index, skillId ->
+                listOf(skillId, hero.skillLevels.getOrElse(index) { DEFAULT_SKILL_LEVEL })
+            }
             .toMutableList()
             .apply {
                 while (size < SKILL_SLOT_COUNT * 2) {
+                    add(0)
+                    add(0)
+                }
+            }
+        val troopFeatures = hero.troopFeatureIds.take(TROOP_FEATURE_SLOT_COUNT)
+            .toMutableList()
+            .apply {
+                while (size < TROOP_FEATURE_SLOT_COUNT) add(0)
+            }
+        val equipment = hero.equipment.take(EQUIPMENT_SLOT_COUNT)
+            .flatMap { slot -> listOf(slot.equipmentId, slot.level) }
+            .toMutableList()
+            .apply {
+                while (size < EQUIPMENT_SLOT_COUNT * 2) {
                     add(0)
                     add(0)
                 }
@@ -286,7 +385,148 @@ internal object ClientBattleTextReplayAdapter {
                 ClientBattleTextReplayProtocol.position(side, hero.position),
                 hero.level,
                 hero.maxTroops,
-            ) + skills + listOf(0, 0),
+            ) + skills + troopFeatures + listOf("") + equipment + listOf(0),
+        )
+    }
+
+    private fun preparationEffects(
+        side: Side,
+        team: BattleTeam,
+        stage: BattlePreparationStage? = null,
+    ): List<ClientReportAction> {
+        val effectsBySource = team.preparationEffects
+            .filter { stage == null || it.stage == stage }
+            .groupBy { Triple(it.stage, it.containerSourceId, it.sourcePosition) }
+        val modifiersBySource = team.preparationModifiers
+            .filter { stage == null || it.stage == stage }
+            .groupBy { Triple(it.stage, it.containerSourceId, it.sourcePosition) }
+        val actionsBySource = team.preparationActions
+            .filter { stage == null || it.stage == stage }
+            .groupBy { Triple(it.stage, it.containerSourceId, it.sourcePosition) }
+        val sources = (
+            team.preparationSources.filter { stage == null || it.stage == stage } +
+                effectsBySource.keys.map { (stage, sourceId, sourcePosition) ->
+                    BattlePreparationSource(stage, sourceId, sourcePosition)
+                } +
+                modifiersBySource.keys.map { (stage, sourceId, sourcePosition) ->
+                    BattlePreparationSource(stage, sourceId, sourcePosition)
+                } +
+                actionsBySource.keys.map { (stage, sourceId, sourcePosition) ->
+                    BattlePreparationSource(stage, sourceId, sourcePosition)
+                }
+            ).distinct()
+            .sortedWith(
+                compareBy<BattlePreparationSource> { it.stage.ordinal }
+                    .thenBy { it.sourcePosition ?: -1 }
+                    .thenBy(BattlePreparationSource::sourceId),
+            )
+        return sources.flatMap { source ->
+            val effects = effectsBySource[
+                Triple(source.stage, source.sourceId, source.sourcePosition)
+            ].orEmpty()
+            val modifiers = modifiersBySource[
+                Triple(source.stage, source.sourceId, source.sourcePosition)
+            ].orEmpty()
+            val preparationActions = actionsBySource[
+                Triple(source.stage, source.sourceId, source.sourcePosition)
+            ].orEmpty()
+            buildList {
+                listOf(
+                    ClientReportAction(
+                        ClientBattleTextReplayProtocol.preparationSourceAction(source.stage),
+                        listOf(
+                            source.sourcePosition
+                                ?.let { ClientBattleTextReplayProtocol.position(side, it) }
+                                ?: ClientBattleTextReplayProtocol.teamPosition(side),
+                            source.sourceId,
+                        ),
+                    ),
+                ).let(::addAll)
+                effects.mapTo(this) { effect ->
+                    val sourcePosition = effect.sourcePosition
+                        ?.let { ClientBattleTextReplayProtocol.position(side, it) }
+                        ?: ClientBattleTextReplayProtocol.teamPosition(side)
+                    if (effect.percent) {
+                        ClientReportAction(
+                            ClientBattleTextReplayProtocol.attributeChangeAction(effect.stat, effect.delta),
+                            listOf(
+                                sourcePosition,
+                                effect.sourceId,
+                                ClientBattleTextReplayProtocol.position(side, effect.targetPosition),
+                                reportNumber(effect.strengthExact),
+                                reportNumber(kotlin.math.abs(effect.deltaExact)),
+                                reportNumber(effect.valueAfterExact),
+                            ),
+                        )
+                    } else {
+                        ClientReportAction(
+                            ClientBattleTextReplayProtocol.flatAttributeAction(effect.stat),
+                            listOf(
+                                sourcePosition,
+                                effect.sourceId,
+                                ClientBattleTextReplayProtocol.position(side, effect.targetPosition),
+                                reportNumber(kotlin.math.abs(effect.deltaExact)),
+                                reportNumber(effect.valueAfterExact),
+                            ),
+                        )
+                    }
+                }
+                modifiers.mapTo(this) { modifier ->
+                    ClientReportAction(
+                        ClientBattleTextReplayProtocol.MODIFIER_APPLIED,
+                        listOf(
+                            ClientBattleTextReplayProtocol.position(side, modifier.sourcePosition),
+                            modifier.sourceId,
+                            ClientBattleTextReplayProtocol.position(side, modifier.targetPosition),
+                            modifier.effectId,
+                            modifier.amount,
+                        ),
+                    )
+                }
+                preparationActions.mapTo(this) { action ->
+                    ClientReportAction(
+                        action.actionId,
+                        buildList {
+                            add(
+                            ClientBattleTextReplayProtocol.position(side, action.sourcePosition),
+                            )
+                            add(action.sourceId)
+                            add(ClientBattleTextReplayProtocol.position(side, action.targetPosition))
+                            action.actionParameter?.let(::add)
+                            action.amountExact?.let { add(reportNumber(it)) }
+                            if (action.appendSourcePosition) {
+                                add(ClientBattleTextReplayProtocol.position(side, action.sourcePosition))
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun reportNumber(value: Double): Any =
+        roundOneDecimal(value).let { rounded ->
+            if (rounded % 1.0 == 0.0) rounded.toInt() else rounded
+        }
+
+    private fun roundOneDecimal(value: Double): Double =
+        java.math.BigDecimal.valueOf(value)
+            .setScale(1, java.math.RoundingMode.HALF_UP)
+            .toDouble()
+
+    private fun statChanged(event: BattleEvent.StatChanged): ClientReportAction {
+        val source = ClientBattleTextReplayProtocol.position(event.source)
+        val target = ClientBattleTextReplayProtocol.position(event.target)
+        return ClientReportAction(
+            ClientBattleTextReplayProtocol.attributeChangeAction(event.stat, event.delta),
+            listOf(
+                source,
+                event.skillId,
+                target,
+                event.strength,
+                reportNumber(kotlin.math.abs(event.deltaExact)),
+                reportNumber(event.valueAfterExact ?: event.valueAfter?.toDouble() ?: event.deltaExact),
+            ),
         )
     }
 
@@ -344,6 +584,29 @@ internal object ClientBattleTextReplayAdapter {
         return skillSegment(event.source, event.skillId, listOf(action))
     }
 
+    private fun preparationStatus(event: BattleEvent.StatusApplied): List<ClientReportAction> =
+        listOf(
+            ClientReportAction(
+                ClientBattleTextReplayProtocol.preparationStatusAction(event.status),
+                listOf(
+                    ClientBattleTextReplayProtocol.position(event.target),
+                    ClientBattleTextReplayProtocol.effectId(event.status),
+                ),
+            ),
+        )
+
+    private fun BattleStatus.isStatChangeStatus(): Boolean =
+        this in setOf(
+            BattleStatus.ATTACK_BUFF,
+            BattleStatus.DEFENSE_BUFF,
+            BattleStatus.STRATEGY_BUFF,
+            BattleStatus.SPEED_BUFF,
+            BattleStatus.ATTACK_DEBUFF,
+            BattleStatus.DEFENSE_DEBUFF,
+            BattleStatus.STRATEGY_DEBUFF,
+            BattleStatus.SPEED_DEBUFF,
+        )
+
     private fun appendFinalization(
         actions: MutableList<ClientReportAction>,
         result: BattleResult,
@@ -376,5 +639,7 @@ internal object ClientBattleTextReplayAdapter {
     }
 
     private const val SKILL_SLOT_COUNT = 3
+    private const val TROOP_FEATURE_SLOT_COUNT = 2
+    private const val EQUIPMENT_SLOT_COUNT = 3
     private const val DEFAULT_SKILL_LEVEL = 1
 }

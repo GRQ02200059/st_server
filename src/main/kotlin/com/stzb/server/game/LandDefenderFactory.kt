@@ -31,6 +31,13 @@ class LandDefenderFactory(
                     level = hero.level,
                     // BattleTeamBuilder already adds the configured initial skill.
                     extraSkillIds = hero.skillIds.drop(1),
+                    skillLevels = hero.skillLevels,
+                    troopFeatureIds = hero.troopFeatureIds,
+                    equipmentIds = hero.equipmentIds,
+                    equipmentSkillIds = hero.equipmentSkillIds,
+                    equipmentSkillLevels = hero.equipmentSkillLevels,
+                    equipmentFeatureSkillIds = hero.equipmentFeatureSkillIds,
+                    equipmentFeatureSkillLevels = hero.equipmentFeatureSkillLevels,
                 )
             }
         }

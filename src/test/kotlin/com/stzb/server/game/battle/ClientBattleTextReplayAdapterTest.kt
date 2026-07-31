@@ -3,9 +3,727 @@ package com.stzb.server.game.battle
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ClientBattleTextReplayAdapterTest {
+    @Test
+    fun `preparation keeps passive before 04 and wraps command heroes before 08`() {
+        val first = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val second = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.TriggerPoint(
+                    0,
+                    first,
+                    com.stzb.server.game.battle.skill.BattleTrigger.BATTLE_PASSIVE,
+                ),
+                BattleEvent.SkillTriggered(
+                    0,
+                    first,
+                    200001,
+                    200001,
+                    com.stzb.server.game.battle.skill.BattleTrigger.BATTLE_PASSIVE,
+                ),
+                BattleEvent.TriggerPoint(
+                    0,
+                    first,
+                    com.stzb.server.game.battle.skill.BattleTrigger.BATTLE_COMMAND,
+                ),
+                BattleEvent.SkillTriggered(
+                    0,
+                    first,
+                    200002,
+                    200002,
+                    com.stzb.server.game.battle.skill.BattleTrigger.BATTLE_COMMAND,
+                ),
+                BattleEvent.TriggerPoint(
+                    0,
+                    second,
+                    com.stzb.server.game.battle.skill.BattleTrigger.BATTLE_COMMAND,
+                ),
+                BattleEvent.RoundStart(1),
+            ),
+        )
+
+        val preparation = ClientBattleTextReplayAdapter.adapt(result)
+            .map(ClientReportAction::encode)
+            .filter {
+                it in setOf(
+                    "0l1,200001",
+                    "60",
+                    "04",
+                    "i3",
+                    "051",
+                    "hw1",
+                    "0m1,200002",
+                    "hx1",
+                    "056",
+                    "hw6",
+                    "hx6",
+                    "08",
+                    "091",
+                )
+            }
+
+        assertEquals(
+            listOf(
+                "0l1,200001",
+                "60",
+                "04",
+                "i3",
+                "051",
+                "hw1",
+                "0m1,200002",
+                "hx1",
+                "056",
+                "hw6",
+                "hx6",
+                "08",
+                "091",
+            ),
+            preparation,
+        )
+    }
+
+    @Test
+    fun `distinguishes passive command active and pursuit preparation actions`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.SkillTriggered(
+                    0,
+                    source,
+                    200001,
+                    200001,
+                    com.stzb.server.game.battle.skill.BattleTrigger.BATTLE_PASSIVE,
+                ),
+                BattleEvent.SkillTriggered(
+                    0,
+                    source,
+                    200002,
+                    200002,
+                    com.stzb.server.game.battle.skill.BattleTrigger.BATTLE_COMMAND,
+                ),
+                BattleEvent.SkillTriggered(
+                    1,
+                    source,
+                    200003,
+                    200003,
+                    com.stzb.server.game.battle.skill.BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                ),
+                BattleEvent.SkillTriggered(
+                    1,
+                    source,
+                    200004,
+                    200004,
+                    com.stzb.server.game.battle.skill.BattleTrigger.PURSUIT_ATTEMPT,
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf("0l1,200001", "0m1,200002", "0n1,200003", "0o1,200004"),
+            ClientBattleTextReplayAdapter.adapt(result)
+                .filter { it.id in 21..24 }
+                .map(ClientReportAction::encode),
+        )
+    }
+
+    @Test
+    fun `hero initialization carries real skill levels troop features and equipment slots`() {
+        val result = twoRoundResult().let { base ->
+            base.copy(
+                attacker = base.attacker.copy(
+                    heroes = listOf(
+                        base.attacker.heroes.first().copy(
+                            level = 45,
+                            maxTroops = 9_700,
+                            skillIds = listOf(200028, 200689, 200233),
+                            skillLevels = listOf(10, 8, 6),
+                            troopFeatureIds = listOf(3106, 3104),
+                            equipment = listOf(
+                                BattleEquipmentSlot(400114, 6),
+                                BattleEquipmentSlot(400115, 6),
+                                BattleEquipmentSlot(400112, 1),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        val encoded = ClientBattleTextReplayAdapter.adapt(result)
+            .first { it.id == ClientBattleTextReplayProtocol.HERO_INFO }
+            .encode()
+
+        assertEquals(
+            "5p1,45,9700,200028,10,200689,8,200233,6,3106,3104,,400114,6,400115,6,400112,1,0",
+            encoded,
+        )
+    }
+
+    @Test
+    fun `preparation does not invent source-free initial combat attributes`() {
+        val hero = twoRoundResult().attacker.heroes.first().copy(
+            stats = BattleStats(attack = 191, defense = 224, strategy = 275, speed = 129, siege = 12, hitRange = 3),
+        )
+        val result = twoRoundResult().copy(
+            attacker = BattleTeam(listOf(hero)),
+            defender = BattleTeam(emptyList()),
+            events = emptyList(),
+        )
+
+        val attributes = ClientBattleTextReplayAdapter.adapt(result)
+            .filter { it.id in setOf(45, 46, 47, 48, 49, 50) }
+            .map(ClientReportAction::encode)
+
+        assertEquals(emptyList(), attributes)
+    }
+
+    @Test
+    fun `preparation emits army bonus attributes with their official source`() {
+        val base = twoRoundResult()
+        val result = base.copy(
+            attacker = base.attacker.copy(
+                preparationEffects = listOf(
+                    BattlePreparationEffect(
+                        stage = BattlePreparationStage.ARMY,
+                        sourceId = 291005,
+                        targetPosition = 0,
+                        stat = BattleStat.ATTACK,
+                        strength = 23,
+                        delta = 23,
+                        valueAfter = 191,
+                    ),
+                ),
+            ),
+            events = emptyList(),
+        )
+
+        val encoded = ClientBattleTextReplayAdapter.adapt(result).map(ClientReportAction::encode)
+
+        assertTrue(encoded.contains("5s0,291005"))
+        assertTrue(encoded.contains("190,291005,1,23,23,191"))
+        assertTrue(encoded.indexOf("5s0,291005") < encoded.indexOf("60"))
+    }
+
+    @Test
+    fun `defender preparation sources use official team position seven and decimal values`() {
+        val base = twoRoundResult()
+        val result = base.copy(
+            attacker = BattleTeam(emptyList()),
+            defender = base.defender.copy(
+                preparationEffects = listOf(
+                    BattlePreparationEffect(
+                        stage = BattlePreparationStage.ARMY,
+                        sourceId = 295040,
+                        targetPosition = 0,
+                        stat = BattleStat.ATTACK,
+                        strength = 10,
+                        delta = 13,
+                        valueAfter = 164,
+                        deltaExact = 13.1,
+                        valueAfterExact = 164.4,
+                    ),
+                ),
+            ),
+            events = emptyList(),
+        )
+
+        val encoded = ClientBattleTextReplayAdapter.adapt(result).map(ClientReportAction::encode)
+
+        assertTrue(encoded.contains("5s7,295040"))
+        assertTrue(encoded.contains("197,295040,6,10,13.1,164.4"))
+    }
+
+    @Test
+    fun `preparation declares troop and equipment sources even without attribute changes`() {
+        val base = twoRoundResult()
+        val result = base.copy(
+            attacker = base.attacker.copy(
+                preparationSources = listOf(
+                    BattlePreparationSource(BattlePreparationStage.TROOP, 296106, sourcePosition = 0),
+                    BattlePreparationSource(BattlePreparationStage.EQUIPMENT, 1102, sourcePosition = 0),
+                ),
+            ),
+            defender = BattleTeam(emptyList()),
+            events = emptyList(),
+        )
+
+        val encoded = ClientBattleTextReplayAdapter.adapt(result).map(ClientReportAction::encode)
+
+        assertTrue(encoded.contains("7x1,296106"))
+        assertTrue(encoded.contains("ba1,1102"))
+    }
+
+    @Test
+    fun `equipment skill effects stay under the base equipment source`() {
+        val base = twoRoundResult()
+        val result = base.copy(
+            attacker = base.attacker.copy(
+                preparationSources = listOf(
+                    BattlePreparationSource(BattlePreparationStage.EQUIPMENT, 1024, 0),
+                ),
+                preparationEffects = listOf(
+                    BattlePreparationEffect(
+                        stage = BattlePreparationStage.EQUIPMENT,
+                        sourceId = 400022,
+                        sourcePosition = 0,
+                        targetPosition = 0,
+                        stat = BattleStat.ATTACK,
+                        strength = 2,
+                        delta = 2,
+                        valueAfter = 102,
+                        percent = false,
+                        containerSourceId = 1024,
+                    ),
+                ),
+            ),
+            defender = BattleTeam(emptyList()),
+            events = emptyList(),
+        )
+
+        val encoded = ClientBattleTextReplayAdapter.adapt(result).map(ClientReportAction::encode)
+
+        assertTrue(encoded.contains("ba1,1024"))
+        assertTrue(encoded.contains("0v1,400022,1,2,102"))
+        assertFalse(encoded.contains("ba1,400022"))
+    }
+
+    @Test
+    fun `equipment special effects use their official preparation actions`() {
+        fun encoded(
+            equipmentId: Int,
+            skillIds: List<Int>,
+            skillLevels: List<Int>,
+        ): List<String> {
+            val team = BattleTeamBuilder(
+                BattleConfigRepository.loadDefault(),
+                BattleEquipmentRepository.loadDefault(),
+            ).build(
+                listOf(
+                    BattleHeroSpec(
+                        heroId = 100479,
+                        position = 0,
+                        troops = 1000,
+                        equipmentIds = listOf(equipmentId),
+                        equipmentSkillIds = skillIds,
+                        equipmentSkillLevels = skillLevels,
+                    ),
+                ),
+            )
+            val base = twoRoundResult()
+            return ClientBattleTextReplayAdapter.adapt(
+                base.copy(
+                    attacker = team,
+                    defender = BattleTeam(emptyList()),
+                    entryAttacker = team,
+                    entryDefender = BattleTeam(emptyList()),
+                    events = emptyList(),
+                ),
+            ).map(ClientReportAction::encode)
+        }
+
+        assertTrue(encoded(1102, listOf(400114, 400115), listOf(6, 6)).containsAll(
+            listOf("6x1,400114,1,6", "7d1,400115,1,12"),
+        ))
+        assertTrue(encoded(1048, listOf(400046, 400047, 400048), listOf(6, 6, 1)).containsAll(
+            listOf(
+                "7g1,400046,1,6",
+                "7m1,400046,1,6",
+                "7i1,400046,1,6",
+                "7k1,400046,1,6",
+                "781,400047,1,12",
+                "9b1,400048,1,25",
+            ),
+        ))
+        assertTrue(encoded(1048, listOf(400041), listOf(6)).contains("791,400041,1,6"))
+        assertTrue(encoded(1048, listOf(400032), listOf(6)).contains("bf1,400032,1,12"))
+        assertTrue(encoded(1048, listOf(400071), listOf(6)).contains("6w1,400071,1,12"))
+        assertTrue(encoded(1048, listOf(400050), listOf(6)).contains("dr1,400050,1,3,6"))
+        assertTrue(encoded(1048, listOf(400051), listOf(1)).contains("a41,400051,1,10"))
+        assertTrue(encoded(1048, listOf(400056), listOf(1)).contains("a31,400056,1,1.5"))
+        assertTrue(encoded(1048, listOf(400087), listOf(1)).contains("a51,400087,1,1"))
+        assertTrue(encoded(1048, listOf(400042), listOf(1)).containsAll(
+            listOf(
+                "991,400042,1,304,10",
+                "991,400042,1,305,10",
+                "991,400042,1,306,10",
+                "991,400042,1,307,10",
+            ),
+        ))
+
+        val guardTeam = BattleTeamBuilder(
+            BattleConfigRepository.loadDefault(),
+            BattleEquipmentRepository.loadDefault(),
+        ).build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100479,
+                    position = 2,
+                    troops = 1000,
+                    equipmentIds = listOf(1072),
+                    equipmentSkillIds = listOf(400072),
+                    equipmentSkillLevels = listOf(1),
+                ),
+            ),
+        )
+        val base = twoRoundResult()
+        val guardEncoded = ClientBattleTextReplayAdapter.adapt(
+            base.copy(
+                attacker = guardTeam,
+                defender = BattleTeam(emptyList()),
+                entryAttacker = guardTeam,
+                entryDefender = BattleTeam(emptyList()),
+                events = emptyList(),
+            ),
+        ).map(ClientReportAction::encode)
+        assertTrue(guardEncoded.contains("1w3,400072,1,3"))
+    }
+
+    @Test
+    fun `troop feature modifiers are emitted inside their source block`() {
+        val base = twoRoundResult()
+        val result = base.copy(
+            attacker = base.attacker.copy(
+                preparationSources = listOf(
+                    BattlePreparationSource(BattlePreparationStage.TROOP, 296105, 0),
+                ),
+                preparationModifiers = listOf(
+                    BattlePreparationModifier(
+                        stage = BattlePreparationStage.TROOP,
+                        sourceId = 296105,
+                        sourcePosition = 0,
+                        targetPosition = 0,
+                        effectId = 522,
+                        amount = 8,
+                    ),
+                ),
+            ),
+            defender = BattleTeam(emptyList()),
+            events = emptyList(),
+        )
+
+        val encoded = ClientBattleTextReplayAdapter.adapt(result).map(ClientReportAction::encode)
+
+        assertTrue(encoded.contains("7x1,296105"))
+        assertTrue(encoded.contains("ja1,296105,1,522,8"))
+    }
+
+    @Test
+    fun `preparation sources follow official stage order regardless of input order`() {
+        val base = twoRoundResult()
+        val result = base.copy(
+            attacker = base.attacker.copy(
+                preparationSources = listOf(
+                    BattlePreparationSource(BattlePreparationStage.EQUIPMENT, 1102, 0),
+                    BattlePreparationSource(BattlePreparationStage.TROOP, 296104, 0),
+                    BattlePreparationSource(BattlePreparationStage.ARMY, 295040),
+                    BattlePreparationSource(BattlePreparationStage.SYSTEM, 295090),
+                ),
+            ),
+            defender = BattleTeam(emptyList()),
+            events = emptyList(),
+        )
+
+        val encoded = ClientBattleTextReplayAdapter.adapt(result).map(ClientReportAction::encode)
+        val sources = encoded.filter {
+            it.startsWith("0k") || it.startsWith("5s") ||
+                it.startsWith("7x") || it.startsWith("ba")
+        }
+
+        assertEquals(
+            listOf("0k0,295090", "5s0,295040", "7x1,296104", "ba1,1102"),
+            sources,
+        )
+    }
+
+    @Test
+    fun `preparation stages merge both sides before advancing to the next stage`() {
+        val base = twoRoundResult()
+        val result = base.copy(
+            attacker = base.attacker.copy(
+                preparationSources = listOf(
+                    BattlePreparationSource(BattlePreparationStage.EQUIPMENT, 1024, 0),
+                    BattlePreparationSource(BattlePreparationStage.ARMY, 295020),
+                ),
+            ),
+            defender = base.defender.copy(
+                preparationSources = listOf(
+                    BattlePreparationSource(BattlePreparationStage.TROOP, 296105, 0),
+                    BattlePreparationSource(BattlePreparationStage.ARMY, 291005),
+                ),
+            ),
+            events = emptyList(),
+        )
+
+        val sources = ClientBattleTextReplayAdapter.adapt(result)
+            .map(ClientReportAction::encode)
+            .filter { it.startsWith("5s") || it.startsWith("7x") || it.startsWith("ba") }
+
+        assertEquals(
+            listOf("5s0,295020", "5s7,291005", "7x6,296105", "ba1,1024"),
+            sources,
+        )
+    }
+
+    @Test
+    fun `flat preparation attributes use official five-field actions`() {
+        val base = twoRoundResult()
+        val result = base.copy(
+            attacker = base.attacker.copy(
+                preparationEffects = listOf(
+                    BattlePreparationEffect(
+                        stage = BattlePreparationStage.TROOP,
+                        sourceId = 296104,
+                        targetPosition = 0,
+                        stat = BattleStat.DEFENSE,
+                        strength = 6,
+                        delta = 6,
+                        valueAfter = 172,
+                        valueAfterExact = 172.8,
+                        percent = false,
+                        sourcePosition = 0,
+                    ),
+                ),
+            ),
+            defender = BattleTeam(emptyList()),
+            events = emptyList(),
+        )
+
+        val encoded = ClientBattleTextReplayAdapter.adapt(result).map(ClientReportAction::encode)
+
+        assertTrue(encoded.contains("7x1,296104"))
+        assertTrue(encoded.contains("0w1,296104,1,6,172.8"))
+    }
+
+    @Test
+    fun `stat changes retain effect delta duration and resulting value`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.StatChanged(
+                    round = 0,
+                    source = source,
+                    target = source,
+                    stat = BattleStat.ATTACK,
+                    delta = 23,
+                    durationRounds = 8,
+                    skillId = 200001,
+                    valueAfter = 197,
+                ),
+            ),
+        )
+
+        assertTrue(
+            ClientBattleTextReplayAdapter.adapt(result).any {
+                it.encode() == "191,200001,1,8,23,197"
+            },
+        )
+    }
+
+    @Test
+    fun `stat changes emit exact decimal delta and resulting value`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.StatChanged(
+                    round = 0,
+                    source = source,
+                    target = source,
+                    stat = BattleStat.ATTACK,
+                    delta = 28,
+                    durationRounds = 8,
+                    skillId = 200001,
+                    valueAfter = 135,
+                    deltaExact = 28.9,
+                    valueAfterExact = 135.5,
+                ),
+            ),
+        )
+
+        assertTrue(
+            ClientBattleTextReplayAdapter.adapt(result).any {
+                it.encode() == "191,200001,1,8,28.9,135.5"
+            },
+        )
+    }
+
+    @Test
+    fun `stat changes round client display values to one decimal`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.StatChanged(
+                    round = 0,
+                    source = source,
+                    target = source,
+                    stat = BattleStat.ATTACK,
+                    delta = 13,
+                    durationRounds = 8,
+                    skillId = 200001,
+                    valueAfter = 144,
+                    deltaExact = 13.15,
+                    valueAfterExact = 144.65,
+                ),
+            ),
+        )
+
+        assertTrue(
+            ClientBattleTextReplayAdapter.adapt(result).any {
+                it.encode() == "191,200001,1,8,13.2,144.7"
+            },
+        )
+    }
+
+    @Test
+    fun `stat changes retain the caster separately from the affected hero`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val target = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.StatChanged(
+                    round = 0,
+                    source = source,
+                    target = target,
+                    stat = BattleStat.DEFENSE,
+                    delta = -18,
+                    durationRounds = 3,
+                    skillId = 200014,
+                    strength = 22,
+                    valueAfter = 152,
+                ),
+            ),
+        )
+
+        assertTrue(
+            ClientBattleTextReplayAdapter.adapt(result).any {
+                it.encode() == "1h1,200014,6,22,18,152"
+            },
+        )
+    }
+
+    @Test
+    fun `preparation metadata uses entry snapshot instead of final buffed stats`() {
+        val entry = twoRoundResult().attacker.heroes.first().copy(
+            stats = BattleStats(100, 110, 120, 130, 10, 3),
+        )
+        val final = entry.copy(stats = BattleStats(123, 110, 120, 130, 10, 3))
+        val result = twoRoundResult().copy(
+            attacker = BattleTeam(listOf(final)),
+            defender = BattleTeam(emptyList()),
+            entryAttacker = BattleTeam(listOf(entry)),
+            entryDefender = BattleTeam(emptyList()),
+            events = emptyList(),
+        )
+
+        assertEquals(
+            1_000,
+            ClientBattleTextReplayAdapter.adapt(result)
+                .first { it.id == ClientBattleTextReplayProtocol.HERO_INFO }
+                .params[2],
+        )
+    }
+
+    @Test
+    fun `persistent modifiers retain source target effect and configured strength`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val target = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.ModifierApplied(
+                    round = 0,
+                    source = source,
+                    target = target,
+                    skillId = 200204,
+                    effectId = 523,
+                    amount = 53,
+                    durationRounds = 8,
+                ),
+            ),
+        )
+
+        assertTrue(
+            ClientBattleTextReplayAdapter.adapt(result).any {
+                it.encode() == "ja1,200204,6,523,53"
+            },
+        )
+    }
+
+    @Test
+    fun `preparation statuses use verified beneficial and harmful effect actions`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val target = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.StatusApplied(
+                    0,
+                    source,
+                    source,
+                    BattleStatus.FIRST_ACTION,
+                    durationRounds = 3,
+                    skillId = 200233,
+                ),
+                BattleEvent.StatusApplied(
+                    0,
+                    source,
+                    target,
+                    BattleStatus.CONFUSION,
+                    durationRounds = 2,
+                    skillId = 200002,
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf("0s1,761", "0t6,501"),
+            ClientBattleTextReplayAdapter.adapt(result)
+                .filter {
+                    it.id in setOf(
+                        28,
+                        29,
+                    )
+                }
+                .map(ClientReportAction::encode),
+        )
+    }
+
+    @Test
+    fun `derived skills use the nested effect action instead of another root activation`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.SkillTriggered(
+                    0,
+                    source,
+                    rootSkillId = 200900,
+                    skillId = 200900,
+                    trigger = com.stzb.server.game.battle.skill.BattleTrigger.BATTLE_PASSIVE,
+                ),
+                BattleEvent.SkillTriggered(
+                    0,
+                    source,
+                    rootSkillId = 200900,
+                    skillId = 211900,
+                    trigger = com.stzb.server.game.battle.skill.BattleTrigger.BATTLE_PASSIVE,
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf("0l1,200900", "8c1,211900"),
+            ClientBattleTextReplayAdapter.adapt(result)
+                .filter {
+                    it.id in setOf(
+                        ClientBattleTextReplayProtocol.SKILL_TRIGGERED_PASSIVE,
+                        300,
+                    )
+                }
+                .map(ClientReportAction::encode),
+        )
+    }
+
     @Test
     fun `projects skill trigger using client action selected by skill kind`() {
         val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
@@ -154,11 +872,17 @@ class ClientBattleTextReplayAdapterTest {
 
         assertEquals(3, heroInfo.size)
         assertEquals(
-            listOf<Any>(1, 20, 1_000, 200012, 1, 200834, 1, 0, 0, 0, 0),
+            listOf<Any>(
+                1, 20, 1_000,
+                200012, 1, 200834, 1, 0, 0,
+                0, 0, "",
+                0, 0, 0, 0, 0, 0,
+                0,
+            ),
             heroInfo.first().params,
         )
-        assertTrue(heroInfo.all { it.params.size == 11 })
-        assertTrue(heroInfo.all { it.params.takeLast(2) == listOf<Any>(0, 0) })
+        assertTrue(heroInfo.all { it.params.size == 19 })
+        assertTrue(heroInfo.all { it.params.takeLast(7) == List<Any>(7) { 0 } })
     }
 
     @Test
@@ -259,8 +983,8 @@ class ClientBattleTextReplayAdapterTest {
                 it.params == listOf<Any>(6)
         })
         assertTrue(actions.any {
-            it.id == ClientBattleTextReplayProtocol.SKILL_CAST &&
-                it.params == listOf<Any>(1, 1, 200036)
+            it.id == ClientBattleTextReplayProtocol.INITIAL_ATTACK &&
+                it.params == listOf<Any>(1, 200036, 1, 2, 10, 10)
         })
     }
 

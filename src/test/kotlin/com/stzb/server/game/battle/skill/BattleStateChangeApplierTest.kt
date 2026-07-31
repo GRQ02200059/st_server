@@ -111,6 +111,90 @@ class BattleStateChangeApplierTest {
     }
 
     @Test
+    fun `stat output separates configured strength from actual target delta`() {
+        val fixture = fixture()
+
+        val result = fixture.applier.apply(
+            listOf(
+                BattleStatChange(
+                    source,
+                    target,
+                    BattleStatChange.Kind.ATTACK,
+                    TypedBattlePotency.Resolved(BattleEffectValueUnit.PERCENT, -22),
+                    durationRounds = 8,
+                    skillId = 200023,
+                    effectId = 201,
+                ),
+            ),
+            round = 0,
+        )
+
+        assertEquals(
+            BattleStateOutput.StatChanged(
+                change = BattleStatChange(
+                    source,
+                    target,
+                    BattleStatChange.Kind.ATTACK,
+                    TypedBattlePotency.Resolved(BattleEffectValueUnit.PERCENT, -22),
+                    durationRounds = 8,
+                    skillId = 200023,
+                    effectId = 201,
+                ),
+                strength = 22,
+                delta = -22,
+                valueAfter = 78,
+            ),
+            result.outputs.last(),
+        )
+    }
+
+    @Test
+    fun `percent stat output retains exact decimal delta and resulting value`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    BattleHero(
+                        id = source.heroId,
+                        position = source.position,
+                        stats = BattleStats(100, 100, 100, 100, 10, 3),
+                        troops = 1_000,
+                    ),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    BattleHero(
+                        id = target.heroId,
+                        position = target.position,
+                        stats = BattleStats.fromHundredths(13150, 10000, 10000, 10000, 1000, 3),
+                        troops = 1_000,
+                    ),
+                ),
+            ),
+        )
+        val state = SkillBattleState(request, SkillRuntimeState())
+        val result = BattleStateChangeApplier(state).apply(
+            listOf(
+                BattleStatChange(
+                    source,
+                    target,
+                    BattleStatChange.Kind.ATTACK,
+                    TypedBattlePotency.Resolved(BattleEffectValueUnit.PERCENT, 10),
+                    durationRounds = 8,
+                    skillId = 200023,
+                    effectId = 201,
+                ),
+            ),
+            round = 0,
+        )
+
+        val output = result.outputs.filterIsInstance<BattleStateOutput.StatChanged>().single()
+        assertEquals(13.15, output.deltaExact, 0.001)
+        assertEquals(144.65, output.valueAfterExact, 0.001)
+        assertEquals(144.65, state.view.state(target)?.stats?.precise(com.stzb.server.game.battle.BattleStat.ATTACK))
+    }
+
+    @Test
     fun `recovery is capped by live maximum troops`() {
         val fixture = fixture(targetTroops = 990)
 

@@ -100,25 +100,66 @@ data class BattleStats(
     val speed: Int,
     val siege: Int,
     val hitRange: Int,
+    private val attackHundredths: Int = attack * 100,
+    private val defenseHundredths: Int = defense * 100,
+    private val strategyHundredths: Int = strategy * 100,
+    private val speedHundredths: Int = speed * 100,
+    private val siegeHundredths: Int = siege * 100,
 ) {
-    operator fun plus(other: BattleStats) = BattleStats(
-        attack = attack + other.attack,
-        defense = defense + other.defense,
-        strategy = strategy + other.strategy,
-        speed = speed + other.speed,
-        siege = siege + other.siege,
+    operator fun plus(other: BattleStats) = fromHundredths(
+        attack = hundredths(BattleStat.ATTACK) + other.hundredths(BattleStat.ATTACK),
+        defense = hundredths(BattleStat.DEFENSE) + other.hundredths(BattleStat.DEFENSE),
+        strategy = hundredths(BattleStat.STRATEGY) + other.hundredths(BattleStat.STRATEGY),
+        speed = hundredths(BattleStat.SPEED) + other.hundredths(BattleStat.SPEED),
+        siege = hundredths(BattleStat.SIEGE) + other.hundredths(BattleStat.SIEGE),
         hitRange = hitRange + other.hitRange,
     )
-    operator fun minus(other: BattleStats) = BattleStats(
-        attack = attack - other.attack,
-        defense = defense - other.defense,
-        strategy = strategy - other.strategy,
-        speed = speed - other.speed,
-        siege = siege - other.siege,
+    operator fun minus(other: BattleStats) = fromHundredths(
+        attack = hundredths(BattleStat.ATTACK) - other.hundredths(BattleStat.ATTACK),
+        defense = hundredths(BattleStat.DEFENSE) - other.hundredths(BattleStat.DEFENSE),
+        strategy = hundredths(BattleStat.STRATEGY) - other.hundredths(BattleStat.STRATEGY),
+        speed = hundredths(BattleStat.SPEED) - other.hundredths(BattleStat.SPEED),
+        siege = hundredths(BattleStat.SIEGE) - other.hundredths(BattleStat.SIEGE),
         hitRange = hitRange - other.hitRange,
     )
+
+    fun precise(stat: BattleStat): Double =
+        hundredths(stat) / 100.0
+
+    private fun hundredths(stat: BattleStat): Int =
+        when (stat) {
+            BattleStat.ATTACK -> attackHundredths.takeIf { it / 100 == attack } ?: attack * 100
+            BattleStat.DEFENSE -> defenseHundredths.takeIf { it / 100 == defense } ?: defense * 100
+            BattleStat.STRATEGY -> strategyHundredths.takeIf { it / 100 == strategy } ?: strategy * 100
+            BattleStat.SPEED -> speedHundredths.takeIf { it / 100 == speed } ?: speed * 100
+            BattleStat.SIEGE -> siegeHundredths.takeIf { it / 100 == siege } ?: siege * 100
+            BattleStat.HIT_RANGE -> hitRange * 100
+        }
+
     companion object {
         val ZERO = BattleStats(0, 0, 0, 0, 0, 0)
+
+        fun fromHundredths(
+            attack: Int,
+            defense: Int,
+            strategy: Int,
+            speed: Int,
+            siege: Int,
+            hitRange: Int,
+        ): BattleStats =
+            BattleStats(
+                attack = attack / 100,
+                defense = defense / 100,
+                strategy = strategy / 100,
+                speed = speed / 100,
+                siege = siege / 100,
+                hitRange = hitRange,
+                attackHundredths = attack,
+                defenseHundredths = defense,
+                strategyHundredths = strategy,
+                speedHundredths = speed,
+                siegeHundredths = siege,
+            )
     }
 }
 
@@ -129,6 +170,9 @@ data class BattleHero(
     val troops: Int,
     val maxTroops: Int = troops,
     val skillIds: List<Int> = emptyList(),
+    val skillLevels: List<Int> = emptyList(),
+    val troopFeatureIds: List<Int> = emptyList(),
+    val equipment: List<BattleEquipmentSlot> = emptyList(),
     val activeStatuses: Set<BattleStatus> = emptySet(),
     val level: Int = 1,
     val equipmentIds: List<Int> = emptyList(),
@@ -137,9 +181,69 @@ data class BattleHero(
     val morale: Int = 100,
 )
 
+data class BattleEquipmentSlot(
+    val equipmentId: Int,
+    val level: Int = 1,
+)
+
+enum class BattlePreparationStage {
+    SYSTEM,
+    ARMY,
+    TROOP,
+    EQUIPMENT,
+}
+
+data class BattlePreparationEffect(
+    val stage: BattlePreparationStage,
+    val sourceId: Int,
+    val targetPosition: Int,
+    val stat: BattleStat,
+    val strength: Int,
+    val delta: Int,
+    val valueAfter: Int,
+    val sourcePosition: Int? = null,
+    val percent: Boolean = true,
+    val deltaExact: Double = delta.toDouble(),
+    val valueAfterExact: Double = valueAfter.toDouble(),
+    val containerSourceId: Int = sourceId,
+    val strengthExact: Double = strength.toDouble(),
+)
+
+data class BattlePreparationSource(
+    val stage: BattlePreparationStage,
+    val sourceId: Int,
+    val sourcePosition: Int? = null,
+)
+
+data class BattlePreparationModifier(
+    val stage: BattlePreparationStage,
+    val sourceId: Int,
+    val sourcePosition: Int,
+    val targetPosition: Int,
+    val effectId: Int,
+    val amount: Int,
+    val containerSourceId: Int = sourceId,
+)
+
+data class BattlePreparationAction(
+    val stage: BattlePreparationStage,
+    val sourceId: Int,
+    val sourcePosition: Int,
+    val targetPosition: Int,
+    val actionId: Int,
+    val amountExact: Double? = null,
+    val actionParameter: Int? = null,
+    val appendSourcePosition: Boolean = false,
+    val containerSourceId: Int = sourceId,
+)
+
 data class BattleTeam(
     val heroes: List<BattleHero>,
     val armyBonuses: List<ArmyBonusConfig> = emptyList(),
+    val preparationSources: List<BattlePreparationSource> = emptyList(),
+    val preparationEffects: List<BattlePreparationEffect> = emptyList(),
+    val preparationModifiers: List<BattlePreparationModifier> = emptyList(),
+    val preparationActions: List<BattlePreparationAction> = emptyList(),
 ) {
     init {
         require(heroes.all { it.position in 0..2 }) { "武将站位必须在 0..2" }
@@ -293,6 +397,20 @@ sealed interface BattleEvent {
         val delta: Int,
         val durationRounds: Int,
         val skillId: Int = 0,
+        val effectId: Int = 0,
+        val strength: Int = durationRounds,
+        val valueAfter: Int? = null,
+        val deltaExact: Double = delta.toDouble(),
+        val valueAfterExact: Double? = valueAfter?.toDouble(),
+    ) : BattleEvent
+    data class ModifierApplied(
+        val round: Int,
+        val source: BattleHeroRef,
+        val target: BattleHeroRef,
+        val skillId: Int,
+        val effectId: Int,
+        val amount: Int,
+        val durationRounds: Int,
     ) : BattleEvent
     data class UnsupportedSkillEffect(
         val round: Int,
@@ -317,6 +435,8 @@ data class BattleResult(
     val attacker: BattleTeam,
     val defender: BattleTeam,
     val events: List<BattleEvent>,
+    val entryAttacker: BattleTeam? = null,
+    val entryDefender: BattleTeam? = null,
 )
 
 data class ActiveBattleStatus(

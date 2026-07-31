@@ -2,6 +2,7 @@ package com.stzb.server.game.battle
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Collections
@@ -218,10 +219,45 @@ class BattleConfigRepository private constructor(
 
     companion object {
         fun loadDefault(): BattleConfigRepository =
-            load(resolveProjectRoot())
+            DefaultBattleConfig.repository
+
+        private object DefaultBattleConfig {
+            val repository: BattleConfigRepository by lazy(LazyThreadSafetyMode.PUBLICATION) {
+            load(
+                effectsRows = Csv.readResource("battle-config/skill_effect_table.csv"),
+                detailRows = Csv.readResource("battle-config/skill_detail_table.csv"),
+                skillRows = Csv.readResource("battle-config/skill_table.csv"),
+                heroRows = Csv.readResource("battle-config/hero_table.csv"),
+                heroExtraRows = Json.readResourceArray("battle-config/hero_extra.json"),
+                skillExtraRows = Json.readResourceArray("battle-config/skill_extra.json"),
+                armyExtraRows = Json.readResourceArray("battle-config/army_extra.json"),
+            )
+            }
+        }
 
         fun load(projectRoot: Path): BattleConfigRepository {
-            val effects = Csv.read(projectRoot.resolve("skill_effect_table.csv"))
+            val cfgRoot = projectRoot.resolve("server/assent/cfg")
+            return load(
+                effectsRows = Csv.read(projectRoot.resolve("skill_effect_table.csv")),
+                detailRows = Csv.read(projectRoot.resolve("skill_detail_table.csv")),
+                skillRows = Csv.read(projectRoot.resolve("skill_table.csv")),
+                heroRows = Csv.read(projectRoot.resolve("hero_table.csv")),
+                heroExtraRows = Json.readArray(cfgRoot.resolve("hero_extra.json")),
+                skillExtraRows = Json.readArray(cfgRoot.resolve("skill_extra.json")),
+                armyExtraRows = Json.readArray(cfgRoot.resolve("army_extra.json")),
+            )
+        }
+
+        private fun load(
+            effectsRows: List<Map<String, String>>,
+            detailRows: List<Map<String, String>>,
+            skillRows: List<Map<String, String>>,
+            heroRows: List<Map<String, String>>,
+            heroExtraRows: List<Map<String, Any?>>,
+            skillExtraRows: List<Map<String, Any?>>,
+            armyExtraRows: List<Map<String, Any?>>,
+        ): BattleConfigRepository {
+            val effects = effectsRows
                 .associate { row ->
                     val effect = SkillEffectConfig(
                         effectId = row.int("effect_id"),
@@ -232,12 +268,12 @@ class BattleConfigRepository private constructor(
                     )
                     effect.effectId to effect
                 }
-            val details = Csv.read(projectRoot.resolve("skill_detail_table.csv"))
+            val details = detailRows
                 .associate { row ->
                     val detail = loadSkillDetail(row)
                     detail.detailId to detail
                 }
-            val skills = Csv.read(projectRoot.resolve("skill_table.csv"))
+            val skills = skillRows
                 .associate { row ->
                     val skillId = row.int("skill_id")
                     val rawSkillType = row.int("skill_type")
@@ -258,7 +294,7 @@ class BattleConfigRepository private constructor(
                         qualityLevel = row["skill_quality_level"].orEmpty(),
                     )
                 }
-            val heroes = Csv.read(projectRoot.resolve("hero_table.csv"))
+            val heroes = heroRows
                 .associate { row ->
                     val heroId = row.int("heroid")
                     heroId to HeroBattleConfig(
@@ -266,20 +302,20 @@ class BattleConfigRepository private constructor(
                         name = row["name"].orEmpty(),
                         cost = row.int("cost") / 10.0,
                         hitRange = row.int("hit_range"),
-                        stats = BattleStats(
-                            attack = row.scaledStat("attack_base"),
-                            defense = row.scaledStat("defence_base"),
-                            strategy = row.scaledStat("intel_base"),
-                            speed = row.scaledStat("speed_base"),
-                            siege = row.scaledStat("destroy_base"),
+                        stats = BattleStats.fromHundredths(
+                            attack = row.int("attack_base"),
+                            defense = row.int("defence_base"),
+                            strategy = row.int("intel_base"),
+                            speed = row.int("speed_base"),
+                            siege = row.int("destroy_base"),
                             hitRange = row.int("hit_range"),
                         ),
-                        growth = BattleStats(
-                            attack = row.scaledStat("attack_grow"),
-                            defense = row.scaledStat("defence_grow"),
-                            strategy = row.scaledStat("intel_grow"),
-                            speed = row.scaledStat("speed_grow"),
-                            siege = row.scaledStat("destroy_grow"),
+                        growth = BattleStats.fromHundredths(
+                            attack = row.int("attack_grow"),
+                            defense = row.int("defence_grow"),
+                            strategy = row.int("intel_grow"),
+                            speed = row.int("speed_grow"),
+                            siege = row.int("destroy_grow"),
                             hitRange = 0,
                         ),
                         initialSkillId = row.int("skill_init"),
@@ -289,14 +325,13 @@ class BattleConfigRepository private constructor(
                         heroType = row.int("hero_type"),
                     )
                 }
-            val cfgRoot = projectRoot.resolve("server/assent/cfg")
             return BattleConfigRepository(
                 heroes = heroes,
                 skills = skills,
                 details = details,
-                heroExtras = loadHeroExtras(cfgRoot.resolve("hero_extra.json")),
-                skillExtras = loadSkillExtras(cfgRoot.resolve("skill_extra.json")),
-                armyBonuses = loadArmyBonuses(cfgRoot.resolve("army_extra.json")),
+                heroExtras = loadHeroExtras(heroExtraRows),
+                skillExtras = loadSkillExtras(skillExtraRows),
+                armyBonuses = loadArmyBonuses(armyExtraRows),
                 effects = effects,
             )
         }
@@ -343,8 +378,8 @@ class BattleConfigRepository private constructor(
                 effectName = row["effect_name"].orEmpty(),
             )
 
-        private fun loadHeroExtras(path: Path): Map<Int, HeroExtraConfig> =
-            Json.readArray(path).associate { row ->
+        private fun loadHeroExtras(rows: List<Map<String, Any?>>): Map<Int, HeroExtraConfig> =
+            rows.associate { row ->
                 val id = row.int("id")
                 id to HeroExtraConfig(
                     id = id,
@@ -353,8 +388,8 @@ class BattleConfigRepository private constructor(
                 )
             }
 
-        private fun loadSkillExtras(path: Path): Map<Int, SkillExtraConfig> =
-            Json.readArray(path).associate { row ->
+        private fun loadSkillExtras(rows: List<Map<String, Any?>>): Map<Int, SkillExtraConfig> =
+            rows.associate { row ->
                 val id = row.int("id")
                 id to SkillExtraConfig(
                     id = id,
@@ -367,8 +402,8 @@ class BattleConfigRepository private constructor(
                 )
             }
 
-        private fun loadArmyBonuses(path: Path): List<ArmyBonusConfig> =
-            Json.readArray(path).mapNotNull { row ->
+        private fun loadArmyBonuses(rows: List<Map<String, Any?>>): List<ArmyBonusConfig> =
+            rows.mapNotNull { row ->
                 val heroIds = row.string("heroId")
                     .split(',')
                     .mapNotNull { it.trim().toIntOrNull() }
@@ -399,14 +434,6 @@ class BattleConfigRepository private constructor(
             )
         }
 
-        private fun resolveProjectRoot(): Path {
-            val cwd = Path.of("").toAbsolutePath()
-            return sequenceOf(cwd, cwd.parent)
-                .filterNotNull()
-                .firstOrNull { it.resolve("hero_table.csv").exists() }
-                ?: error("无法定位项目根目录: $cwd")
-        }
-
         private fun Map<String, String>.int(name: String): Int =
             intOrNull(name) ?: 0
 
@@ -422,8 +449,6 @@ class BattleConfigRepository private constructor(
                     .toList(),
             )
 
-        private fun Map<String, String>.scaledStat(name: String): Int =
-            (int(name) / 100.0).toInt()
     }
 }
 
@@ -435,6 +460,9 @@ private object Json {
         if (!path.exists()) return emptyList()
         return mapper.readValue(path.toFile(), rowsType)
     }
+
+    fun readResourceArray(name: String): List<Map<String, Any?>> =
+        resourceStream(name).use { mapper.readValue(it, rowsType) }
 }
 
 private fun Map<String, Any?>.string(name: String): String =
@@ -450,6 +478,13 @@ private fun Map<String, Any?>.int(name: String): Int =
 private object Csv {
     fun read(path: Path): List<Map<String, String>> {
         val lines = Files.readAllLines(path)
+        return parse(lines)
+    }
+
+    fun readResource(name: String): List<Map<String, String>> =
+        resourceStream(name).bufferedReader().use { parse(it.readLines()) }
+
+    private fun parse(lines: List<String>): List<Map<String, String>> {
         if (lines.isEmpty()) return emptyList()
         val header = parseLine(lines.first()).map { it.removePrefix("\uFEFF") }
         return lines.drop(1)
@@ -485,3 +520,7 @@ private object Csv {
         return out
     }
 }
+
+private fun resourceStream(name: String): InputStream =
+    BattleConfigRepository::class.java.classLoader.getResourceAsStream(name)
+        ?: error("Missing packaged battle configuration: $name")

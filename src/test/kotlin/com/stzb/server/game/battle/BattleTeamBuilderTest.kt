@@ -37,9 +37,70 @@ class BattleTeamBuilderTest {
 
         val liangXing = team.heroes.first { it.id == BattleHeroId(100352) }
 
-        assertEquals(84 + 69 + 20, liangXing.stats.speed)
+        assertEquals(185.13, liangXing.stats.precise(BattleStat.SPEED), 0.001)
         assertEquals(3, liangXing.stats.hitRange)
         assertTrue(team.armyBonuses.any { it.name == "旗本八骑" })
+    }
+
+    @Test
+    fun `expands troop feature config into official preparation skill sources`() {
+        val team = builder.build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100479,
+                    position = 0,
+                    troops = 1000,
+                    troopFeatureIds = listOf(3104),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(BattlePreparationSource(BattlePreparationStage.TROOP, 296104, 0)),
+            team.preparationSources,
+        )
+        assertEquals(
+            listOf(BattleStat.ATTACK, BattleStat.DEFENSE, BattleStat.STRATEGY),
+            team.preparationEffects.map { it.stat },
+        )
+        assertTrue(team.preparationEffects.all {
+            it.stage == BattlePreparationStage.TROOP &&
+                it.sourceId == 296104 &&
+                it.sourcePosition == 0 &&
+                it.targetPosition == 0 &&
+                !it.percent &&
+                it.deltaExact == 6.0
+        })
+    }
+
+    @Test
+    fun `troop feature damage reduction retains both official modifier effects`() {
+        val team = builder.build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100479,
+                    position = 0,
+                    troops = 1000,
+                    troopFeatureIds = listOf(3105),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(522, 524),
+            team.preparationModifiers.map { it.effectId },
+        )
+        assertTrue(team.preparationModifiers.all {
+            it.sourceId == 296105 &&
+                it.sourcePosition == 0 &&
+                it.targetPosition == 0 &&
+                it.amount == 8
+        })
+        assertTrue(
+            team.heroes.single().modifiers.contains(
+                BattleModifier.DamageTakenPercent(percent = -8),
+            ),
+        )
     }
 
     @Test

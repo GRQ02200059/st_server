@@ -71,8 +71,15 @@ object Cmd {
 object GameServerConfig {
     const val SERVER_ID = 1001
     const val RUN_SERVER_ID = 1001
-    /** 当前客户端内置并可安全加载的地图/登录配置。征服状态由 Tb_sys_param 声明。 */
-    const val CFG_DB_ID = 2001
+    /**
+     * 当前客户端内置并可安全加载的地图/登录配置。
+     * 用 index 5（常规赛季图，map_game_data/5 已缓存，不卡 100%）而非 984 征服图：
+     * 984 在客户端 MultiCfgTable 里把 tb_cfg_card_extract 映射到 17 字节空表，
+     * 导致招募卡包与依赖 category==3 pack 的战法 tab 全部消失；
+     * index 5 的 tb_cfg_card_extract_5.bin 完整（~55KB），卡包/战法可正常显示。
+     * cfgDataIndex / sys_param(26) 均引用本常量，回退时单点即可。
+     */
+    const val CFG_DB_ID = 5
     const val SERVER_NAME = "本地一区"
     // 真机联调使用 adb reverse: 手机 127.0.0.1:59979 -> Mac 127.0.0.1:59979。
     // AVD 联调时可改回 10.0.2.2; 同网段真机直连可改为 Mac 局域网 IP。

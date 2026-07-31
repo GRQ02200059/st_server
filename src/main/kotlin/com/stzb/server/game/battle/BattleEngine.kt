@@ -56,6 +56,8 @@ object BattleEngine {
                     request.defender.armyBonuses,
                 ),
                 events,
+                request.attacker,
+                request.defender,
             )
         fun outcome(): BattleOutcome {
             val attackerBase = engine.state.view.heroes().filter { it.side == Side.ATTACKER }.minByOrNull { it.position }
@@ -125,7 +127,6 @@ object BattleEngine {
                                 selected.id,
                             )
                             target = permission.redirectTarget ?: target
-                            selected = engine.liveHero(target)
                             engine.recordTarget(actor, target)
                             events += engine.trigger(
                                 BattleTrigger.NORMAL_ATTACK_BEFORE,
@@ -135,8 +136,13 @@ object BattleEngine {
                             if (evaded != null) {
                                 events += evaded
                             } else {
-                                val damage = actionResolver.normalAttackDamage(currentActor, selected, random)
-                                events += engine.applyNormalDamage(round, actor, target, damage, actorContext)
+                                events += engine.resolveNormalAttack(
+                                    round,
+                                    actor,
+                                    target,
+                                    random,
+                                    actorContext,
+                                )
                                 if (!engine.baseDefeated()) {
                                     engine.secondaryTarget(actor, target)
                                         ?.takeIf { permission.secondaryAttack }
@@ -468,11 +474,21 @@ object BattleEngine {
                             delta = primaryStat.second,
                             durationRounds = skillCast.selfBuffDuration ?: 2,
                             skillId = skillCast.skillId,
+                            valueAfter = self.stats.value(primaryStat.first) + primaryStat.second,
                         )
                     }
                 }
             }
         }
+    }
+
+    private fun BattleStats.value(stat: BattleStat): Int = when (stat) {
+        BattleStat.ATTACK -> attack
+        BattleStat.DEFENSE -> defense
+        BattleStat.STRATEGY -> strategy
+        BattleStat.SPEED -> speed
+        BattleStat.SIEGE -> siege
+        BattleStat.HIT_RANGE -> hitRange
     }
 
     private fun tryEvade(

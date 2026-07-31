@@ -86,4 +86,70 @@ class BattleIntegrationTest {
         assertTrue(records.any { it.startsWith("68") })
         assertTrue(records.any { it == "0d" })
     }
+
+    @Test
+    fun `real command skills emit complete preparation attributes and modifier strengths`() {
+        val repo = BattleConfigRepository.loadDefault()
+        val builder = BattleTeamBuilder(repo)
+        val attacker = builder.build(
+            listOf(
+                BattleHeroSpec(heroId = 100479, position = 0, troops = 9_000),
+                BattleHeroSpec(heroId = 100017, position = 1, troops = 9_000),
+                BattleHeroSpec(
+                    heroId = 100023,
+                    position = 2,
+                    troops = 9_000,
+                    extraSkillIds = listOf(200198, 200204),
+                ),
+            ),
+        )
+        val defender = builder.build(
+            listOf(
+                BattleHeroSpec(heroId = 100352, position = 0, troops = 9_000),
+                BattleHeroSpec(heroId = 100345, position = 1, troops = 9_000),
+                BattleHeroSpec(heroId = 100344, position = 2, troops = 9_000),
+            ),
+        )
+
+        val result = BattleEngine.resolve(
+            BattleRequest(attacker, defender, maxRounds = 1),
+            repo,
+            FixedBattleRandom(0),
+        )
+        val preparation = ClientBattleTextReplayAdapter.adapt(result)
+            .takeWhile { it.id != ClientBattleTextReplayProtocol.ROUND }
+
+        assertTrue(
+            setOf(200023, 200198, 200204).all { skillId ->
+                preparation.any {
+                    it.id == ClientBattleTextReplayProtocol.SKILL_TRIGGERED_COMMAND &&
+                        it.params == listOf<Any>(3, skillId)
+                }
+            },
+        )
+        assertTrue(
+            preparation.filter { it.id in 52..55 && it.params.getOrNull(1) == 200023 }
+                .all {
+                    it.params.first() == 3 &&
+                        it.params[2] in 4..6 &&
+                        (it.params[4] as Number).toDouble() > 0 &&
+                        (it.params[5] as Number).toDouble() > 0
+                },
+        )
+        assertTrue(
+            setOf(200198, 200204).all { skillId ->
+                preparation.any {
+                    it.id == ClientBattleTextReplayProtocol.MODIFIER_APPLIED &&
+                        it.params[1] == skillId &&
+                        (it.params[4] as Int) > 0
+                }
+            },
+        )
+        assertTrue(
+            preparation.none {
+                it.id == ClientBattleTextReplayProtocol.SKILL_CAST &&
+                    it.params.lastOrNull() == 200023
+            },
+        )
+    }
 }

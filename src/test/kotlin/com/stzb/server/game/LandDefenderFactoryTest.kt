@@ -6,6 +6,11 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class LandDefenderFactoryTest {
+    // Land level/wid assertions below are pinned to the 2001 map so they stay
+    // stable regardless of which season the server currently advertises
+    // (LandMapRepository.loadDefault follows GameServerConfig.CFG_DB_ID).
+    private fun factoryOn2001() = LandDefenderFactory(LandMapRepository.load(2001))
+
     @Test
     fun `different land levels produce different defender strength`() {
         val factory = LandDefenderFactory()
@@ -19,7 +24,7 @@ class LandDefenderFactoryTest {
 
     @Test
     fun `land level comes from map config instead of the wid suffix`() {
-        val factory = LandDefenderFactory()
+        val factory = factoryOn2001()
 
         // cfgDataIndex=2001 resources_in_map: both wids end in 1, but their
         // configured resource levels are 3 and 1 respectively.
@@ -40,19 +45,46 @@ class LandDefenderFactoryTest {
         assertEquals(2, first.single().level)
         assertEquals(100, first.single().troops)
         assertEquals(emptyList(), first.single().extraSkillIds)
+        assertEquals(listOf(1), first.single().skillLevels)
+        assertEquals(emptyList(), first.single().troopFeatureIds)
+        assertEquals(emptyList(), first.single().equipmentIds)
 
         val levelFiveFirst = factory.candidateSpecsForLevel(5).first()
         assertEquals(listOf(100759, 100761, 100285), levelFiveFirst.map { it.heroId })
         assertEquals(listOf(20, 20, 20), levelFiveFirst.map { it.level })
         assertEquals(listOf(3600, 3600, 3600), levelFiveFirst.map { it.troops })
         assertEquals(listOf(200190), levelFiveFirst[0].extraSkillIds)
+        assertEquals(listOf(5, 5), levelFiveFirst[0].skillLevels)
         assertEquals(emptyList(), levelFiveFirst[1].extraSkillIds)
+        assertEquals(listOf(5), levelFiveFirst[1].skillLevels)
         assertEquals(listOf(200639), levelFiveFirst[2].extraSkillIds)
+        assertEquals(listOf(5, 5), levelFiveFirst[2].skillLevels)
+
+        val levelSixFirst = factory.candidateSpecsForLevel(6).first()
+        assertEquals(
+            listOf(listOf(3201), listOf(3104), listOf(3104)),
+            levelSixFirst.map { it.troopFeatureIds },
+        )
+    }
+
+    @Test
+    fun `client equipment keeps base gear separate from report skill slots`() {
+        val repository = ClientNpcArmyRepository.loadDefault()
+        val hero = repository.armiesForPool(9100).first().heroes.first()
+
+        assertEquals(listOf(1009), hero.equipmentIds)
+        assertEquals(
+            listOf(400007, 400008, 400009),
+            hero.equipmentSkillIds,
+        )
+        assertEquals(listOf(6, 6, 1), hero.equipmentSkillLevels)
+        assertEquals(listOf(450034), hero.equipmentFeatureSkillIds)
+        assertEquals(listOf(6), hero.equipmentFeatureSkillLevels)
     }
 
     @Test
     fun `same level lands select varied but stable client combinations`() {
-        val factory = LandDefenderFactory()
+        val factory = factoryOn2001()
 
         val first = factory.specsForWid(10_002)
         val repeated = factory.specsForWid(10_002)
@@ -66,7 +98,7 @@ class LandDefenderFactoryTest {
 
     @Test
     fun `client army count marks high level resource land as two defender teams`() {
-        val factory = LandDefenderFactory()
+        val factory = factoryOn2001()
 
         assertEquals(1, factory.teamCountForLevel(5))
         assertEquals(2, factory.teamCountForLevel(6))

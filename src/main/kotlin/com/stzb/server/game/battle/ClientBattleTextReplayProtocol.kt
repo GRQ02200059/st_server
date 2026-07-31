@@ -13,23 +13,32 @@ internal data class ClientReportAction(
 
 internal object ClientBattleTextReplayProtocol {
     const val HERO_NAME = 14
+    const val SYSTEM_EFFECT_SOURCE = 20
     const val HERO_INFO = 205
+    const val ARMY_EFFECT_SOURCE = 208
+    const val SKILL_TRIGGERED_PASSIVE = 21
+    const val SKILL_TRIGGERED_COMMAND = 22
+    const val SKILL_TRIGGERED_ACTIVE = 23
+    const val SKILL_TRIGGERED_PURSUIT = 24
+    const val PREPARATION_BENEFICIAL_EFFECT = 28
+    const val PREPARATION_HARMFUL_EFFECT = 29
     const val PREPARE = 4
+    const val PREPARATION_HERO = 5
+    const val PREPARATION_END = 8
     const val ROUND = 9
     const val HERO_ACTION_START = 10
     const val HERO_ACTION_END = 11
-    const val SKILL_TRIGGERED_ACTIVE = 22
-    const val SKILL_TRIGGERED_PASSIVE = 23
-    const val SKILL_TRIGGERED_PURSUIT = 24
     const val SKILL_PREPARATION_STARTED = 25
     const val SKILL_PREPARATION_CANCELLED = 27
     const val NORMAL_ATTACK = 119
     const val NORMAL_DAMAGE = 121
     const val SKILL_BEGIN = 213
     const val SKILL_END = 214
+    const val PASSIVE_STAGE_END = 216
     const val NORMAL_ATTACK_BEGIN = 222
     const val NORMAL_ATTACK_END = 223
     const val SKILL_CAST = 301
+    const val DERIVED_SKILL_TRIGGERED = 300
     const val SKILL_DAMAGE = 60
     const val ONGOING_DAMAGE = 59
     const val RECOVERY = 63
@@ -41,6 +50,27 @@ internal object ClientBattleTextReplayProtocol {
     const val DRAW = 206
     const val DEFENDER_WIN = 207
     const val FINAL_TROOPS = 224
+    const val INITIAL_ATTACK = 45
+    const val INITIAL_DEFENSE = 46
+    const val INITIAL_STRATEGY = 47
+    const val INITIAL_SPEED = 48
+    const val INITIAL_SIEGE = 49
+    const val INITIAL_ATTACK_RANGE = 50
+    const val ATTACK_DECREASED = 52
+    const val DEFENSE_DECREASED = 53
+    const val STRATEGY_DECREASED = 54
+    const val SPEED_DECREASED = 55
+    const val FLAT_ATTACK = 31
+    const val FLAT_DEFENSE = 32
+    const val FLAT_STRATEGY = 33
+    const val FLAT_SPEED = 34
+    const val FLAT_ATTACK_RANGE = 36
+    const val MODIFIER_APPLIED = 694
+    const val TROOP_EFFECT_SOURCE = 285
+    const val EQUIPMENT_EFFECT_SOURCE = 406
+    const val COMMAND_STAGE_BEGIN = 651
+    const val COMMAND_HERO_BEGIN = 644
+    const val COMMAND_HERO_END = 645
 
     fun position(side: Side, formationPosition: Int): Int {
         require(formationPosition in 0..2) { "battle formation position must be 0..2: $formationPosition" }
@@ -51,6 +81,12 @@ internal object ClientBattleTextReplayProtocol {
     }
 
     fun position(ref: BattleHeroRef): Int = position(ref.side, ref.position)
+
+    fun teamPosition(side: Side): Int =
+        when (side) {
+            Side.ATTACKER -> 0
+            Side.DEFENDER -> 7
+        }
 
     fun effectId(status: BattleStatus): Int = when (status) {
         BattleStatus.CONFUSION -> 501
@@ -103,4 +139,61 @@ internal object ClientBattleTextReplayProtocol {
         BattleStatus.DISARM -> 87
         else -> 301
     }
+
+    fun preparationStatusAction(status: BattleStatus): Int =
+        if (
+            status in setOf(
+                BattleStatus.CONFUSION,
+                BattleStatus.HESITATION,
+                BattleStatus.PANIC,
+                BattleStatus.SHAKE,
+                BattleStatus.BURN,
+                BattleStatus.HEX,
+                BattleStatus.DISARM,
+            )
+        ) {
+            PREPARATION_HARMFUL_EFFECT
+        } else {
+            PREPARATION_BENEFICIAL_EFFECT
+        }
+
+    fun initialAttributeAction(stat: BattleStat): Int = when (stat) {
+        BattleStat.ATTACK -> INITIAL_ATTACK
+        BattleStat.DEFENSE -> INITIAL_DEFENSE
+        BattleStat.STRATEGY -> INITIAL_STRATEGY
+        BattleStat.SPEED -> INITIAL_SPEED
+        BattleStat.SIEGE -> INITIAL_SIEGE
+        BattleStat.HIT_RANGE -> INITIAL_ATTACK_RANGE
+    }
+
+    fun attributeChangeAction(stat: BattleStat, delta: Int): Int =
+        if (delta >= 0) {
+            initialAttributeAction(stat)
+        } else {
+            when (stat) {
+                BattleStat.ATTACK -> ATTACK_DECREASED
+                BattleStat.DEFENSE -> DEFENSE_DECREASED
+                BattleStat.STRATEGY -> STRATEGY_DECREASED
+                BattleStat.SPEED -> SPEED_DECREASED
+                BattleStat.SIEGE, BattleStat.HIT_RANGE -> initialAttributeAction(stat)
+            }
+        }
+
+    fun flatAttributeAction(stat: BattleStat): Int =
+        when (stat) {
+            BattleStat.ATTACK -> FLAT_ATTACK
+            BattleStat.DEFENSE -> FLAT_DEFENSE
+            BattleStat.STRATEGY -> FLAT_STRATEGY
+            BattleStat.SPEED -> FLAT_SPEED
+            BattleStat.SIEGE -> initialAttributeAction(stat)
+            BattleStat.HIT_RANGE -> FLAT_ATTACK_RANGE
+        }
+
+    fun preparationSourceAction(stage: BattlePreparationStage): Int =
+        when (stage) {
+            BattlePreparationStage.SYSTEM -> SYSTEM_EFFECT_SOURCE
+            BattlePreparationStage.ARMY -> ARMY_EFFECT_SOURCE
+            BattlePreparationStage.TROOP -> TROOP_EFFECT_SOURCE
+            BattlePreparationStage.EQUIPMENT -> EQUIPMENT_EFFECT_SOURCE
+        }
 }
