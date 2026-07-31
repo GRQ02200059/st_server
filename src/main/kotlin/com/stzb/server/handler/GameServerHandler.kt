@@ -7,6 +7,7 @@ import com.stzb.server.auth.ServerSessionRegistry
 import com.stzb.server.game.ArmyBattleRequestParser
 import com.stzb.server.game.ConscriptRequestParser
 import com.stzb.server.game.ClientCardPackCatalog
+import com.stzb.server.game.GearOperationRequestParser
 import com.stzb.server.game.GameResponses
 import com.stzb.server.game.PlayerBattleService
 import com.stzb.server.game.PlayerConscriptService
@@ -235,6 +236,12 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.HERO_ADVANCE -> {
                 logIn(msg)
                 sendHeroAdvance(ctx, session, msg)
+            }
+
+            Cmd.GEAR_EQUIP,
+            Cmd.GEAR_FORGET -> {
+                logIn(msg)
+                sendGearOperation(ctx, session, msg)
             }
 
             Cmd.CARD_ADD_POINT,
@@ -705,6 +712,36 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         log.info(
             ">> cmd=83 武将进阶已处理 " +
                 "(uid=$userId, target=$targetHeroUid, materials=$materialHeroUids, changed=${result != null})",
+        )
+    }
+
+    private fun sendGearOperation(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val request = GearOperationRequestParser.parse(msg.bodyText)
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val state = playerState(session, userId, GameServerConfig.CITY_WID)
+        val result = request?.let { operation ->
+            when (msg.cmdId) {
+                Cmd.GEAR_EQUIP -> state.equipGrantedGear(operation.heroUid, operation.gearUid)
+                Cmd.GEAR_FORGET -> state.forgetGrantedGear(operation.heroUid, operation.gearUid)
+                else -> null
+            }
+        }
+
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN))
+        if (result != null) {
+            PlayerStateRepository.save(state)
+            ctx.writeAndFlush(
+                DownPacket.json(
+                    Cmd.SYS_NOTIFY_DB_UPDATE,
+                    GameResponses.gearEquipNotify(result),
+                    dataType = DownType.PLAIN,
+                ),
+            )
+        }
+        log.info(
+            ">> cmd=${msg.cmdId} 武器操作已处理 " +
+                "(uid=$userId, heroUid=${request?.heroUid ?: 0}, gearUid=${request?.gearUid ?: 0}, " +
+                "changed=${result != null})",
         )
     }
 

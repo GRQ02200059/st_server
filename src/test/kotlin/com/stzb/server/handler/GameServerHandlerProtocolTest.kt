@@ -2,6 +2,7 @@ package com.stzb.server.handler
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.game.FilePlayerRepository
+import com.stzb.server.game.InventoryCatalog
 import com.stzb.server.game.PlayerStateRepository
 import com.stzb.server.game.WorldStateRepository
 import com.stzb.server.game.battle.ClientBattleReportStore
@@ -242,6 +243,62 @@ class GameServerHandlerProtocolTest {
         assertEquals(material.heroUid, changes[1][2].asInt())
         assertEquals(5, state.hero(target.heroUid)?.advanceNum)
         assertNull(state.hero(material.heroUid))
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `gear equip transfer forget and invalid requests keep client tables synchronized`() {
+        val channel = newChannel()
+        platformLogin(channel, "gear-owner")
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = requireNotNull(session.accountKey),
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = GameServerConfig.ROLE_NAME,
+        )
+        val firstHero = state.addHero(100017)
+        val secondHero = state.addHero(100021)
+        val gearUid = InventoryCatalog.normalWeapons().first().uid
+        PlayerStateRepository.save(state)
+
+        channel.writeInbound(
+            upPacket(Cmd.GEAR_EQUIP, "[${firstHero.heroUid},$gearUid]", userId = session.userId),
+        )
+        val equipResponse = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.GEAR_EQUIP, equipResponse.cmd)
+        assertEquals("[]", equipResponse.body.toString(Charsets.UTF_8))
+        val equipNotify = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.SYS_NOTIFY_DB_UPDATE, equipNotify.cmd)
+        val equipChanges = mapper.readTree(equipNotify.body)
+        assertEquals(listOf(0, firstHero.heroUid, 23, gearUid), equipChanges[0][2].map { it.asInt() })
+        assertEquals(listOf(0, gearUid, 9, firstHero.heroUid), equipChanges[1][2].map { it.asInt() })
+
+        channel.writeInbound(
+            upPacket(Cmd.GEAR_EQUIP, "[${secondHero.heroUid},$gearUid]", userId = session.userId),
+        )
+        assertEquals(Cmd.GEAR_EQUIP, assertIs<DownPacket>(channel.readOutbound<Any>()).cmd)
+        val transferNotify = assertIs<DownPacket>(channel.readOutbound<Any>())
+        val transferChanges = mapper.readTree(transferNotify.body)
+        assertEquals(listOf(0, firstHero.heroUid, 23, 0), transferChanges[0][2].map { it.asInt() })
+        assertEquals(listOf(0, secondHero.heroUid, 23, gearUid), transferChanges[1][2].map { it.asInt() })
+        assertEquals(listOf(0, gearUid, 9, secondHero.heroUid), transferChanges[2][2].map { it.asInt() })
+
+        channel.writeInbound(
+            upPacket(Cmd.GEAR_FORGET, "[${secondHero.heroUid},$gearUid]", userId = session.userId),
+        )
+        assertEquals(Cmd.GEAR_FORGET, assertIs<DownPacket>(channel.readOutbound<Any>()).cmd)
+        val forgetNotify = assertIs<DownPacket>(channel.readOutbound<Any>())
+        val forgetChanges = mapper.readTree(forgetNotify.body)
+        assertEquals(listOf(0, secondHero.heroUid, 23, 0), forgetChanges[0][2].map { it.asInt() })
+        assertEquals(listOf(0, gearUid, 9, 0), forgetChanges[1][2].map { it.asInt() })
+
+        channel.writeInbound(upPacket(Cmd.GEAR_EQUIP, "[${firstHero.heroUid}]", userId = session.userId))
+        val invalidResponse = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.GEAR_EQUIP, invalidResponse.cmd)
+        assertEquals("[]", invalidResponse.body.toString(Charsets.UTF_8))
+        assertNull(channel.readOutbound<Any>())
+        assertEquals(0, state.equippedGearUid(firstHero.heroUid))
+        assertEquals(0, state.equippedGearUid(secondHero.heroUid))
         channel.finishAndReleaseAll()
     }
 
