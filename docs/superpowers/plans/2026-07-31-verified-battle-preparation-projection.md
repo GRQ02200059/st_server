@@ -142,8 +142,8 @@ git commit -m "feat(battle-report): add preparation effect envelopes"
 - Test: `src/test/kotlin/com/stzb/server/game/battle/ClientBattleTextReplayAdapterTest.kt`
 
 **Interfaces:**
-- Consumes: `BattleHeroSpec.equipmentIds`, `equipmentFeatureSkillIds`, and `equipmentFeatureSkillLevels`.
-- Produces: a typed `BattlePreparationAction` whose encoded shape is `8x position,featureSkillId,position,associatedSkillId,level`.
+- Consumes: `BattleHeroSpec.equipmentIds`, `equipmentFeatureSkillIds`, `equipmentFeatureSkillLevels`, and the hero's configured initial skill.
+- Produces: a typed `BattlePreparationAction` whose encoded shape is `8x position,featureSkillId,position,initialSkillId,level`.
 
 - [ ] **Step 1: Write the failing equipment-feature fact test**
 
@@ -175,7 +175,7 @@ fun `equipment feature skills become sourced derived preparation actions`() {
             targetPosition = 0,
             actionId = "8x".toInt(36),
             amountExact = 8.0,
-            actionParameter = 400114,
+            actionParameter = 200957,
             containerSourceId = 1102,
         ),
         team.preparationActions.single { it.sourceId == 450037 },
@@ -203,7 +203,9 @@ private fun equipmentFeaturePreparationActions(
 ): List<BattlePreparationAction> =
     specs.flatMap { spec ->
         val equipmentId = spec.equipmentIds.singleOrNull() ?: return@flatMap emptyList()
-        val associatedSkillId = spec.equipmentSkillIds.firstOrNull() ?: return@flatMap emptyList()
+        val initialSkillId = config.hero(spec.heroId)?.initialSkillId
+            ?.takeIf { it > 0 }
+            ?: return@flatMap emptyList()
         spec.equipmentFeatureSkillIds.mapIndexedNotNull { index, featureSkillId ->
             val level = spec.equipmentFeatureSkillLevels.getOrNull(index)
                 ?.takeIf { it > 0 }
@@ -215,7 +217,7 @@ private fun equipmentFeaturePreparationActions(
                 targetPosition = spec.position,
                 actionId = "8x".toInt(36),
                 amountExact = level.toDouble(),
-                actionParameter = associatedSkillId,
+                actionParameter = initialSkillId,
                 containerSourceId = equipmentId,
             )
         }
@@ -241,7 +243,7 @@ fun `equipment feature action encodes the official 8x shape`() {
                 targetPosition = 0,
                 actionId = "8x".toInt(36),
                 amountExact = 8.0,
-                actionParameter = 400114,
+                actionParameter = 200957,
                 containerSourceId = 1102,
             ),
         ),
@@ -249,7 +251,7 @@ fun `equipment feature action encodes the official 8x shape`() {
 
     assertTrue(
         ClientBattleTextReplayAdapter.adapt(result(attacker = team)).contains(
-            ClientReportAction("8x".toInt(36), listOf(1, 450037, 1, 400114, 8)),
+            ClientReportAction("8x".toInt(36), listOf(1, 450037, 1, 200957, 8)),
         ),
     )
 }
