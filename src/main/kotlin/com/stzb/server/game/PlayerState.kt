@@ -29,6 +29,7 @@ class PlayerHero(
     var level: Int = DEFAULT_LEVEL,
     var heroType: Int = PlayerHeroTypes.forHero(heroId),
     var dynamicIcon: Int = 0,
+    var gearUid: Int = 0,
     var awakeState: Int = 1,
     var skillIds: MutableList<Int> = HeroCatalog.defaultSkillIds(heroId).toMutableList(),
     var advanceNum: Int = initialAdvanceNum(heroId),
@@ -72,6 +73,11 @@ data class HeroAdvanceResult(
     val consumedMaterialUids: List<Int>,
 )
 
+data class GearEquipResult(
+    val heroGearUids: Map<Int, Int>,
+    val gearHeroUids: Map<Int, Int>,
+)
+
 data class PlayerMarch(
     val armyId: Int,
     val fromWid: Int,
@@ -100,6 +106,7 @@ data class PlayerHeroSnapshot(
     val level: Int = PlayerHero.DEFAULT_LEVEL,
     val heroType: Int = PlayerHeroTypes.forHero(heroId),
     val dynamicIcon: Int = 0,
+    val gearUid: Int = 0,
     val awakeState: Int = 1,
     val skillIds: List<Int> = emptyList(),
     val advanceNum: Int = 0,
@@ -195,6 +202,41 @@ class PlayerState(
 
     fun hero(heroUid: Int): PlayerHero? =
         heroes[heroUid]
+
+    fun equippedGearUid(heroUid: Int): Int =
+        hero(heroUid)?.gearUid ?: 0
+
+    fun equipGrantedGear(heroUid: Int, gearUid: Int): GearEquipResult? {
+        val targetHero = hero(heroUid) ?: return null
+        if (!InventoryCatalog.isGrantedGearUid(gearUid) || targetHero.gearUid == gearUid) return null
+
+        val changedHeroUids = linkedSetOf<Int>()
+        val changedGearUids = linkedSetOf<Int>()
+        fun removeGear(currentHero: PlayerHero) {
+            val previousGearUid = currentHero.gearUid
+            if (previousGearUid == 0) return
+            currentHero.gearUid = 0
+            changedHeroUids += currentHero.heroUid
+            changedGearUids += previousGearUid
+        }
+
+        removeGear(targetHero)
+        heroes.values
+            .filter { it.heroUid != targetHero.heroUid && it.gearUid == gearUid }
+            .forEach(::removeGear)
+        targetHero.gearUid = gearUid
+        changedHeroUids += targetHero.heroUid
+        changedGearUids += gearUid
+        return gearEquipResult(changedHeroUids, changedGearUids)
+    }
+
+    fun forgetGrantedGear(heroUid: Int, gearUid: Int): GearEquipResult? {
+        val targetHero = hero(heroUid) ?: return null
+        if (!InventoryCatalog.isGrantedGearUid(gearUid) || targetHero.gearUid != gearUid) return null
+
+        targetHero.gearUid = 0
+        return gearEquipResult(setOf(heroUid), setOf(gearUid))
+    }
 
     /**
      * Each playable copy receives one same-name disposable card. The client
@@ -407,6 +449,7 @@ class PlayerState(
                     level = hero.level,
                     heroType = hero.heroType,
                     dynamicIcon = hero.dynamicIcon,
+                    gearUid = hero.gearUid,
                     awakeState = hero.awakeState,
                     skillIds = hero.normalizedSkillIds(),
                     advanceNum = hero.advanceNum,
@@ -445,6 +488,34 @@ class PlayerState(
         }.toMap()
         heroes.values.forEach { hero ->
             hero.armyId = heroArmies[hero.heroUid] ?: 0
+        }
+    }
+
+    private fun gearEquipResult(
+        changedHeroUids: Set<Int>,
+        changedGearUids: Set<Int>,
+    ): GearEquipResult {
+        val gearOwnerByUid = heroes.values
+            .filter { it.gearUid in changedGearUids }
+            .associate { hero -> hero.gearUid to hero.heroUid }
+        return GearEquipResult(
+            heroGearUids = changedHeroUids.sorted().associateWith { heroUid ->
+                heroes.getValue(heroUid).gearUid
+            },
+            gearHeroUids = changedGearUids.sorted().associateWith { gearUid ->
+                gearOwnerByUid[gearUid] ?: 0
+            },
+        )
+    }
+
+    private fun normalizeEquippedGears() {
+        val claimedGearUids = mutableSetOf<Int>()
+        heroes.values.sortedBy(PlayerHero::heroUid).forEach { hero ->
+            val gearUid = hero.gearUid
+            if (gearUid == 0) return@forEach
+            if (!InventoryCatalog.isGrantedGearUid(gearUid) || !claimedGearUids.add(gearUid)) {
+                hero.gearUid = 0
+            }
         }
     }
 
@@ -541,6 +612,7 @@ class PlayerState(
                         dynamicIcon = saved.dynamicIcon.takeIf {
                             it == 0 || HeroFacadeCatalog.canUse(it, saved.heroId)
                         } ?: 0,
+                        gearUid = saved.gearUid,
                         awakeState = 1,
                         skillIds = normalizedSavedSkillIds(saved.heroId, saved.skillIds),
                         advanceNum = if (saved.isAdvanceMaterial) {
@@ -554,6 +626,7 @@ class PlayerState(
                         isAdvanceMaterial = saved.isAdvanceMaterial,
                     )
                 }
+                state.normalizeEquippedGears()
                 state.heroSeq.set(
                     snapshot.heroes.maxOfOrNull {
                         Math.floorMod(it.heroUid, HERO_UID_STRIDE)

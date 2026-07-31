@@ -3,6 +3,7 @@ package com.stzb.server.game
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PlayerStatePersistenceTest {
@@ -129,6 +130,108 @@ class PlayerStatePersistenceTest {
         assertEquals(100534, restored.hero(hero.heroUid)?.dynamicIcon)
         assertTrue(restored.selectHeroFacade(hero.heroUid, 0))
         assertEquals(0, restored.hero(hero.heroUid)?.dynamicIcon)
+    }
+
+    @Test
+    fun `granted gear replaces and transfers through one to one state`() {
+        val state = PlayerState(userId = 61, cityWid = 10061, roleName = "主公")
+        val firstHero = state.addHero(100017)
+        val secondHero = state.addHero(100021)
+        val firstGear = InventoryCatalog.normalWeapons().first().uid
+        val secondGear = InventoryCatalog.normalWeapons().drop(1).first().uid
+
+        assertEquals(
+            GearEquipResult(
+                heroGearUids = mapOf(firstHero.heroUid to firstGear),
+                gearHeroUids = mapOf(firstGear to firstHero.heroUid),
+            ),
+            state.equipGrantedGear(firstHero.heroUid, firstGear),
+        )
+        assertEquals(
+            GearEquipResult(
+                heroGearUids = mapOf(firstHero.heroUid to secondGear),
+                gearHeroUids = mapOf(firstGear to 0, secondGear to firstHero.heroUid),
+            ),
+            state.equipGrantedGear(firstHero.heroUid, secondGear),
+        )
+        assertEquals(
+            GearEquipResult(
+                heroGearUids = mapOf(firstHero.heroUid to 0, secondHero.heroUid to secondGear),
+                gearHeroUids = mapOf(secondGear to secondHero.heroUid),
+            ),
+            state.equipGrantedGear(secondHero.heroUid, secondGear),
+        )
+        assertEquals(0, state.equippedGearUid(firstHero.heroUid))
+        assertEquals(secondGear, state.equippedGearUid(secondHero.heroUid))
+    }
+
+    @Test
+    fun `gear operations reject foreign pairs and forget only an exact equipment pair`() {
+        val state = PlayerState(userId = 62, cityWid = 10062, roleName = "主公")
+        val hero = state.addHero(100017)
+        val gearUid = InventoryCatalog.normalWeapons().first().uid
+
+        assertNull(state.equipGrantedGear(heroUid = 999_999, gearUid = gearUid))
+        assertNull(state.equipGrantedGear(heroUid = hero.heroUid, gearUid = 123_456))
+        assertEquals(0, state.equippedGearUid(hero.heroUid))
+
+        assertEquals(
+            GearEquipResult(
+                heroGearUids = mapOf(hero.heroUid to gearUid),
+                gearHeroUids = mapOf(gearUid to hero.heroUid),
+            ),
+            state.equipGrantedGear(hero.heroUid, gearUid),
+        )
+        assertNull(state.forgetGrantedGear(hero.heroUid, InventoryCatalog.normalWeapons().drop(1).first().uid))
+        assertEquals(
+            GearEquipResult(
+                heroGearUids = mapOf(hero.heroUid to 0),
+                gearHeroUids = mapOf(gearUid to 0),
+            ),
+            state.forgetGrantedGear(hero.heroUid, gearUid),
+        )
+        assertNull(state.forgetGrantedGear(hero.heroUid, gearUid))
+    }
+
+    @Test
+    fun `gear persists and snapshot recovery keeps only the smallest hero owner`() {
+        val gearUid = InventoryCatalog.normalWeapons().first().uid
+        val restored = PlayerState.fromSnapshot(
+            PlayerStateSnapshot(
+                accountKey = "gear-normalization",
+                userId = 63,
+                cityWid = 10063,
+                roleName = "主公",
+                heroes = listOf(
+                    PlayerHeroSnapshot(
+                        heroUid = 63_000_002,
+                        heroId = 100017,
+                        createdAtSec = 1,
+                        gearUid = gearUid,
+                    ),
+                    PlayerHeroSnapshot(
+                        heroUid = 63_000_001,
+                        heroId = 100021,
+                        createdAtSec = 1,
+                        gearUid = gearUid,
+                    ),
+                    PlayerHeroSnapshot(
+                        heroUid = 63_000_003,
+                        heroId = 100023,
+                        createdAtSec = 1,
+                        gearUid = 123_456,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(gearUid, restored.equippedGearUid(63_000_001))
+        assertEquals(0, restored.equippedGearUid(63_000_002))
+        assertEquals(0, restored.equippedGearUid(63_000_003))
+        assertEquals(
+            gearUid,
+            PlayerState.fromSnapshot(restored.toSnapshot()).equippedGearUid(63_000_001),
+        )
     }
 
     @Test

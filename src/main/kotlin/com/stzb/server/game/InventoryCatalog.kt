@@ -35,6 +35,9 @@ object InventoryCatalog {
 
     fun items(): List<InventoryItemDefinition> = inventory.items
 
+    fun isGrantedGearUid(gearUid: Int): Boolean =
+        gearUid > 0 && gearUid in inventory.grantedGearUids
+
     private fun load(): GeneratedInventory {
         val gears = parseGears(readResource(GEAR_RESOURCE))
             .filter(StoredGear::isEligible)
@@ -179,7 +182,10 @@ object InventoryCatalog {
         val baseWeapons: List<InventoryGearDefinition>,
         val hongjiCopies: List<InventoryGearDefinition>,
         val items: List<InventoryItemDefinition>,
-    )
+    ) {
+        val grantedGearUids: Set<Int> =
+            (baseWeapons + hongjiCopies).map(InventoryGearDefinition::uid).toSet()
+    }
 
     private data class StoredGear(
         val id: Int,
