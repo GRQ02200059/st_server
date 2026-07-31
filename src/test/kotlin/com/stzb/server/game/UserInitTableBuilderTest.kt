@@ -388,6 +388,38 @@ class UserInitTableBuilderTest {
         })
     }
 
+    @Test
+    fun `login snapshot restores the bidirectional equipped gear fields`() {
+        val root = createTempDirectory("stzb-gear-snapshot")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val state = PlayerStateRepository.getOrCreate(
+                accountKey = "gear-snapshot",
+                cityWid = 10064,
+                roleName = "主公",
+            )
+            val hero = state.addHero(100017)
+            val gearUid = InventoryCatalog.normalWeapons().first().uid
+            assertTrue(state.equipGrantedGear(hero.heroUid, gearUid) != null)
+            PlayerStateRepository.save(state)
+
+            val tables = UserInitTableBuilder.build(
+                userId = state.userId,
+                cityWid = state.cityWid,
+                roleName = state.roleName,
+                serverOpenTime = 1_700_000_000L,
+                accountKey = state.accountKey,
+            ).drop(1).associateBy { it[0].asText() }
+
+            val heroes = tables.getValue("Tb_hero")[1].associateBy { it[0].asInt() }
+            val gear = tables.getValue("Tb_gear")[1].single { it[0].asInt() == gearUid }
+            assertEquals(gearUid, heroes.getValue(hero.heroUid)[23].asInt())
+            assertEquals(hero.heroUid, gear[9].asInt())
+        } finally {
+            PlayerStateRepository.reset()
+        }
+    }
+
     private fun cardExtractRows(snapshot: com.fasterxml.jackson.databind.node.ArrayNode) =
         snapshot.drop(1)
             .associateBy { it[0].asText() }

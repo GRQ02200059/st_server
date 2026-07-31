@@ -160,10 +160,20 @@ object UserInitTableBuilder {
             ),
         )
         val grantedGears = InventoryCatalog.normalWeapons() + InventoryCatalog.hongjiCopies()
+        val equippedHeroUidByGear = state.allHeroes()
+            .asSequence()
+            .filter { hero -> hero.gearUid > 0 }
+            .associate { hero -> hero.gearUid to hero.heroUid }
         root.add(
             table(
                 "Tb_gear",
-                *grantedGears.map { gear -> tbGear(playerId, gear) }.toTypedArray(),
+                *grantedGears.map { gear ->
+                    tbGear(
+                        userId = playerId,
+                        gear = gear,
+                        equippedHeroUid = equippedHeroUidByGear[gear.uid] ?: 0,
+                    )
+                }.toTypedArray(),
             ),
         )
         root.add(
@@ -514,6 +524,7 @@ object UserInitTableBuilder {
             .i(20, 0)
             .i(21, 0)
             .s(22, hero.skillString())       // skill: persistent three-slot state
+            .i(23, hero.gearUid)              // gearid_u
             .i(24, 1)                        // awake_state: default awakened
             .i(29, hero.advanceNum)           // advance_num: 卡面进阶星数
             .i(32, hero.heroType)          // hero_type
@@ -597,8 +608,12 @@ object UserInitTableBuilder {
             .i(10, 0)
             .arr
 
-    /** Tb_gear: 服务端赠送的库藏武器，满级、未装备、状态为持有。 */
-    private fun tbGear(userId: Int, gear: InventoryGearDefinition): ArrayNode =
+    /** Tb_gear: 服务端赠送的库藏武器，满级且状态为持有。 */
+    private fun tbGear(
+        userId: Int,
+        gear: InventoryGearDefinition,
+        equippedHeroUid: Int,
+    ): ArrayNode =
         row("Tb_gear")
             .i(0, gear.uid)
             .i(1, gear.gearId)
@@ -609,7 +624,7 @@ object UserInitTableBuilder {
             .i(6, 0)
             .i(7, if (gear.phase <= 1) 5 else 10)
             .i(8, gear.phase.coerceAtLeast(1))
-            .i(9, 0) // heroid_u: not equipped
+            .i(9, equippedHeroUid) // heroid_u
             .i(10, 0).i(11, 0).i(12, 0).i(13, 0).i(14, 0).i(15, 0).i(16, 0)
             .s(17, "")
             .i(18, 0)

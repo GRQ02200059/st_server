@@ -526,6 +526,28 @@ object GameResponses {
             ),
         )
 
+    fun gearEquipNotify(result: GearEquipResult): String =
+        mapper.writeValueAsString(
+            nf.arrayNode().apply {
+                result.heroGearUids.toSortedMap().forEach { (heroUid, gearUid) ->
+                    add(
+                        nf.arrayNode()
+                            .add(2)
+                            .add("Tb_hero")
+                            .add(nf.arrayNode().add(0).add(heroUid).add(23).add(gearUid)),
+                    )
+                }
+                result.gearHeroUids.toSortedMap().forEach { (gearUid, heroUid) ->
+                    add(
+                        nf.arrayNode()
+                            .add(2)
+                            .add("Tb_gear")
+                            .add(nf.arrayNode().add(0).add(gearUid).add(9).add(heroUid)),
+                    )
+                }
+            },
+        )
+
     /**
      * cmd 83 itself is body-agnostic in the client. The visible card update is
      * driven by this 90005 packet: update advance_num, then remove each
@@ -792,7 +814,7 @@ object GameResponses {
             add(0)           // 20 speed_add
             add(0)           // 21 destroy_add
             add(hero.skillString()) // 22 skill
-            add(0) // 23 gearid_u
+            add(hero.gearUid) // 23 gearid_u
             add(1) // 24 awake_state
             add(0) // 25 lock_state
             add(0) // 26 wounded_soldier

@@ -749,4 +749,40 @@ class GameResponsesTest {
         assertEquals(11, response[14]["14981496"]["0"][2].asInt())
         assertEquals(14_961_496, response[14]["14981496"]["0"][7].asInt())
     }
+
+    @Test
+    fun `gear notification updates affected heroes before affected gears`() {
+        val update = mapper.readTree(
+            GameResponses.gearEquipNotify(
+                GearEquipResult(
+                    heroGearUids = mapOf(10_002 to 800_001_042, 10_001 to 0),
+                    gearHeroUids = mapOf(800_001_041 to 0, 800_001_042 to 10_002),
+                ),
+            ),
+        )
+
+        assertEquals(4, update.size())
+        assertEquals("Tb_hero", update[0][1].asText())
+        assertEquals(listOf(0, 10_001, 23, 0), update[0][2].map { it.asInt() })
+        assertEquals("Tb_hero", update[1][1].asText())
+        assertEquals(listOf(0, 10_002, 23, 800_001_042), update[1][2].map { it.asInt() })
+        assertEquals("Tb_gear", update[2][1].asText())
+        assertEquals(listOf(0, 800_001_041, 9, 0), update[2][2].map { it.asInt() })
+        assertEquals("Tb_gear", update[3][1].asText())
+        assertEquals(listOf(0, 800_001_042, 9, 10_002), update[3][2].map { it.asInt() })
+    }
+
+    @Test
+    fun `hero upsert retains the equipped gear uid`() {
+        val hero = PlayerHero(
+            heroUid = 4_200_008,
+            heroId = 100017,
+            createdAtSec = 1_700_000_000,
+            gearUid = 800_001_042,
+        )
+
+        val row = mapper.readTree(GameResponses.heroUpsertNotify(userId = 42, heroes = listOf(hero)))[0][2]
+
+        assertEquals(800_001_042, row[23].asInt())
+    }
 }
