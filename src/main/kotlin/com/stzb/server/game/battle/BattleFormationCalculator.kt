@@ -37,9 +37,10 @@ class BattleFormationCalculator(
             val level = spec.level.coerceAtLeast(1)
             val advance = spec.advanceLevel.coerceAtLeast(0)
             val skillIds = listOf(heroConfig.initialSkillId).filter { it > 0 } + spec.extraSkillIds
-            val preStaticStats = heroConfig.stats +
+            val inherentStats = heroConfig.stats +
                 heroConfig.growth.scale(level - 1) +
-                spec.attributePoints +
+                spec.attributePoints
+            val preStaticStats = inherentStats +
                 formationBonus +
                 if (spec.equipmentSkillIds.isEmpty()) {
                     equipmentModifiers.statBonus()
@@ -72,6 +73,7 @@ class BattleFormationCalculator(
                 level = level,
                 advanceLevel = advance,
                 morale = spec.morale.coerceAtLeast(0),
+                inherentStats = inherentStats,
             )
         }
         return BattleTeam(

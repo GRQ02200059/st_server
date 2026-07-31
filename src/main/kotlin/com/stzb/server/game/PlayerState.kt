@@ -1,5 +1,6 @@
 package com.stzb.server.game
 
+import com.stzb.server.protocol.GameServerConfig
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -30,6 +31,8 @@ class PlayerHero(
     var dynamicIcon: Int = 0,
     var awakeState: Int = 1,
     var skillIds: MutableList<Int> = HeroCatalog.defaultSkillIds(heroId).toMutableList(),
+    var advanceNum: Int = initialAdvanceNum(heroId),
+    val isAdvanceMaterial: Boolean = false,
 ) {
     var troops: Int = troops.coerceIn(0, MAX_TROOPS)
         set(value) {
@@ -55,8 +58,19 @@ class PlayerHero(
         const val DEFAULT_LEVEL = 50
         const val MAX_SKILL_LEVEL = 10
         const val SKILL_SLOT_COUNT = 3
+
+        fun initialAdvanceNum(heroId: Int): Int =
+            HeroCatalog.heroQuality(heroId).coerceAtLeast(0)
+
+        fun maxAdvanceNum(heroId: Int): Int =
+            HeroCatalog.heroQuality(heroId).coerceAtLeast(0) + 1
     }
 }
+
+data class HeroAdvanceResult(
+    val hero: PlayerHero,
+    val consumedMaterialUids: List<Int>,
+)
 
 data class PlayerMarch(
     val armyId: Int,
@@ -88,6 +102,8 @@ data class PlayerHeroSnapshot(
     val dynamicIcon: Int = 0,
     val awakeState: Int = 1,
     val skillIds: List<Int> = emptyList(),
+    val advanceNum: Int = 0,
+    val isAdvanceMaterial: Boolean = false,
 )
 
 data class PlayerMarchSnapshot(
@@ -126,7 +142,7 @@ object PlayerHeroTypes {
 
 class PlayerState(
     val userId: Int,
-    val cityWid: Int,
+    var cityWid: Int,
     var roleName: String,
     val accountKey: String = "legacy-user-$userId",
 ) {
@@ -154,18 +170,97 @@ class PlayerState(
         return next
     }
 
-    fun addHero(heroId: Int, nowSec: Int = (System.currentTimeMillis() / 1000).toInt()): PlayerHero {
+    fun addHero(
+        heroId: Int,
+        nowSec: Int = (System.currentTimeMillis() / 1000).toInt(),
+        isAdvanceMaterial: Boolean = false,
+    ): PlayerHero {
         val heroUid = userId * 100_000 + heroSeq.incrementAndGet()
-        val hero = PlayerHero(heroUid = heroUid, heroId = heroId, createdAtSec = nowSec)
+        val hero = PlayerHero(
+            heroUid = heroUid,
+            heroId = heroId,
+            createdAtSec = nowSec,
+            advanceNum = if (isAdvanceMaterial) 0 else PlayerHero.initialAdvanceNum(heroId),
+            isAdvanceMaterial = isAdvanceMaterial,
+        )
         heroes[heroUid] = hero
         return hero
     }
+
+    fun addAdvanceMaterial(heroId: Int, nowSec: Int = (System.currentTimeMillis() / 1000).toInt()): PlayerHero =
+        addHero(heroId, nowSec, isAdvanceMaterial = true)
 
     fun allHeroes(): List<PlayerHero> =
         heroes.values.toList()
 
     fun hero(heroUid: Int): PlayerHero? =
         heroes[heroUid]
+
+    /**
+     * Each playable copy receives one same-name disposable card. The client
+     * requires a selected material before it sends cmd 83.
+     */
+    fun ensureAdvanceMaterials(nowSec: Int = (System.currentTimeMillis() / 1000).toInt()): List<PlayerHero> {
+        val playableCounts = heroes.values
+            .filter { !it.isAdvanceMaterial && it.advanceNum < PlayerHero.maxAdvanceNum(it.heroId) }
+            .groupingBy { it.heroId }
+            .eachCount()
+        val materialCounts = heroes.values
+            .filter(PlayerHero::isAdvanceMaterial)
+            .groupingBy { it.heroId }
+            .eachCount()
+        return buildList {
+            playableCounts.forEach { (heroId, playableCount) ->
+                repeat((playableCount - materialCounts.getOrDefault(heroId, 0)).coerceAtLeast(0)) {
+                    add(addAdvanceMaterial(heroId, nowSec))
+                }
+            }
+        }
+    }
+
+    fun advanceHero(targetHeroUid: Int, materialHeroUids: List<Int>): HeroAdvanceResult? {
+        val target = hero(targetHeroUid) ?: return null
+        if (target.isAdvanceMaterial) return null
+
+        val materials = materialHeroUids.distinct()
+        val remainingAdvances = PlayerHero.maxAdvanceNum(target.heroId) - target.advanceNum
+        if (materials.isEmpty() || materials.size > remainingAdvances) return null
+        if (materials.any { materialUid ->
+                val material = hero(materialUid)
+                materialUid == targetHeroUid ||
+                    material?.isAdvanceMaterial != true ||
+                    material.heroId != target.heroId
+            }
+        ) {
+            return null
+        }
+
+        target.advanceNum += materials.size
+        materials.forEach(heroes::remove)
+        armies.values.forEach { team ->
+            team.replaceAll { heroUid -> if (heroUid in materials) 0 else heroUid }
+        }
+        refreshHeroArmyIds()
+        return HeroAdvanceResult(target, materials)
+    }
+
+    fun relocateMainCity(newCityWid: Int) {
+        require(newCityWid > 0) { "主城坐标必须为正数: $newCityWid" }
+        if (cityWid == newCityWid) return
+
+        val oldCityWid = cityWid
+        val savedArmies = (0 until MAX_ARMIES).map { index ->
+            armies[oldCityWid * 10 + index + 1]?.toList() ?: List(3) { 0 }
+        }
+        cityWid = newCityWid
+        armies.clear()
+        savedArmies.forEachIndexed { index, slots ->
+            armies[cityWid * 10 + index + 1] = slots.toMutableList()
+        }
+        marches.clear()
+        lands.clear()
+        refreshHeroArmyIds()
+    }
 
     fun selectHeroFacade(heroUid: Int, facadeHeroId: Int): Boolean {
         val hero = hero(heroUid) ?: return false
@@ -309,6 +404,8 @@ class PlayerState(
                     dynamicIcon = hero.dynamicIcon,
                     awakeState = hero.awakeState,
                     skillIds = hero.normalizedSkillIds(),
+                    advanceNum = hero.advanceNum,
+                    isAdvanceMaterial = hero.isAdvanceMaterial,
                 )
             },
             team = teamHeroes(),
@@ -427,6 +524,15 @@ class PlayerState(
                         } ?: 0,
                         awakeState = 1,
                         skillIds = normalizedSavedSkillIds(saved.heroId, saved.skillIds),
+                        advanceNum = if (saved.isAdvanceMaterial) {
+                            0
+                        } else {
+                            saved.advanceNum
+                                .takeIf { it > 0 }
+                                ?.coerceAtMost(PlayerHero.maxAdvanceNum(saved.heroId))
+                                ?: PlayerHero.initialAdvanceNum(saved.heroId)
+                        },
+                        isAdvanceMaterial = saved.isAdvanceMaterial,
                     )
                 }
                 state.heroSeq.set(
@@ -496,14 +602,14 @@ object PlayerStateRepository {
 
     fun getOrCreate(accountKey: String, cityWid: Int, roleName: String): PlayerState {
         require(accountKey.isNotBlank()) { "accountKey 不能为空" }
-        return players.computeIfAbsent(accountKey) {
+        return relocateLegacyMainCityIfNeeded(players.computeIfAbsent(accountKey) {
             repository.getOrCreate(accountKey, cityWid, roleName)
-        }
+        }, cityWid)
     }
 
     fun getOrCreate(userId: Int, cityWid: Int, roleName: String): PlayerState {
         val accountKey = "legacy-user-$userId"
-        return players.computeIfAbsent(accountKey) {
+        return relocateLegacyMainCityIfNeeded(players.computeIfAbsent(accountKey) {
             repository.findByAccount(accountKey)
                 ?: PlayerState(
                     userId = userId,
@@ -511,7 +617,7 @@ object PlayerStateRepository {
                     roleName = roleName,
                     accountKey = accountKey,
                 ).also(repository::save)
-        }
+        }, cityWid)
     }
 
     /**
@@ -551,6 +657,17 @@ object PlayerStateRepository {
 
     fun save(state: PlayerState) {
         repository.save(state)
+    }
+
+    private fun relocateLegacyMainCityIfNeeded(state: PlayerState, requestedCityWid: Int): PlayerState {
+        if (
+            state.cityWid == GameServerConfig.LEGACY_CITY_WID &&
+            requestedCityWid == GameServerConfig.CITY_WID
+        ) {
+            state.relocateMainCity(requestedCityWid)
+            repository.save(state)
+        }
+        return state
     }
 
     private fun defaultRoot() =

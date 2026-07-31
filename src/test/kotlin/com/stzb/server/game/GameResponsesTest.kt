@@ -199,6 +199,28 @@ class GameResponsesTest {
     }
 
     @Test
+    fun `hero advance notification updates advance count and removes consumed material`() {
+        val update = mapper.readTree(
+            GameResponses.heroAdvanceNotify(
+                heroUid = 4_200_006,
+                advanceNum = 5,
+                consumedMaterialUids = listOf(4_200_007),
+            ),
+        )
+
+        assertEquals(2, update.size())
+        assertEquals(2, update[0][0].asInt())
+        assertEquals("Tb_hero", update[0][1].asText())
+        assertEquals(
+            listOf(0, 4_200_006, 29, 5),
+            update[0][2].map { it.asInt() },
+        )
+        assertEquals(3, update[1][0].asInt())
+        assertEquals("Tb_hero", update[1][1].asText())
+        assertEquals(4_200_007, update[1][2].asInt())
+    }
+
+    @Test
     fun `card pack seen notify clears is new for every active extract row`() {
         val summonUids = listOf(7469, 7470, 7471)
 
@@ -439,7 +461,7 @@ class GameResponsesTest {
         assertEquals(1, response[0][0].asInt())
         assertEquals("Tb_user_build", response[0][1].asText())
         val row = response[0][2]
-        assertEquals(10001 * 1000 + 10, row[0].asInt())
+        assertEquals(HomeCity.userBuildId(10001, 10), row[0].asInt())
         assertEquals(10001, row[1].asInt())
         assertEquals(10, row[2].asInt())
         assertEquals(42, row[3].asInt())
@@ -535,6 +557,18 @@ class GameResponsesTest {
         assertTrue(response[8].isNull)
         assertEquals("", response[50].asText())
         assertEquals("", response[53].asText())
+    }
+
+    @Test
+    fun `land info defender counters match the configured resource land waves`() {
+        val wid = 15_011_503
+        val defenders = LandDefenderFactory()
+        val expectedTeamCount = defenders.teamCountForLevel(defenders.levelForWid(wid))
+
+        val response = mapper.readTree(GameResponses.landInfo(wid))
+
+        assertEquals(expectedTeamCount, response[10].asInt(), "npc_army_left")
+        assertEquals(expectedTeamCount, response[11].asInt(), "npc_army_total")
     }
 
     @Test
@@ -655,13 +689,39 @@ class GameResponsesTest {
                 userId = 42,
                 cityWid = 10001,
                 roleName = "主公",
-                occupiedLands = setOf(10002),
+                occupiedLands = setOf(10004),
             ),
         )
 
-        val land = response[14]["10002"]["0"]
+        val land = response[14]["10004"]["0"]
         assertEquals(2, land[0].asInt())
         assertEquals(42, land[2].asInt())
         assertEquals(10001, land[7].asInt())
+    }
+
+    @Test
+    fun `world scene exposes all eight owned main city suburbs`() {
+        val cityWid = 15_061_506
+        val response = mapper.readTree(
+            GameResponses.worldSceneFullInfo(
+                userId = 42,
+                cityWid = cityWid,
+                roleName = "主公",
+            ),
+        )
+
+        val chunks = response[14]
+        val suburbs = chunks.fields().asSequence()
+            .filter { (wid, _) -> wid.toInt() != cityWid }
+            .map { (_, value) -> value["0"] }
+            .toList()
+
+        assertEquals(8, suburbs.size)
+        assertTrue(suburbs.all {
+            it[0].asInt() == 5 &&
+                it[2].asInt() == 42 &&
+                it[7].asInt() == cityWid &&
+                it[12].asInt() == 0
+        })
     }
 }

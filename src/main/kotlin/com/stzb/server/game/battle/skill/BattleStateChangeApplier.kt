@@ -128,6 +128,7 @@ class SkillBattleState(
 ) {
     internal data class MutableHeroState(
         val entry: SkillBattleHeroState,
+        val inherentStats: BattleStats,
         var stats: BattleStats,
         var troops: Int,
         var woundedTroops: Int,
@@ -292,6 +293,7 @@ class SkillBattleState(
         )
         states[ref] = MutableHeroState(
             entry,
+            hero.inherentStats.copy(),
             entry.stats,
             entry.troops,
             entry.woundedTroops,
@@ -840,8 +842,10 @@ class BattleStateChangeApplier(
         targets.forEach { ref ->
             val mutable = state.mutable(ref)
             val entry = mutable.entry.stats
+            val inherent = mutable.inherentStats
             val values = BattleStatChange.Kind.entries.associateWith { kind ->
                 val base = entry.preciseValue(kind)
+                val percentBase = inherent.preciseValue(kind)
                 val modifiers = activeEntries(statModifiers)
                     .filter { (key, modifier) -> key.target == ref && modifier.kind == kind }
                 val flat = modifiers
@@ -850,7 +854,7 @@ class BattleStateChangeApplier(
                 val percent = modifiers
                     .filter { (_, modifier) -> modifier.unit == BattleEffectValueUnit.PERCENT }
                     .sumOf { (key, modifier) -> key.strength() * modifier.sign }
-                base + base * percent / 100.0 + flat
+                base + percentBase * percent / 100.0 + flat
             }
             mutable.stats = BattleStats.fromHundredths(
                 attack = (values.getValue(BattleStatChange.Kind.ATTACK) * 100).roundToInt(),

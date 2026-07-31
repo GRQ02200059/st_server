@@ -118,7 +118,7 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
-    fun `huangyi listener fires once when the third actual recovery succeeds`() {
+    fun `huangyi includes its source and listener fires twice after six recoveries`() {
         val request = BattleRequest(
             attacker = BattleTeam(
                 listOf(
@@ -149,9 +149,9 @@ class CompleteSkillEngineIntegrationTest {
         val events = engine.prepareBattle(context) +
             engine.trigger(BattleTrigger.BATTLE_COMMAND, context)
 
-        assertEquals(4, engine.state.runtime.count(source, BattleTrigger.RECOVERY_AFTER))
+        assertEquals(6, engine.state.runtime.count(source, BattleTrigger.RECOVERY_AFTER))
         assertEquals(
-            1,
+            2,
             events.filterIsInstance<BattleEvent.SkillTriggered>().count { it.skillId == 211016 },
         )
     }

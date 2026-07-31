@@ -758,7 +758,9 @@ class SkillRuleInterpreterTest {
             repository,
         )
         val realRule = catalogGraph.rule(210915)!!
-        val detail = catalogGraph.details.single { it.detailId == 21091503 }
+        val matchingDetails = catalogGraph.details.filter { it.detailId == 21091503 }
+        assertEquals(1, matchingDetails.size, "catalog detail 21091503 must be unique")
+        val detail = matchingDetails.single()
         val realGraph = graph(realRule.copy(details = listOf(detail)))
         val result = SkillRuleInterpreter(
             graph = realGraph,
@@ -769,8 +771,11 @@ class SkillRuleInterpreterTest {
             realRule.kind.toTrigger(),
             context(skillId = 210915),
         )
-        val change = result.stateChanges.filterIsInstance<MetaEffectChange>()
-            .single { it.detailId == detail.detailId }
+        val matchingChanges = result.stateChanges.filterIsInstance<MetaEffectChange>()
+            .filter { it.detailId == detail.detailId }
+        assertEquals(2, matchingChanges.size, "attack type 23 must include the source and its ally")
+        val change = matchingChanges.first()
+        assertTrue(matchingChanges.all { it.operation == change.operation && it.parameters == change.parameters })
 
         assertEquals(MetaEffectOperation.IGNORE_ENEMY_ATTRIBUTE, change.operation)
         assertEquals(MetaEffectParameters.from(detail), change.parameters)

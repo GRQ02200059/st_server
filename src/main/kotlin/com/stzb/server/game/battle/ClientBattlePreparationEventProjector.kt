@@ -157,7 +157,7 @@ internal object ClientBattlePreparationEventProjector {
                     event.skillId,
                     ClientBattleTextReplayProtocol.position(event.target),
                     event.effectId,
-                    event.amount,
+                    kotlin.math.abs(event.amount),
                 ),
             ),
         )

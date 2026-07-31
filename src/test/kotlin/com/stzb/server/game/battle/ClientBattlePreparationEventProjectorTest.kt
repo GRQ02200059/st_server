@@ -71,6 +71,26 @@ class ClientBattlePreparationEventProjectorTest {
     }
 
     @Test
+    fun `preparation reductions encode their positive magnitude in ja`() {
+        val defenderFront = BattleHeroRef(Side.DEFENDER, 2, BattleHeroId(4))
+
+        val actions = ClientBattlePreparationEventProjector.project(
+            BattleEvent.ModifierApplied(
+                round = 0,
+                source = defenderFront,
+                target = defenderFront,
+                skillId = 200773,
+                effectId = 522,
+                amount = -37,
+                durationRounds = 3,
+            ),
+            {},
+        )
+
+        assertEquals(listOf("ja4,200773,4,522,37"), actions.map(ClientReportAction::encode))
+    }
+
+    @Test
     fun `unverified derived preparation skill is diagnosed instead of becoming 8c`() {
         val diagnostics = mutableListOf<String>()
 

@@ -79,7 +79,7 @@ class UserInitTableBuilderTest {
         val buildings = tables.getValue("Tb_user_build")[1]
         assertEquals(2, buildings.size())
         val palace = buildings.first { it[2].asInt() == 10 }
-        assertEquals(10001 * 1000 + 10, palace[0].asInt())
+        assertEquals(HomeCity.userBuildId(10001, 10), palace[0].asInt())
         assertEquals(10001, palace[1].asInt())
         assertEquals(10, palace[2].asInt())
         assertEquals(42, palace[3].asInt())
@@ -125,7 +125,7 @@ class UserInitTableBuilderTest {
 
         val worldCity = tables.getValue("Tb_world_city")[1][0]
         assertEquals("", worldCity[4].asText())
-        assertEquals(1, worldCity[11].asInt())
+        assertEquals(0, worldCity[11].asInt())
 
         val activity = tables.getValue("Tb_activity")[1][0]
         assertEquals(875, activity[1].asInt())
@@ -175,7 +175,7 @@ class UserInitTableBuilderTest {
 
         val tables = snapshot.drop(1).associateBy { it[0].asText() }
         val heroes = tables.getValue("Tb_hero")[1]
-        assertEquals(2, heroes.size())
+        assertEquals(4, heroes.size())
         assertEquals(first.heroUid, heroes[0][0].asInt())
         assertEquals(100017, heroes[0][1].asInt())
         assertEquals(PlayerHero.MAX_STAMINA, heroes[0][7].asInt())
@@ -249,6 +249,73 @@ class UserInitTableBuilderTest {
         assertEquals(1, normal[13].asInt())
         assertEquals(0, achievement[6].asInt())
         assertTrue("Tb_hero_achieve" !in tables)
+    }
+
+    @Test
+    fun `snapshot unlocks every army and city facade and creates a normal nine tile main city`() {
+        val cityWid = 15_061_506
+        val userId = 46
+        val snapshot = UserInitTableBuilder.build(
+            userId = userId,
+            cityWid = cityWid,
+            roleName = "主公",
+            serverOpenTime = 1_700_000_000L,
+        )
+
+        val tables = snapshot.drop(1).associateBy { it[0].asText() }
+        val armyFacades = tables.getValue("Tb_user_army_facade_card")[1]
+        val cityFacades = tables.getValue("Tb_user_build_facade")[1]
+        assertEquals(12, armyFacades.size())
+        assertEquals(157, cityFacades.size())
+        assertTrue(armyFacades.all { it[2].asInt() > 0 && it[5].asInt() == 0 })
+        assertTrue(cityFacades.all { it[1].asInt() > 0 && it[3].asInt() == 0 && it[5].asInt() == 0 })
+
+        val worldCities = tables.getValue("Tb_world_city")[1]
+        assertEquals(9, worldCities.size())
+        val mainCity = worldCities.single { it[0].asInt() == cityWid }
+        assertEquals(1, mainCity[1].asInt())
+        assertEquals(userId, mainCity[6].asInt())
+        assertEquals(0, mainCity[11].asInt())
+
+        val suburbs = worldCities.filter { it[0].asInt() != cityWid }
+        assertTrue(suburbs.all {
+            it[1].asInt() == 5 &&
+                it[6].asInt() == userId &&
+                it[21].asInt() == cityWid
+        })
+
+        val buildings = tables.getValue("Tb_user_build")[1]
+        assertEquals(1_506_150_610, buildings.single { it[2].asInt() == 10 }[0].asInt())
+    }
+
+    @Test
+    fun `snapshot gives every playable hero a visible advance count and one material card`() {
+        val root = createTempDirectory("stzb-advance-snapshot")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val state = PlayerStateRepository.getOrCreate(userId = 48, cityWid = 10048, roleName = "主公")
+            val target = state.addHero(100017, nowSec = 1_700_000_000)
+
+            val snapshot = UserInitTableBuilder.build(
+                userId = state.userId,
+                cityWid = state.cityWid,
+                roleName = state.roleName,
+                serverOpenTime = 1_700_000_000L,
+            )
+            val heroes = snapshot.drop(1)
+                .associateBy { it[0].asText() }
+                .getValue("Tb_hero")[1]
+                .filter { it[1].asInt() == target.heroId }
+
+            assertEquals(2, heroes.size)
+            assertEquals(
+                HeroCatalog.heroQuality(target.heroId),
+                heroes.single { it[0].asInt() == target.heroUid }[29].asInt(),
+            )
+            assertEquals(0, heroes.single { it[0].asInt() != target.heroUid }[29].asInt())
+        } finally {
+            PlayerStateRepository.reset()
+        }
     }
 
     private fun cardExtractRows(snapshot: com.fasterxml.jackson.databind.node.ArrayNode) =

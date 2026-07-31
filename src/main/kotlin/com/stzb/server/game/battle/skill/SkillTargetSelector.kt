@@ -101,7 +101,7 @@ class SkillTargetSelector(
 
         val limit = raw.attackMax.coerceAtLeast(1)
         return when (raw.selectType) {
-            SELECT_RANDOM -> randomWithoutReplacement(candidates, limit, context)
+            SELECT_RANDOM -> selectRandom(rule, candidates, limit, context)
             SELECT_MINIMUM -> selectByAttribute(candidates, raw.selectAttri, view, minimum = true)
             SELECT_FARTHEST -> candidates.maxByOrNull { formationDistance(context.source, it) }?.let(::listOf).orEmpty()
             SELECT_BASE -> candidates.filter { it.position == BASE_POSITION }.take(1)
@@ -145,6 +145,23 @@ class SkillTargetSelector(
         }
     }
 
+    private fun selectRandom(
+        rule: SkillEffectRule,
+        candidates: List<BattleHeroRef>,
+        limit: Int,
+        context: SkillBattleContext,
+    ): List<BattleHeroRef> {
+        val selected = context.targetDecisions.select(
+            BattleTargetDecisionRequest(rule, context, candidates, limit),
+        ) ?: return randomWithoutReplacement(candidates, limit, context)
+        val diagnostic =
+            "detail=${rule.detailId}, source=${context.source}, candidates=$candidates, selected=$selected, limit=$limit"
+        require(selected.size <= limit) { "Replayed target count exceeds limit: $diagnostic" }
+        require(selected.distinct().size == selected.size) { "Replayed targets contain duplicates: $diagnostic" }
+        require(selected.all(candidates::contains)) { "Replayed target is outside live candidates: $diagnostic" }
+        return selected
+    }
+
     private fun seedCandidates(
         selectType: Int,
         attackType: Int,
@@ -165,8 +182,8 @@ class SkillTargetSelector(
         val view = context.battleView
         return when (normalized) {
             0 -> listOf(source)
-            11, 13, 23 -> view.heroes().filter { it.side == source.side && it != source }
-            21, 24 -> view.heroes().filter { it.side == source.side }
+            11, 13 -> view.heroes().filter { it.side == source.side && it != source }
+            21, 23, 24 -> view.heroes().filter { it.side == source.side }
             41, 43, 94, 95, 96, 97 -> view.heroes().filter { it.side == source.side.opposite() }
             81 -> listOfNotNull(view.previousTarget(baseHero(view, source.side)))
             98 -> listOfNotNull(view.linkedTarget(source))

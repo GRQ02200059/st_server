@@ -387,6 +387,17 @@ class DefaultBattleValueCalculator(
                 configured.rawCoefficient * source.stats.precise(BattleStat.STRATEGY) / 200.0
             return TypedBattlePotency.rate((ratio * raw / 100.0).roundToInt())
         }
+        if (rule.detailId in 20002301..20002304 &&
+            configured.unit == BattleEffectValueUnit.PERCENT
+        ) {
+            val level = skillLevel.coerceIn(1, 10)
+            val ratio = rule.raw.initEffectRatio +
+                (level - 1) * (100 - rule.raw.initEffectRatio) / 9.0
+            val raw = configured.rawConstant / 1_000_000.0 +
+                configured.rawCoefficient / 1_000_000.0 *
+                source.stats.precise(BattleStat.STRATEGY) / 200.0
+            return TypedBattlePotency.percent((ratio * raw / 100.0).roundToInt())
+        }
         val scale = when (configured.unit) {
             BattleEffectValueUnit.FLAT -> 1.0
             BattleEffectValueUnit.RATE -> 1.0

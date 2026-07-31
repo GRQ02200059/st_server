@@ -42,6 +42,7 @@ object Cmd {
     const val CARD_ADD_POINT = 80
     const val CARD_WASH_POINT = 81
     const val CARD_PROTECT = 82
+    const val HERO_ADVANCE = 83
     const val CARD_SAVE_POINT_PLAN = 185
     const val CARD_CHANGE_POINT_PLAN = 186
     const val CARD_EXTRACT_SWITCH = 300
@@ -85,8 +86,12 @@ object GameServerConfig {
     // AVD 联调时可改回 10.0.2.2; 同网段真机直连可改为 Mac 局域网 IP。
     const val DEFAULT_HOST = "127.0.0.1"
     const val ROLE_NAME = "主公"
-    /** 主城 wid (= Tb_user.city_wid = Tb_user_city.city_wid = Tb_world_city.wid)。 */
-    const val CITY_WID = 100001
+    /**
+     * 洛阳 (15011501) 东南约五格的 3x3 空地中心。已核对 cfg-5 静态城池表，
+     * 该九格范围不与洛阳本体或其它静态城池重叠。
+     */
+    const val CITY_WID = 15_061_506
+    const val LEGACY_CITY_WID = 100_001
     /** 开服秒级时间戳 (固定一个较早的值, 让各种 end_time 判定处于 "已过期/无进行中")。 */
     const val OPEN_TIME_SEC = 1_600_000_000L
 

@@ -132,6 +132,39 @@ class PlayerStatePersistenceTest {
     }
 
     @Test
+    fun `advance count and material card state survive snapshot restore`() {
+        val state = PlayerState(userId = 43, cityWid = 10043, roleName = "主公")
+        val target = state.addHero(100017, nowSec = 1_700_000_000)
+        val material = state.ensureAdvanceMaterials(nowSec = 1_700_000_000).single()
+
+        val result = state.advanceHero(target.heroUid, listOf(material.heroUid))
+        val restored = PlayerState.fromSnapshot(state.toSnapshot())
+
+        assertEquals(5, result?.hero?.advanceNum)
+        assertEquals(5, restored.hero(target.heroUid)?.advanceNum)
+        assertFalse(restored.hero(target.heroUid)?.isAdvanceMaterial ?: true)
+        assertEquals(null, restored.hero(material.heroUid))
+    }
+
+    @Test
+    fun `relocating main city preserves team and clears old world state`() {
+        val state = PlayerState(userId = 44, cityWid = 100001, roleName = "主公")
+        val hero = state.addHero(100017)
+        state.saveTeam(listOf(hero.heroUid))
+        state.occupyLand(100002)
+        state.startMarch(targetWid = 100003, nowSec = 1_700_000_000)
+
+        state.relocateMainCity(15_061_506)
+
+        assertEquals(15_061_506, state.cityWid)
+        assertEquals(listOf(hero.heroUid, 0, 0), state.teamHeroes())
+        assertEquals(150_615_061, state.primaryArmyId())
+        assertEquals(150_615_061, state.hero(hero.heroUid)?.armyId)
+        assertTrue(state.occupiedLands().isEmpty())
+        assertTrue(state.activeMarches().isEmpty())
+    }
+
+    @Test
     fun `snapshot restores account heroes resources buildings team and march`() {
         val state = PlayerState(
             userId = 101,

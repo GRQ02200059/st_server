@@ -342,8 +342,24 @@ object GameResponses {
                 add("")       // 13: city build data
                 repeat(7) { add(0) } // 14..20: clan/link/view metadata
             }
+            HomeCity.suburbWids(cityWid).forEach { suburbWid ->
+                putObject(suburbWid.toString()).putArray("0").apply {
+                    add(5)        // 0: CityType.PLAYER_SUBURB
+                    add(0)        // 1: city_param
+                    add(userId)   // 2: owner user id
+                    add(0)        // 3: union id
+                    add(0)        // 4: protect_end_time
+                    add("")       // 5: facade
+                    add("")       // 6: name
+                    add(cityWid)  // 7: belong city
+                    repeat(4) { add(0) } // 8..11: state/times
+                    add(0)        // 12: UserForceType.NORMAL
+                    add("")       // 13: city build data
+                    repeat(7) { add(0) } // 14..20: clan/link/view metadata
+                }
+            }
             occupiedLands
-                .filter { it > 0 && it != cityWid }
+                .filter { it > 0 && it != cityWid && it !in HomeCity.suburbWids(cityWid) }
                 .sorted()
                 .forEach { landWid ->
                     putObject(landWid.toString()).putArray("0").apply {
@@ -478,6 +494,30 @@ object GameResponses {
                             .add(24).add(1),
                     ),
             ),
+        )
+
+    /**
+     * cmd 83 itself is body-agnostic in the client. The visible card update is
+     * driven by this 90005 packet: update advance_num, then remove each
+     * consumed same-name material card by primary key.
+     */
+    fun heroAdvanceNotify(
+        heroUid: Int,
+        advanceNum: Int,
+        consumedMaterialUids: Collection<Int>,
+    ): String =
+        mapper.writeValueAsString(
+            nf.arrayNode().apply {
+                add(
+                    nf.arrayNode()
+                        .add(2)
+                        .add("Tb_hero")
+                        .add(nf.arrayNode().add(0).add(heroUid).add(29).add(advanceNum)),
+                )
+                consumedMaterialUids.distinct().forEach { materialUid ->
+                    add(nf.arrayNode().add(3).add("Tb_hero").add(materialUid))
+                }
+            },
         )
 
     fun cardPacksSeenNotify(summonUids: Collection<Int>): String {
@@ -724,7 +764,13 @@ object GameResponses {
             add(hero.skillString()) // 22 skill
             add(0) // 23 gearid_u
             add(1) // 24 awake_state
-            repeat(7) { add(0) } // 25..31 state fields
+            add(0) // 25 lock_state
+            add(0) // 26 wounded_soldier
+            add(0) // 27 dead_soldier
+            add(0) // 28 hide_hp
+            add(hero.advanceNum) // 29 advance_num
+            add(0) // 30 second_skill_effect
+            add(0) // 31 hero_type_effect
             add(hero.heroType) // 32 hero_type
             add("") // 33 hero_type_ext
             add("") // 34 hero_type_availible
@@ -763,7 +809,7 @@ object GameResponses {
 
     private fun tbUserBuild(userId: Int, cityWid: Int, buildId: Int, level: Int): ArrayNode =
         nf.arrayNode().apply {
-            add(cityWid * 1000 + buildId) // 0 id
+            add(HomeCity.userBuildId(cityWid, buildId)) // 0 id
             add(cityWid)                  // 1 city_wid
             add(buildId)                  // 2 build_id
             add(userId)                   // 3 userid

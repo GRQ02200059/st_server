@@ -222,6 +222,7 @@ data class SkillBattleContext(
     val currentSkillId: Int,
     val trigger: BattleTrigger,
     val battleView: SkillBattleView = SkillBattleView.entrySnapshot(request),
+    val targetDecisions: BattleTargetDecisionSource = BattleTargetDecisionSource.NONE,
 )
 
 data class PreparedSkill(

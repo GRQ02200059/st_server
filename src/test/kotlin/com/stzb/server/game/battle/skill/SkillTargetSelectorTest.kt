@@ -54,7 +54,7 @@ class SkillTargetSelectorTest {
             11 to listOf(allyBase, allyMiddle),
             13 to listOf(allyBase, allyMiddle),
             21 to listOf(allyBase, allyMiddle, source),
-            23 to listOf(allyBase, allyMiddle),
+            23 to listOf(allyBase, allyMiddle, source),
             24 to listOf(allyBase, allyMiddle, source),
             41 to listOf(enemyFront, enemyMiddle),
             43 to listOf(enemyFront, enemyMiddle),
@@ -822,6 +822,54 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `random selector uses a replayed decision without consuming random`() {
+        val random = SequenceRandom(2, 0)
+        val decisions = BattleTargetDecisionSource { request ->
+            assertEquals(1, request.rule.detailId)
+            assertEquals(source, request.context.source)
+            assertEquals(listOf(enemyFront, enemyMiddle, enemyBase), request.candidates)
+            assertEquals(2, request.limit)
+            listOf(enemyMiddle, enemyBase)
+        }
+
+        assertEquals(
+            listOf(enemyMiddle, enemyBase),
+            select(
+                rule(selectType = 0, attackMax = 2),
+                context(view(sourceRange = 5), random, targetDecisions = decisions),
+            ),
+        )
+        assertTrue(random.bounds.isEmpty())
+    }
+
+    @Test
+    fun `random selector rejects a replayed target outside its live candidates`() {
+        val decisions = BattleTargetDecisionSource { listOf(allyBase) }
+
+        val failure = assertFailsWith<IllegalArgumentException> {
+            select(
+                rule(detailId = 77, selectType = 0),
+                context(view(sourceRange = 5), targetDecisions = decisions),
+            )
+        }
+
+        assertTrue(failure.message.orEmpty().contains("detail=77"))
+        assertTrue(failure.message.orEmpty().contains("selected="))
+        assertTrue(failure.message.orEmpty().contains("candidates="))
+
+        val duplicateFailure = assertFailsWith<IllegalArgumentException> {
+            select(
+                rule(detailId = 78, selectType = 0, attackMax = 2),
+                context(
+                    view(sourceRange = 5),
+                    targetDecisions = BattleTargetDecisionSource { listOf(enemyFront, enemyFront) },
+                ),
+            )
+        }
+        assertTrue(duplicateFailure.message.orEmpty().contains("duplicates"))
+    }
+
+    @Test
     fun `random group chooses deterministic positive count then samples without replacement`() {
         val random = SequenceRandom(1, 0, 1)
         val context = context(view(sourceRange = 5), random)
@@ -951,6 +999,7 @@ class SkillTargetSelectorTest {
             attacker = BattleTeam(emptyList()),
             defender = BattleTeam(emptyList()),
         ),
+        targetDecisions: BattleTargetDecisionSource = BattleTargetDecisionSource.NONE,
     ) = SkillBattleContext(
         request = request,
         runtime = runtime,
@@ -961,6 +1010,7 @@ class SkillTargetSelectorTest {
         currentSkillId = 1,
         trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
         battleView = view,
+        targetDecisions = targetDecisions,
     )
 
     private fun view(

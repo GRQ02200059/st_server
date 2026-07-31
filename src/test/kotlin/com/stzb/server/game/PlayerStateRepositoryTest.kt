@@ -1,5 +1,6 @@
 package com.stzb.server.game
 
+import com.stzb.server.protocol.GameServerConfig
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,6 +23,36 @@ class PlayerStateRepositoryTest {
             assertEquals(first.userId, restored.userId)
             assertEquals(hero.heroUid, restored.allHeroes().single().heroUid)
             assertNotEquals(first, restored)
+        } finally {
+            PlayerStateRepository.reset()
+        }
+    }
+
+    @Test
+    fun `legacy default city is relocated to the Luoyang main city on next login`() {
+        val root = createTempDirectory("stzb-city-relocation")
+        try {
+            val repository = FilePlayerRepository(root)
+            val oldState = PlayerState(
+                userId = 10_001,
+                cityWid = GameServerConfig.LEGACY_CITY_WID,
+                roleName = "主公",
+                accountKey = "local-dev-account",
+            )
+            val hero = oldState.addHero(100017)
+            oldState.saveTeam(listOf(hero.heroUid))
+            repository.save(oldState)
+            PlayerStateRepository.configure(repository)
+
+            val relocated = PlayerStateRepository.getOrCreate(
+                accountKey = "local-dev-account",
+                cityWid = GameServerConfig.CITY_WID,
+                roleName = "主公",
+            )
+
+            assertEquals(GameServerConfig.CITY_WID, relocated.cityWid)
+            assertEquals(listOf(hero.heroUid, 0, 0), relocated.teamHeroes())
+            assertEquals(relocated.primaryArmyId(), relocated.hero(hero.heroUid)?.armyId)
         } finally {
             PlayerStateRepository.reset()
         }

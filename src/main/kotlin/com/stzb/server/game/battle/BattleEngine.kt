@@ -1,6 +1,7 @@
 package com.stzb.server.game.battle
 
 import com.stzb.server.game.battle.skill.BattleTrigger
+import com.stzb.server.game.battle.skill.BattleTargetDecisionSource
 import com.stzb.server.game.battle.skill.DefaultCompleteSkillEngine
 import com.stzb.server.game.battle.skill.SkillBattleContext
 
@@ -14,12 +15,14 @@ object BattleEngine {
         request: BattleRequest,
         config: BattleConfigRepository,
         random: BattleRandom = SeededBattleRandom(0),
-    ): BattleResult = resolveComplete(request, config, random)
+        targetDecisions: BattleTargetDecisionSource = BattleTargetDecisionSource.NONE,
+    ): BattleResult = resolveComplete(request, config, random, targetDecisions)
 
     private fun resolveComplete(
         request: BattleRequest,
         config: BattleConfigRepository,
         random: BattleRandom,
+        targetDecisions: BattleTargetDecisionSource,
     ): BattleResult {
         val engine = DefaultCompleteSkillEngine.create(request, config)
         val events = mutableListOf<BattleEvent>(BattleEvent.BattleStart)
@@ -39,6 +42,7 @@ object BattleEngine {
             currentSkillId = 0,
             trigger = trigger,
             battleView = engine.state.view,
+            targetDecisions = targetDecisions,
         )
         fun result(outcome: BattleOutcome): BattleResult =
             BattleResult(

@@ -80,12 +80,13 @@ object UserInitTableBuilder {
         val state = accountKey?.let {
             PlayerStateRepository.getOrCreate(it, cityWid, roleName)
         } ?: PlayerStateRepository.getOrCreate(userId, cityWid, roleName)
+        state.ensureAdvanceMaterials()
         val root = nf.arrayNode()
         root.add(schema)                                   // [0] schema
         root.add(table("Tb_user", tbUser(state)))
         root.add(table("Tb_user_res", tbUserRes(state)))
         root.add(table("Tb_user_city", tbUserCity(userId, cityWid, serverOpenTime)))
-        root.add(table("Tb_world_city", tbWorldCity(userId, cityWid, roleName, serverOpenTime)))
+        root.add(table("Tb_world_city", *tbWorldCities(userId, cityWid, roleName).toTypedArray()))
         root.add(
             table(
                 "Tb_user_build",
@@ -138,6 +139,22 @@ object UserInitTableBuilder {
                 }.toTypedArray(),
             ),
         )
+        root.add(
+            table(
+                "Tb_user_army_facade_card",
+                *FacadeCatalog.armyFacadeIds.map { facadeId ->
+                    tbUserArmyFacadeCard(userId, facadeId)
+                }.toTypedArray(),
+            ),
+        )
+        root.add(
+            table(
+                "Tb_user_build_facade",
+                *FacadeCatalog.cityFacadeIds.map { facadeId ->
+                    tbUserBuildFacade(userId, facadeId)
+                }.toTypedArray(),
+            ),
+        )
         root.add(table("Tb_user_stuff", tbUserStuff(userId)))
         root.add(table("Tb_user_stuff_ex", tbUserStuffEx(userId)))
         root.add(table("Tb_user_stuff_one", tbUserStuffOne(userId)))
@@ -164,8 +181,6 @@ object UserInitTableBuilder {
             "Tb_user_temp_policy",
             "Tb_user_policy_mark",
             "Tb_world_mark",
-            "Tb_user_army_facade_card",
-            "Tb_user_build_facade",
         )
         return root
     }
@@ -313,26 +328,42 @@ object UserInitTableBuilder {
             .i(10, 0)                     // end_time (0 => 无建造)
             .arr
 
+    /**
+     * 主城中心加八个 PLAYER_SUBURB 副格必须同时存在于登录快照中。世界地图
+     * 还会在 5026 中重发同一份归属信息，客户端才能正确渲染完整的自有九格。
+     */
+    private fun tbWorldCities(userId: Int, cityWid: Int, roleName: String): List<ArrayNode> =
+        listOf(tbWorldCity(userId, cityWid, cityType = 1, roleName = roleName, belongCity = 0)) +
+            HomeCity.suburbWids(cityWid).map { suburbWid ->
+                tbWorldCity(userId, suburbWid, cityType = 5, roleName = "", belongCity = cityWid)
+            }
+
     /** Tb_world_city: 0=wid,1=city_type,5=name(string),6=userid,11=force_type,
-     *  12=durability_cur,13=durability_max,19=end_time,22=state。
-     *  end_time=0 会让 CheckWeakState 提前返回 (安全)。 */
-    private fun tbWorldCity(userId: Int, cityWid: Int, roleName: String, serverOpenTime: Long): ArrayNode =
+     *  12=durability_cur,13=durability_max,19=end_time,21=belong_city,22=state。 */
+    private fun tbWorldCity(
+        userId: Int,
+        wid: Int,
+        cityType: Int,
+        roleName: String,
+        belongCity: Int,
+    ): ArrayNode =
         row("Tb_world_city")
-            .i(0, cityWid)                // wid == MainPos
-            .i(1, 1)                      // city_type = 主城
+            .i(0, wid)
+            .i(1, cityType)
             .s(5, roleName)               // name
             .i(6, userId)                 // userid
-            .i(11, 1)                     // force_type
+            .i(11, 0)                     // force_type = UserForceType.NORMAL
             .i(12, 10000)                 // durability_cur
             .i(13, 10000)                 // durability_max
             .i(19, 0)                     // end_time = 0
+            .i(21, belongCity)
             .i(22, 0)                     // state
             .arr
 
     /** Tb_user_build: 主城建筑。build_id=10 是城主府，升级 UI 通过 Tb_user_build 读取等级。 */
     private fun tbUserBuild(userId: Int, cityWid: Int, buildId: Int, level: Int): ArrayNode =
         row("Tb_user_build")
-            .i(0, cityWid * 1000 + buildId)
+            .i(0, HomeCity.userBuildId(cityWid, buildId))
             .i(1, cityWid)
             .i(2, buildId)
             .i(3, userId)
@@ -434,6 +465,7 @@ object UserInitTableBuilder {
             .i(21, 0)
             .s(22, hero.skillString())       // skill: persistent three-slot state
             .i(24, 1)                        // awake_state: default awakened
+            .i(29, hero.advanceNum)           // advance_num: 卡面进阶星数
             .i(32, hero.heroType)          // hero_type
             .s(33, "")
             .s(34, "")
@@ -484,6 +516,35 @@ object UserInitTableBuilder {
             .i(10, 0)
             .s(11, "").s(12, "")
             .i(13, 1) // already read
+            .arr
+
+    /** 行军外观: facade_heroid>0 且 cfg_hero_id=0 表示永久通用持有。 */
+    private fun tbUserArmyFacadeCard(userId: Int, facadeId: Int): ArrayNode =
+        row("Tb_user_army_facade_card")
+            .i(0, facadeId)
+            .i(1, userId)
+            .i(2, facadeId)
+            .i(3, 0)
+            .i(4, 0)
+            .i(5, 0)
+            .i(6, 0)
+            .i(7, 0)
+            .arr
+
+    /** 主城外观: end_time=0 为永久，active_wid=0 表示已拥有但尚未装备。 */
+    private fun tbUserBuildFacade(userId: Int, facadeId: Int): ArrayNode =
+        row("Tb_user_build_facade")
+            .i(0, facadeId)
+            .i(1, facadeId)
+            .i(2, userId)
+            .i(3, 0)
+            .i(4, 0)
+            .i(5, 0)
+            .i(6, 0)
+            .i(7, 0)
+            .i(8, 0)
+            .i(9, 0)
+            .i(10, 0)
             .arr
 
     /** Tb_user_stuff: 0=userid,3=protected_popup,62=occupy_land_level(string)。

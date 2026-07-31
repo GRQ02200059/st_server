@@ -13,12 +13,23 @@ class OfficialPreparationReportDiffTest {
     fun `representative official preparation report remains structurally compatible`() {
         val config = BattleConfigRepository.loadDefault()
         val officialActions = OfficialReportFixture.read(officialReport)
+        val officialPreparation = OfficialReportFixture.preparation(officialActions)
         val request = OfficialReportFixture.reconstructBattleRequest(officialActions, config)
 
-        val firstResult = BattleEngine.resolve(request, config, FixedBattleRandom(0))
+        val firstResult = BattleEngine.resolve(
+            request,
+            config,
+            FixedBattleRandom(0),
+            OfficialReportFixture.targetDecisions(officialPreparation),
+        )
         val firstText = ClientReportTextEncoder.encode(firstResult)
         val secondText = ClientReportTextEncoder.encode(
-            BattleEngine.resolve(request, config, FixedBattleRandom(0)),
+            BattleEngine.resolve(
+                request,
+                config,
+                FixedBattleRandom(0),
+                OfficialReportFixture.targetDecisions(officialPreparation),
+            ),
         )
         assertEquals(firstText, secondText, "fixed-random report projection must be deterministic")
         val appliedEffectIds = firstResult.events
@@ -29,7 +40,6 @@ class OfficialPreparationReportDiffTest {
         assertTrue(702 in appliedEffectIds, "hesitation must retain configured effect 702")
         assertTrue(752 in appliedEffectIds, "disarm must retain configured effect 752")
 
-        val officialPreparation = OfficialReportFixture.preparation(officialActions)
         val generatedPreparation =
             OfficialReportFixture.preparation(OfficialReportFixture.parseText(firstText))
         val officialJa = OfficialReportFixture.jaTuples(officialPreparation)
@@ -91,8 +101,25 @@ class OfficialPreparationReportDiffTest {
             "generated common action families use parameter widths absent from the official report",
         )
         assertEquals(25, officialJa.size, "reviewed paper fixture ja count changed")
-        assertEquals(23, generatedJa.size, "preparation ja parity milestone regressed")
+        assertEquals(
+            25,
+            generatedJa.size,
+            "preparation ja exact parity regressed; missing=${officialJa - generatedJa.toSet()}; " +
+                "extra=${generatedJa - officialJa.toSet()}",
+        )
         assertEquals(generatedJa, repeatedGeneratedJa, "generated ja tuples must be deterministic")
+        val tupleOrdering = compareBy<OfficialReportFixture.JaTuple>(
+            { it.sourcePosition },
+            { it.sourceId },
+            { it.targetPosition },
+            { it.effectId },
+            { it.amount },
+        )
+        assertEquals(
+            officialJa.sortedWith(tupleOrdering),
+            generatedJa.sortedWith(tupleOrdering),
+            "generated preparation ja tuples must exactly match the paper multiset",
+        )
         assertTrue(generatedJa.none { it.sourceId == 223006 })
         assertTrue(
             generatedJa.containsAll(

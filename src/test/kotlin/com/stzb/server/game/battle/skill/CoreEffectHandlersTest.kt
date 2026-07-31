@@ -568,7 +568,7 @@ class CoreEffectHandlersTest {
         val config = BattleConfigRepository.loadDefault()
         val graph = SkillRuleCatalog.build(
             SkillScope(
-                fiveStarInitialSkillIds = setOf(200198),
+                fiveStarInitialSkillIds = setOf(200023, 200198),
                 learnableSaSkillIds = emptySet(),
             ),
             config,
@@ -601,6 +601,14 @@ class CoreEffectHandlersTest {
                 skillLevel = 7,
             ),
         )
+        assertEquals(
+            TypedBattlePotency.percent(22),
+            calculator.effectValue(
+                graph.detail(20002303),
+                source(23_640),
+                skillLevel = 10,
+            ),
+        )
     }
 
     @Test
@@ -625,7 +633,7 @@ class CoreEffectHandlersTest {
             calculator.effectValue(graph.detail(20000712), source),
         )
         assertEquals(
-            TypedBattlePotency.percent(11),
+            TypedBattlePotency.percent(8),
             calculator.effectValue(graph.detail(20002301), source),
         )
         listOf(29500101 to 500_000).forEach { (detailId, raw) ->

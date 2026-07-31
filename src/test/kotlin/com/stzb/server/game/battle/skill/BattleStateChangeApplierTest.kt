@@ -195,6 +195,45 @@ class BattleStateChangeApplierTest {
     }
 
     @Test
+    fun `percent stat modifiers use inherent stats while preserving entry bonuses`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(BattleHero(source.heroId, source.position, BattleStats(100, 100, 100, 100, 10, 3), 1_000)),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    BattleHero(
+                        id = target.heroId,
+                        position = target.position,
+                        stats = BattleStats.fromHundredths(13_150, 10_000, 10_000, 10_000, 1_000, 3),
+                        troops = 1_000,
+                        inherentStats = BattleStats(100, 100, 100, 100, 10, 3),
+                    ),
+                ),
+            ),
+        )
+        val state = SkillBattleState(request, SkillRuntimeState())
+        val result = BattleStateChangeApplier(state).apply(
+            listOf(
+                BattleStatChange(
+                    source,
+                    target,
+                    BattleStatChange.Kind.ATTACK,
+                    TypedBattlePotency.percent(-22),
+                    durationRounds = 8,
+                    skillId = 200023,
+                    effectId = 201,
+                ),
+            ),
+            round = 0,
+        )
+
+        val output = result.outputs.filterIsInstance<BattleStateOutput.StatChanged>().single()
+        assertEquals(-22.0, output.deltaExact, 0.001)
+        assertEquals(109.5, output.valueAfterExact, 0.001)
+    }
+
+    @Test
     fun `recovery is capped by live maximum troops`() {
         val fixture = fixture(targetTroops = 990)
 

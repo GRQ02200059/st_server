@@ -6,6 +6,7 @@ import com.stzb.server.game.PlayerStateRepository
 import com.stzb.server.game.battle.ClientBattleReportStore
 import com.stzb.server.protocol.Cmd
 import com.stzb.server.protocol.DownPacket
+import com.stzb.server.protocol.GameServerConfig
 import com.stzb.server.protocol.UpFlag
 import com.stzb.server.protocol.UpPacket
 import io.netty.buffer.ByteBuf
@@ -104,6 +105,43 @@ class GameServerHandlerProtocolTest {
         val response = assertIs<DownPacket>(channel.readOutbound<Any>())
         val returnedBattleId = mapper.readTree(response.body)[1]["battle_id"].asInt()
         assertNotEquals(foreignReport.battleId, returnedBattleId)
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `hero advance consumes same name material and notifies advance count`() {
+        val channel = newChannel()
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("session should exist")
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = session.accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = GameServerConfig.ROLE_NAME,
+        )
+        val target = state.addHero(100017, nowSec = 1_700_000_000)
+        val material = state.ensureAdvanceMaterials(nowSec = 1_700_000_000)
+            .single { it.heroId == target.heroId }
+        PlayerStateRepository.save(state)
+
+        channel.writeInbound(
+            upPacket(
+                Cmd.HERO_ADVANCE,
+                """[${target.heroUid},[${material.heroUid}]]""",
+                userId = session.userId,
+            ),
+        )
+
+        val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.HERO_ADVANCE, response.cmd)
+        assertEquals("[]", response.body.toString(Charsets.UTF_8))
+
+        val notify = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.SYS_NOTIFY_DB_UPDATE, notify.cmd)
+        val changes = mapper.readTree(notify.body)
+        assertEquals(listOf(0, target.heroUid, 29, 5), changes[0][2].map { it.asInt() })
+        assertEquals(3, changes[1][0].asInt())
+        assertEquals(material.heroUid, changes[1][2].asInt())
+        assertEquals(5, state.hero(target.heroUid)?.advanceNum)
+        assertNull(state.hero(material.heroUid))
         channel.finishAndReleaseAll()
     }
 

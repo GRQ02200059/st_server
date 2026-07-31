@@ -179,6 +179,7 @@ data class BattleHero(
     val modifiers: List<BattleModifier> = emptyList(),
     val advanceLevel: Int = 0,
     val morale: Int = 100,
+    val inherentStats: BattleStats = stats,
 )
 
 data class BattleEquipmentSlot(
