@@ -159,6 +159,19 @@ object UserInitTableBuilder {
                 }.toTypedArray(),
             ),
         )
+        val grantedGears = InventoryCatalog.normalWeapons() + InventoryCatalog.hongjiCopies()
+        root.add(
+            table(
+                "Tb_gear",
+                *grantedGears.map { gear -> tbGear(playerId, gear) }.toTypedArray(),
+            ),
+        )
+        root.add(
+            table(
+                "Tb_user_item",
+                *InventoryCatalog.items().map { item -> tbUserItem(playerId, item) }.toTypedArray(),
+            ),
+        )
         root.add(table("Tb_user_stuff", tbUserStuff(playerId)))
         root.add(table("Tb_user_stuff_ex", tbUserStuffEx(playerId)))
         root.add(table("Tb_user_stuff_one", tbUserStuffOne(playerId)))
@@ -169,7 +182,6 @@ object UserInitTableBuilder {
             root,
             "Tb_hero_temp",
             "Tb_hero_identity",
-            "Tb_gear",
             "Tb_battle_report_attack",
             "Tb_battle_report_defend",
             "Tb_battle_report_exersice",
@@ -583,6 +595,48 @@ object UserInitTableBuilder {
             .i(8, 0)
             .i(9, 0)
             .i(10, 0)
+            .arr
+
+    /** Tb_gear: 服务端赠送的库藏武器，满级、未装备、状态为持有。 */
+    private fun tbGear(userId: Int, gear: InventoryGearDefinition): ArrayNode =
+        row("Tb_gear")
+            .i(0, gear.uid)
+            .i(1, gear.gearId)
+            .i(2, userId)
+            .s(3, gear.skill)
+            .i(4, gear.featureId)
+            .i(5, 2) // state = owned
+            .i(6, 0)
+            .i(7, if (gear.phase <= 1) 5 else 10)
+            .i(8, gear.phase.coerceAtLeast(1))
+            .i(9, 0) // heroid_u: not equipped
+            .i(10, 0).i(11, 0).i(12, 0).i(13, 0).i(14, 0).i(15, 0).i(16, 0)
+            .s(17, "")
+            .i(18, 0)
+            .s(19, "")
+            .i(20, 0)
+            .s(21, "")
+            .i(22, 0).i(23, 0).i(24, 0).i(25, 0).i(26, 0).i(27, 0).i(28, 0)
+            .s(29, "").s(30, "")
+            .i(31, 0)
+            .s(32, "").s(33, "").s(34, "").s(35, "").s(36, "")
+            .i(37, gear.isSeason)
+            .i(38, 0).i(39, 0).i(40, 0)
+            .s(41, "")
+            .arr
+
+    /** Tb_user_item: 所有当前配置道具各下发五个，永久有效。 */
+    private fun tbUserItem(userId: Int, item: InventoryItemDefinition): ArrayNode =
+        row("Tb_user_item")
+            .i(0, item.id)
+            .i(1, item.itemId)
+            .i(2, userId)
+            .i(3, item.repoType)
+            .i(4, 5)
+            .i(5, 0)
+            .i(6, 0)
+            .i(7, 0)
+            .i(8, 0)
             .arr
 
     /** Tb_user_stuff: 0=userid,3=protected_popup,62=occupy_land_level(string)。

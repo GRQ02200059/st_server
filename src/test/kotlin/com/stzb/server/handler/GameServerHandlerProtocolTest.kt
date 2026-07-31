@@ -245,6 +245,34 @@ class GameServerHandlerProtocolTest {
         channel.finishAndReleaseAll()
     }
 
+    @Test
+    fun `login response contains the server generated library inventory`() {
+        val channel = newChannel()
+        val playerId = platformLogin(channel, "alice")
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+
+        channel.writeInbound(
+            upPacket(
+                cmdId = Cmd.SYS_LOGIN,
+                json = """["passport","token",$playerId]""",
+                userId = session.userId,
+            ),
+        )
+
+        val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.SYS_LOGIN, response.cmd)
+        val tables = mapper.readTree(response.body)[4][0]
+            .drop(1)
+            .associateBy { it[0].asText() }
+        val gearRows = tables.getValue("Tb_gear")[1]
+        val itemRows = tables.getValue("Tb_user_item")[1]
+
+        assertEquals(111, itemRows.size())
+        assertTrue(itemRows.all { row -> row[4].asInt() == 5 && row[5].asInt() == 0 })
+        assertEquals(50, gearRows.count { row -> row[0].asInt() in 840_100_001..840_100_050 })
+        channel.finishAndReleaseAll()
+    }
+
     private fun newChannel(): EmbeddedChannel =
         EmbeddedChannel(GameServerHandler()).also { channel ->
             ReferenceCountUtil.release(assertIs<ByteBuf>(channel.readOutbound<Any>()))

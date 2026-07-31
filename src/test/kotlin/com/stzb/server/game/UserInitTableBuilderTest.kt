@@ -325,6 +325,42 @@ class UserInitTableBuilderTest {
     }
 
     @Test
+    fun `login snapshot grants configured hongji weapons and five copies of every item`() {
+        val root = createTempDirectory("stzb-inventory-snapshot")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val userId = 77
+            val snapshot = UserInitTableBuilder.build(
+                userId = userId,
+                cityWid = 10077,
+                roleName = "主公",
+                serverOpenTime = 1_700_000_000L,
+            )
+            val tables = snapshot.drop(1).associateBy { it[0].asText() }
+            val gears = tables.getValue("Tb_gear")[1]
+            val items = tables.getValue("Tb_user_item")[1]
+
+            val expectedGearCount =
+                InventoryCatalog.normalWeapons().size + InventoryCatalog.hongjiCopies().size
+            assertEquals(expectedGearCount, gears.size())
+            assertTrue(gears.all { it[2].asInt() == userId && it[5].asInt() == 2 && it[9].asInt() == 0 })
+            assertEquals(50, gears.count { it[0].asInt() in 840_100_001..840_100_050 })
+            assertTrue(gears.all { it[4].asInt() > 0 })
+
+            assertEquals(111, items.size())
+            assertTrue(items.all {
+                it[2].asInt() == userId &&
+                    it[4].asInt() == 5 &&
+                    it[5].asInt() == 0 &&
+                    it[6].asInt() == 0
+            })
+            assertEquals(111, items.map { it[1].asInt() }.distinct().size)
+        } finally {
+            PlayerStateRepository.reset()
+        }
+    }
+
+    @Test
     fun `login snapshot includes other player city and claimed land`() {
         val world = WorldProjection(
             cities = listOf(
