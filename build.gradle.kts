@@ -29,38 +29,7 @@ tasks.test {
     useJUnitPlatform()
 }
 
-tasks.processResources {
-    from(
-        "../stzb_9.2.2_out_branch_9.1.1776213/assets/npk_extracted_all/others/res/csharp/data/tcfg",
-    ) {
-        include(
-            "tb_cfg_army.bin",
-            "tb_cfg_army_count.bin",
-            "tb_cfg_hero_u.bin",
-        )
-        into("client-config")
-    }
-    from(
-        "../stzb_9.2.2_out_branch_9.1.1776213/assets/npk_extracted_all/others/res/csharp/data/tcfg/default",
-    ) {
-        include(
-            "tb_cfg_card_extract*.bin",
-            "tb_cfg_gear.bin",
-            "tb_cfg_gear_feature.bin",
-            "tb_cfg_hero_type_feature.bin",
-        )
-        into("client-config")
-    }
-    from(
-        "../stzb_9.2.2_out_branch_9.1.1776213/assets/npk_extracted_all/others/res/csharp/data/tcfg",
-    ) {
-        include("tb_cfg_gear_u.bin")
-        into("client-config")
-    }
-    from(
-        "../stzb_9.2.2_out_branch_9.1.1776213/assets/npk_extracted_all/others/res/csharp/data/tcfg",
-    ) {
-        include("tb_cfg_card_prob*.bin")
-        into("client-config")
-    }
-}
+// 客户端配置表 (tb_cfg_*.bin) 已纳入版本控制, 存放于
+// src/main/resources/client-config/, 使构建自包含, 任意机器 clone/pull 后即可运行.
+// 更新客户端版本时, 重新从客户端解包目录复制对应 bin 到该目录并提交:
+//   ../stzb_9.2.2_out_branch_*/assets/npk_extracted_all/others/res/csharp/data/tcfg[/default]
