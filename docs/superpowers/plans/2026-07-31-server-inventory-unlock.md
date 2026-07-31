@@ -12,9 +12,8 @@
 
 - Send data only from the Kotlin server; do not edit or require Android DLL, PipeBridge, or runtime injection code.
 - Bundle `tb_cfg_item.bin` with the existing server client-config resources.
-- Every eligible normal weapon gets one max-level, owned red-feature copy.
+- Every eligible normal weapon gets one max-level, owned hongji-feature copy.
 - Add exactly 50 highest-level `advance=1` hongji copies.
-- Add exactly 10 highest-level copies for every non-hongji `level_type` present in the feature table.
 - Send all 111 `Tcfg_item` rows as `Tb_user_item` rows with `item_num=5` and `valid_time=0`.
 - Generated inventory must be deterministic and use stable IDs, so reconnecting cannot create duplicate client rows.
 - Do not persist generated inventory in player JSON; a relog restores the same stock.
@@ -49,7 +48,6 @@
 - Produces:
   - `InventoryCatalog.normalWeapons(): List<InventoryGearDefinition>`
   - `InventoryCatalog.hongjiCopies(): List<InventoryGearDefinition>`
-  - `InventoryCatalog.normalTierCopies(): List<InventoryGearDefinition>`
   - `InventoryCatalog.items(): List<InventoryItemDefinition>`
   - `InventoryGearDefinition(uid: Int, gearId: Int, featureId: Int, phase: Int, isSeason: Int, skill: String)`
   - `InventoryItemDefinition(id: Int, itemId: Int, repoType: Int)`
@@ -82,18 +80,12 @@ class InventoryCatalogTest {
     fun `catalog unlocks every configured item and creates requested weapon copies`() {
         val normalWeapons = InventoryCatalog.normalWeapons()
         val hongjiCopies = InventoryCatalog.hongjiCopies()
-        val normalTierCopies = InventoryCatalog.normalTierCopies()
         val items = InventoryCatalog.items()
 
         assertTrue(normalWeapons.isNotEmpty())
-        assertTrue(normalWeapons.all { it.featureTier.advance == 0 && it.featureTier.levelType == 30 })
+        assertTrue(normalWeapons.all { it.featureTier.advance == 1 })
         assertEquals(50, hongjiCopies.size)
         assertTrue(hongjiCopies.all { it.featureTier.advance == 1 })
-
-        val tiers = normalTierCopies.groupBy { it.featureTier.levelType }
-        assertTrue(tiers.isNotEmpty())
-        assertTrue(tiers.all { (_, copies) -> copies.size == 10 })
-        assertTrue(tiers.keys.all { it >= 0 })
 
         assertEquals(111, items.size)
         assertEquals(111, items.map(InventoryItemDefinition::itemId).distinct().size)
@@ -161,7 +153,6 @@ data class InventoryItemDefinition(
 object InventoryCatalog {
     fun normalWeapons(): List<InventoryGearDefinition>
     fun hongjiCopies(): List<InventoryGearDefinition>
-    fun normalTierCopies(): List<InventoryGearDefinition>
     fun items(): List<InventoryItemDefinition>
 }
 ```
@@ -211,16 +202,13 @@ Apply these deterministic generation rules:
 ```kotlin
 private const val BASE_GEAR_UID = 800_000_000
 private const val HONGJI_UID = 840_100_000
-private const val NORMAL_TIER_UID = 841_000_000
 private const val ITEM_UID = 1_900_000_000
 private const val HONGJI_COPY_COUNT = 50
-private const val NORMAL_TIER_COPY_COUNT = 10
 
 // Eligible weapon: gearId > 0, gearType > 0, isDefective == 0, tag == 0.
-// Base feature: same gear type's best (advance == 0, levelType == 30), else
-// the global best red feature. Sort by level descending then feature id ascending.
+// Base feature: same gear type's best advance == 1 feature, else the global best
+// hongji feature. Sort by level descending then feature id ascending.
 // Hongji feature: global best advance == 1, ordered by level descending then id.
-// Normal tier feature: best feature for each advance == 0 levelType, ordered the same.
 // Choose matching gear type body; fall back to the first eligible normal weapon.
 ```
 
@@ -229,7 +217,6 @@ For generated UIDs:
 ```kotlin
 baseUid = BASE_GEAR_UID + gearId
 hongjiUid = HONGJI_UID + copyIndex // copyIndex is 1..50
-normalTierUid = NORMAL_TIER_UID + levelType * 100 + copyIndex // 1..10
 itemUid = ITEM_UID + rowIndex // rowIndex is 1-based
 ```
 
@@ -242,7 +229,7 @@ Run:
   test --tests com.stzb.server.game.InventoryCatalogTest
 ```
 
-Expected: `BUILD SUCCESSFUL`; 50 hongji copies, 10 copies for every actual normal tier, and 111 item definitions.
+Expected: `BUILD SUCCESSFUL`; all base weapons and 50 extra copies use hongji features, and 111 item definitions are present.
 
 - [ ] **Step 7: Commit the catalog**
 
@@ -263,7 +250,7 @@ git commit -m "feat: catalog server inventory unlocks"
 - Modify: `src/test/kotlin/com/stzb/server/handler/GameServerHandlerProtocolTest.kt`
 
 **Interfaces:**
-- Consumes: `InventoryCatalog.normalWeapons()`, `hongjiCopies()`, `normalTierCopies()`, and `items()`.
+- Consumes: `InventoryCatalog.normalWeapons()`, `hongjiCopies()`, and `items()`.
 - Produces: populated `Tb_gear` and `Tb_user_item` arrays in `UserInitTableBuilder.build()`.
 
 - [ ] **Step 1: Write failing snapshot and 99991 handler tests**
@@ -286,8 +273,7 @@ fun `login snapshot grants configured weapons and five copies of every item`() {
 
     val expectedGearCount =
         InventoryCatalog.normalWeapons().size +
-            InventoryCatalog.hongjiCopies().size +
-            InventoryCatalog.normalTierCopies().size
+            InventoryCatalog.hongjiCopies().size
     assertEquals(expectedGearCount, gears.size())
     assertTrue(gears.all { it[2].asInt() == userId && it[5].asInt() == 2 && it[9].asInt() == 0 })
     assertEquals(50, gears.count { it[0].asInt() in 840_100_001..840_100_050 })
@@ -333,8 +319,7 @@ Replace the empty `Tb_gear` path with:
 ```kotlin
 val grantedGears =
     InventoryCatalog.normalWeapons() +
-        InventoryCatalog.hongjiCopies() +
-        InventoryCatalog.normalTierCopies()
+        InventoryCatalog.hongjiCopies()
 
 root.add(
     table(
