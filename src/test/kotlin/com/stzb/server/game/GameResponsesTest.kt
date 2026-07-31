@@ -724,4 +724,29 @@ class GameResponsesTest {
                 it[12].asInt() == 0
         })
     }
+
+    @Test
+    fun `world scene uses each projected owners user id`() {
+        val world = WorldProjection(
+            cities = listOf(
+                WorldCity(15_061_506, 10, "Alice"),
+                WorldCity(14_961_496, 11, "Bob"),
+            ),
+            lands = listOf(LandClaim(14_981_496, 11, 14_961_496, 100)),
+        )
+
+        val response = mapper.readTree(
+            GameResponses.worldSceneFullInfo(
+                userId = 10,
+                cityWid = 15_061_506,
+                roleName = "Alice",
+                world = world,
+            ),
+        )
+
+        assertEquals("Bob", response[1]["11"][0].asText())
+        assertEquals(14_961_496, response[1]["11"][1].asInt())
+        assertEquals(11, response[14]["14981496"]["0"][2].asInt())
+        assertEquals(14_961_496, response[14]["14981496"]["0"][7].asInt())
+    }
 }

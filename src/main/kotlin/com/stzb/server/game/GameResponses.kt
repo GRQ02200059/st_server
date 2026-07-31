@@ -17,6 +17,7 @@ object GameResponses {
     private val nf: JsonNodeFactory = JsonNodeFactory.instance
     private val mapper = jacksonObjectMapper()
     private val recruitSeq = AtomicInteger(0)
+    private val landDefenders: LandDefenderFactory by lazy(::LandDefenderFactory)
 
     /**
      * 99992 (平台校验 RequestPlatformLoginCheck) 响应。
@@ -38,6 +39,9 @@ object GameResponses {
         root.add(userId)                            // [3] LoginServerUserId
         return mapper.writeValueAsString(root)
     }
+
+    fun platformLoginFailure(): String =
+        mapper.writeValueAsString(nf.arrayNode().add(0).addNull().add("").add(0))
 
     /** 99994 (PreServerCheckLoginToken) 响应。0 表示预登录校验通过并跳过附加查询。 */
     fun preServerTokenCheck(): String =
@@ -127,6 +131,7 @@ object GameResponses {
         serverOpenTime: Long,
         cfgDataIndex: Int,
         accountKey: String? = null,
+        world: WorldProjection = WorldProjection.EMPTY,
     ): String {
         val json = nf.arrayNode()
         json.add(1)                                             // [0] LoginState = SUCCESS
@@ -141,7 +146,7 @@ object GameResponses {
         json.add(1)                                             // [2] LoginUserType = 老用户
         json.add(cfgDataIndex)                                  // [3] cfgDataIndex
 
-        json.add(enterGame(userId, cityWid, roleName, serverOpenTime, accountKey)) // [4] EnterGameResult
+        json.add(enterGame(userId, cityWid, roleName, serverOpenTime, accountKey, world)) // [4] EnterGameResult
 
         return mapper.writeValueAsString(json)
     }
@@ -171,6 +176,9 @@ object GameResponses {
         )
 
     fun landInfo(wid: Int): String {
+        val npcArmyCount = runCatching {
+            landDefenders.teamCountForLevel(landDefenders.levelForWid(wid))
+        }.getOrDefault(0)
         val root = nf.arrayNode()
         repeat(54) { index ->
             when (index) {
@@ -178,6 +186,7 @@ object GameResponses {
                 1, 2, 3, 9, 18, 50, 53 -> root.add("")
                 4, 5, 7 -> root.add(100)
                 8 -> root.addNull()
+                10, 11 -> root.add(npcArmyCount)
                 14 -> root.add(1)
                 else -> root.add(0)
             }
@@ -191,6 +200,28 @@ object GameResponses {
      */
     fun landNpcArmy(wid: Int): String =
         mapper.writeValueAsString(listOf(wid.coerceAtLeast(0), 0L))
+
+    /**
+     * GET_USER_NPC_ARMY (4329): the map guard renderer expects the selected
+     * Tcfg_army ids as a comma-separated string at index 1.
+     */
+    fun userNpcArmy(wid: Int): String =
+        mapper.writeValueAsString(
+            listOf(
+                wid.coerceAtLeast(0),
+                defenderArmyIds(wid).joinToString(","),
+            ),
+        )
+
+    /**
+     * GET_LAND_DEFEND_ARMY (4331): the defender detail panel reads the same
+     * army-id string that the map guard renderer uses.
+     */
+    fun landDefenderArmy(wid: Int): String =
+        userNpcArmy(wid)
+
+    private fun defenderArmyIds(wid: Int): List<Int> =
+        runCatching { landDefenders.armyIdsForWid(wid) }.getOrDefault(emptyList())
 
     /**
      * 5026 (SEND_WORLD_SCENCE_FULL_INFO) 全量世界视野通知。
@@ -208,10 +239,12 @@ object GameResponses {
         marches: Collection<PlayerMarch> = march?.let(::listOf).orEmpty(),
         removedArmyId: Int? = null,
         occupiedLands: Set<Int> = emptySet(),
+        world: WorldProjection = WorldProjection.EMPTY,
     ): String {
+        val worldProjection = world.withPlayer(userId, cityWid, roleName, occupiedLands)
         val root = nf.arrayNode()
         root.add(nf.objectNode()) // 0: visual field
-        root.add(worldMapUsers(userId, cityWid, roleName)) // 1: map users
+        root.add(worldMapUsers(worldProjection)) // 1: map users
         root.add(nf.objectNode()) // 2: reserved
         root.add(nf.objectNode()) // 3: unions
         root.add(nf.objectNode()) // 4: strategies
@@ -224,7 +257,7 @@ object GameResponses {
         root.add(nf.objectNode()) // 11: reserved
         root.add(nf.objectNode()) // 12: ext garrison
         root.add(nf.objectNode()) // 13: manor family
-        root.add(worldCityChunk(userId, cityWid, roleName, occupiedLands)) // 14: world chunks
+        root.add(worldCityChunk(worldProjection)) // 14: world chunks
         root.add(nf.arrayNode())  // 15: reserved
         root.add(nf.objectNode()) // 16: ext garrison changes
         root.addNull()            // 17: reserved
@@ -300,84 +333,81 @@ object GameResponses {
         }
 
     /** MapDataCommon.ReceiveNewUserDataParam 读取的 24 槽玩家信息。 */
-    private fun worldMapUsers(userId: Int, cityWid: Int, roleName: String) =
+    private fun worldMapUsers(world: WorldProjection) =
         nf.objectNode().apply {
-            putArray(userId.toString()).apply {
-                add(roleName) // 0: name
-                add(cityWid)  // 1: main wid
-                repeat(9) { add(0) } // 2..10: union/official metadata
-                add(0)        // 11: is_ai
-                addNull()     // 12: union detail
-                addNull()     // 13: affiliated union detail
-                addNull()     // 14: clan detail
-                repeat(6) { add(0) } // 15..20: seasonal metadata
-                add("")       // 21: kite styles
-                add("")       // 22: io title city
-                add(0)        // 23: protect item end time
+            world.cities.forEach { city ->
+                putArray(city.userId.toString()).apply {
+                    add(city.roleName) // 0: name
+                    add(city.cityWid)  // 1: main wid
+                    repeat(9) { add(0) } // 2..10: union/official metadata
+                    add(0)        // 11: is_ai
+                    addNull()     // 12: union detail
+                    addNull()     // 13: affiliated union detail
+                    addNull()     // 14: clan detail
+                    repeat(6) { add(0) } // 15..20: seasonal metadata
+                    add("")       // 21: kite styles
+                    add("")       // 22: io title city
+                    add(0)        // 23: protect item end time
+                }
             }
         }
 
     /** 5026[14][wid]["0"]: ChunkMsgType.WORLD_CITY 的最小主城条目。 */
-    private fun worldCityChunk(
-        userId: Int,
-        cityWid: Int,
-        roleName: String,
-        occupiedLands: Set<Int>,
-    ) =
+    private fun worldCityChunk(world: WorldProjection) =
         nf.objectNode().apply {
-            putObject(cityWid.toString()).putArray("0").apply {
-                add(1)        // 0: CityType.PLAYER_MAIN_CITY
-                add(0)        // 1: city_param
-                add(userId)   // 2: owner user id
-                add(0)        // 3: union id
-                add(0)        // 4: protect_end_time
-                add("")       // 5: facade
-                add(roleName) // 6: name
-                add(0)        // 7: belong city
-                add(0)        // 8: state
-                add(0)        // 9: guard_end_time
-                add(0)        // 10: begin time
-                add(0)        // 11: end time
-                add(0)        // 12: normal force (matches Tb_world_city.force_type)
-                add("")       // 13: city build data
-                repeat(7) { add(0) } // 14..20: clan/link/view metadata
-            }
-            HomeCity.suburbWids(cityWid).forEach { suburbWid ->
-                putObject(suburbWid.toString()).putArray("0").apply {
-                    add(5)        // 0: CityType.PLAYER_SUBURB
-                    add(0)        // 1: city_param
-                    add(userId)   // 2: owner user id
-                    add(0)        // 3: union id
-                    add(0)        // 4: protect_end_time
-                    add("")       // 5: facade
-                    add("")       // 6: name
-                    add(cityWid)  // 7: belong city
-                    repeat(4) { add(0) } // 8..11: state/times
-                    add(0)        // 12: UserForceType.NORMAL
-                    add("")       // 13: city build data
-                    repeat(7) { add(0) } // 14..20: clan/link/view metadata
+            world.cities.forEach { city ->
+                putWorldCity(
+                    wid = city.cityWid,
+                    cityType = 1,
+                    userId = city.userId,
+                    name = city.roleName,
+                    belongCity = 0,
+                )
+                HomeCity.suburbWids(city.cityWid).forEach { suburbWid ->
+                    putWorldCity(
+                        wid = suburbWid,
+                        cityType = 5,
+                        userId = city.userId,
+                        name = "",
+                        belongCity = city.cityWid,
+                    )
                 }
             }
-            occupiedLands
-                .filter { it > 0 && it != cityWid && it !in HomeCity.suburbWids(cityWid) }
-                .sorted()
-                .forEach { landWid ->
-                    putObject(landWid.toString()).putArray("0").apply {
-                        add(2)        // 0: CityType.PLAYER_LAND
-                        add(0)        // 1: city_param
-                        add(userId)   // 2: owner user id
-                        add(0)        // 3: union id
-                        add(0)        // 4: protect_end_time
-                        add("")       // 5: facade
-                        add("")       // 6: name
-                        add(cityWid)  // 7: belong city
-                        repeat(4) { add(0) } // 8..11: state/times
-                        add(0)        // 12: normal force
-                        add("")       // 13: city build data
-                        repeat(7) { add(0) } // 14..20: clan/link/view metadata
-                    }
+            world.lands.forEach { claim ->
+                if (!has(claim.wid.toString())) {
+                    putWorldCity(
+                        wid = claim.wid,
+                        cityType = 2,
+                        userId = claim.userId,
+                        name = "",
+                        belongCity = claim.belongCity,
+                    )
                 }
+            }
         }
+
+    private fun com.fasterxml.jackson.databind.node.ObjectNode.putWorldCity(
+        wid: Int,
+        cityType: Int,
+        userId: Int,
+        name: String,
+        belongCity: Int,
+    ) {
+        putObject(wid.toString()).putArray("0").apply {
+            add(cityType)
+            add(0)        // 1: city_param
+            add(userId)   // 2: owner user id
+            add(0)        // 3: union id
+            add(0)        // 4: protect_end_time
+            add("")       // 5: facade
+            add(name)     // 6: name
+            add(belongCity) // 7: belong city
+            repeat(4) { add(0) } // 8..11: state/times
+            add(0)        // 12: UserForceType.NORMAL
+            add("")       // 13: city build data
+            repeat(7) { add(0) } // 14..20: clan/link/view metadata
+        }
+    }
 
     /**
      * 301 (CARD_RECRUIT) 响应。
@@ -863,10 +893,11 @@ object GameResponses {
         roleName: String,
         serverOpenTime: Long,
         accountKey: String? = null,
+        world: WorldProjection = WorldProjection.EMPTY,
     ): String {
         val json = nf.arrayNode()
         json.add(1) // [0] success; CreateRolePacket 用 [1] 解析 EnterGameResult
-        json.add(enterGame(userId, cityWid, roleName, serverOpenTime, accountKey))
+        json.add(enterGame(userId, cityWid, roleName, serverOpenTime, accountKey, world))
         return mapper.writeValueAsString(json)
     }
 
@@ -876,9 +907,10 @@ object GameResponses {
         roleName: String,
         serverOpenTime: Long,
         accountKey: String? = null,
+        world: WorldProjection = WorldProjection.EMPTY,
     ): ArrayNode {
         val enterGame: ArrayNode = nf.arrayNode()
-        enterGame.add(UserInitTableBuilder.build(userId, cityWid, roleName, serverOpenTime, accountKey)) // [0] UserInitTable
+        enterGame.add(UserInitTableBuilder.build(userId, cityWid, roleName, serverOpenTime, accountKey, world)) // [0] UserInitTable
         enterGame.add(nf.arrayNode())                           // [1] login_notice
         enterGame.add(nf.arrayNode())                           // [2] union_marks
         enterGame.add(nf.arrayNode())                           // [3] union_relations

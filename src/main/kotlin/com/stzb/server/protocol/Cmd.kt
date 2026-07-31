@@ -52,7 +52,9 @@ object Cmd {
     const val RANDOM_ROLE_NAME = 511
     const val SYNC_SERVER_TIME = 694
     const val SET_CLIENT_RED_DOT_DATA = 3400
+    const val GET_USER_NPC_ARMY = 4329
     const val GET_LAND_NPC_ARMY = 4330
+    const val GET_LAND_DEFEND_ARMY = 4331
     const val QUERY_ARMY_RELATED_FORT = 4159
     const val GET_WORLD_SCENCE_INFO = 5025
     const val SEND_WORLD_SCENCE_FULL_INFO = 5026

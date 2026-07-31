@@ -21,6 +21,7 @@ import sys
 import time
 
 HOST, PORT = "127.0.0.1", int(sys.argv[1]) if len(sys.argv) > 1 else 59979
+SDK_UID = sys.argv[2] if len(sys.argv) > 2 else "stzb-test"
 
 
 def recv_exact(sock, n):
@@ -92,8 +93,16 @@ def main():
 
     # 2. 发 99992 平台校验 (登录服前置硬卡点), 拿 ServerSession
     idx = cmd_index + 1
+    credentials = json.dumps(
+        {
+            "gameid": "g10",
+            "login_channel": "_stzb_test_",
+            "sdkuid": SDK_UID,
+        },
+        separators=(",", ":"),
+    )
     pkt = build_up_packet(0, user_id, sid, 99992, idx,
-                          ['{"gameid":"g10","login_channel":"_stzb_test_"}', 0, "", 0], encode=True)
+                          [credentials, 0, "", 0], encode=True)
     s.sendall(pkt)
     print(f"→ 已发平台校验 cmd=99992 idx={idx}")
     cmd, hc, rest = recv_frame(s)
@@ -127,7 +136,7 @@ def main():
     # 3. 发 99991 登录请求
     idx += 1
     pkt = build_up_packet(0, user_id, sid, 99991, idx,
-                          ["passport_test", "token_test", user_id], encode=True)
+                          [f"passport_{SDK_UID}", server_session, user_id], encode=True)
     s.sendall(pkt)
     print(f"→ 已发登录请求 cmd=99991 idx={idx}")
 
@@ -160,14 +169,19 @@ def main():
     # 三键对齐校验
     tb_user_row = tables["Tb_user"][0]
     tb_city_row = tables["Tb_user_city"][0]
-    tb_world_row = tables["Tb_world_city"][0]
     uid_in_user = tb_user_row[0]
     city_wid_in_user = tb_user_row[17]
     city_wid_in_city = tb_city_row[0]
+    tb_world_row = next(
+        row for row in tables["Tb_world_city"] if row[0] == city_wid_in_user
+    )
     wid_in_world = tb_world_row[0]
     print(f"   三键对齐: Tb_user.userid={uid_in_user} city_wid={city_wid_in_user} "
           f"| Tb_user_city.city_wid={city_wid_in_city} | Tb_world_city.wid={wid_in_world}")
     assert city_wid_in_user == city_wid_in_city == wid_in_world, "三键 wid 必须一致"
+    world_owner_ids = sorted({row[6] for row in tables["Tb_world_city"] if len(row) > 6 and row[6] > 0})
+    print(f"   世界玩家: {world_owner_ids}")
+    assert uid_in_user in world_owner_ids, "世界快照必须包含当前账号"
 
     # 4. 发一个明文心跳 90003
     time.sleep(0.2)

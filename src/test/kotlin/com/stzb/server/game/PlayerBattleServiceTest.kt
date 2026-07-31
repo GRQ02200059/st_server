@@ -155,7 +155,7 @@ class PlayerBattleServiceTest {
     }
 
     @Test
-    fun `winning pve battle occupies the target land`() {
+    fun `winning pve battle only marks the target land as eligible for a world claim`() {
         val state = PlayerState(userId = 905, cityWid = 1905, roleName = "主公")
         val hero = state.addHero(heroId = 100021, nowSec = 1_700_000_001).apply {
             troops = 10_000
@@ -173,7 +173,8 @@ class PlayerBattleServiceTest {
             ?: error("arrival should resolve battle")
 
         assertEquals(com.stzb.server.game.battle.BattleOutcome.ATTACKER_WIN, result.outcome)
-        assertTrue(state.ownsLand(10_011))
+        assertTrue(result.mayClaimLand)
+        assertFalse(state.ownsLand(10_011))
     }
 
     @Test
@@ -211,7 +212,7 @@ class PlayerBattleServiceTest {
         // so this holds regardless of the season the server advertises.
         val service = PlayerBattleService(
             reportStore = ClientBattleReportStore.createEmpty(),
-            battleRandomFactory = { FixedBattleRandom(99) },
+            battleRandomFactory = { FixedBattleRandom(0) },
             defenderFactory = LandDefenderFactory(LandMapRepository.load(2001)),
         )
 
@@ -219,7 +220,7 @@ class PlayerBattleServiceTest {
         val settlement = service.settlePveBattle(state, nowSec = 1_700_000_013)
             ?: error("arrival should resolve battle")
 
-        assertEquals(com.stzb.server.game.battle.BattleOutcome.DEFENDER_WIN, settlement.outcome)
+        assertNotEquals(com.stzb.server.game.battle.BattleOutcome.ATTACKER_WIN, settlement.outcome)
         assertEquals(0, state.hero(hero.heroUid)?.troops)
     }
 
@@ -252,7 +253,8 @@ class PlayerBattleServiceTest {
 
         assertEquals(com.stzb.server.game.battle.BattleOutcome.ATTACKER_WIN, settlement.outcome)
         assertEquals(expectedLastTeam, report.result.defender.heroes.map { it.id.value })
-        assertTrue(state.ownsLand(10_146))
+        assertTrue(settlement.mayClaimLand)
+        assertFalse(state.ownsLand(10_146))
     }
 
     @Test

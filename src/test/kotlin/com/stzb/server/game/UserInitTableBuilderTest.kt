@@ -255,37 +255,43 @@ class UserInitTableBuilderTest {
     fun `snapshot unlocks every army and city facade and creates a normal nine tile main city`() {
         val cityWid = 15_061_506
         val userId = 46
-        val snapshot = UserInitTableBuilder.build(
-            userId = userId,
-            cityWid = cityWid,
-            roleName = "主公",
-            serverOpenTime = 1_700_000_000L,
-        )
+        val root = createTempDirectory("stzb-facade-snapshot")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val snapshot = UserInitTableBuilder.build(
+                userId = userId,
+                cityWid = cityWid,
+                roleName = "主公",
+                serverOpenTime = 1_700_000_000L,
+            )
 
-        val tables = snapshot.drop(1).associateBy { it[0].asText() }
-        val armyFacades = tables.getValue("Tb_user_army_facade_card")[1]
-        val cityFacades = tables.getValue("Tb_user_build_facade")[1]
-        assertEquals(12, armyFacades.size())
-        assertEquals(157, cityFacades.size())
-        assertTrue(armyFacades.all { it[2].asInt() > 0 && it[5].asInt() == 0 })
-        assertTrue(cityFacades.all { it[1].asInt() > 0 && it[3].asInt() == 0 && it[5].asInt() == 0 })
+            val tables = snapshot.drop(1).associateBy { it[0].asText() }
+            val armyFacades = tables.getValue("Tb_user_army_facade_card")[1]
+            val cityFacades = tables.getValue("Tb_user_build_facade")[1]
+            assertEquals(12, armyFacades.size())
+            assertEquals(157, cityFacades.size())
+            assertTrue(armyFacades.all { it[2].asInt() > 0 && it[5].asInt() == 0 })
+            assertTrue(cityFacades.all { it[1].asInt() > 0 && it[3].asInt() == 0 && it[5].asInt() == 0 })
 
-        val worldCities = tables.getValue("Tb_world_city")[1]
-        assertEquals(9, worldCities.size())
-        val mainCity = worldCities.single { it[0].asInt() == cityWid }
-        assertEquals(1, mainCity[1].asInt())
-        assertEquals(userId, mainCity[6].asInt())
-        assertEquals(0, mainCity[11].asInt())
+            val worldCities = tables.getValue("Tb_world_city")[1]
+            assertEquals(9, worldCities.size())
+            val mainCity = worldCities.single { it[0].asInt() == cityWid }
+            assertEquals(1, mainCity[1].asInt())
+            assertEquals(userId, mainCity[6].asInt())
+            assertEquals(0, mainCity[11].asInt())
 
-        val suburbs = worldCities.filter { it[0].asInt() != cityWid }
-        assertTrue(suburbs.all {
-            it[1].asInt() == 5 &&
-                it[6].asInt() == userId &&
-                it[21].asInt() == cityWid
-        })
+            val suburbs = worldCities.filter { it[0].asInt() != cityWid }
+            assertTrue(suburbs.all {
+                it[1].asInt() == 5 &&
+                    it[6].asInt() == userId &&
+                    it[21].asInt() == cityWid
+            })
 
-        val buildings = tables.getValue("Tb_user_build")[1]
-        assertEquals(1_506_150_610, buildings.single { it[2].asInt() == 10 }[0].asInt())
+            val buildings = tables.getValue("Tb_user_build")[1]
+            assertEquals(1_506_150_610, buildings.single { it[2].asInt() == 10 }[0].asInt())
+        } finally {
+            PlayerStateRepository.reset()
+        }
     }
 
     @Test
@@ -316,6 +322,34 @@ class UserInitTableBuilderTest {
         } finally {
             PlayerStateRepository.reset()
         }
+    }
+
+    @Test
+    fun `login snapshot includes other player city and claimed land`() {
+        val world = WorldProjection(
+            cities = listOf(
+                WorldCity(15_061_506, 10, "Alice"),
+                WorldCity(14_961_496, 11, "Bob"),
+            ),
+            lands = listOf(LandClaim(14_981_496, 11, 14_961_496, 100)),
+        )
+
+        val tables = UserInitTableBuilder.build(
+            userId = 10,
+            cityWid = 15_061_506,
+            roleName = "Alice",
+            serverOpenTime = 100,
+            world = world,
+        ).drop(1).associateBy { it[0].asText() }
+        val rows = tables.getValue("Tb_world_city")[1]
+
+        assertTrue(rows.any { it[0].asInt() == 14_961_496 && it[6].asInt() == 11 })
+        assertTrue(rows.any {
+            it[0].asInt() == 14_981_496 &&
+                it[1].asInt() == 2 &&
+                it[6].asInt() == 11 &&
+                it[21].asInt() == 14_961_496
+        })
     }
 
     private fun cardExtractRows(snapshot: com.fasterxml.jackson.databind.node.ArrayNode) =

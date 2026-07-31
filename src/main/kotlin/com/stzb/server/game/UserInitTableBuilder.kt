@@ -76,31 +76,35 @@ object UserInitTableBuilder {
         roleName: String,
         serverOpenTime: Long,
         accountKey: String? = null,
+        world: WorldProjection = WorldProjection.EMPTY,
     ): ArrayNode {
         val state = accountKey?.let {
             PlayerStateRepository.getOrCreate(it, cityWid, roleName)
         } ?: PlayerStateRepository.getOrCreate(userId, cityWid, roleName)
         state.ensureAdvanceMaterials()
+        val playerId = state.userId
+        val playerCityWid = state.cityWid
+        val worldProjection = world.withPlayer(state)
         val root = nf.arrayNode()
         root.add(schema)                                   // [0] schema
         root.add(table("Tb_user", tbUser(state)))
         root.add(table("Tb_user_res", tbUserRes(state)))
-        root.add(table("Tb_user_city", tbUserCity(userId, cityWid, serverOpenTime)))
-        root.add(table("Tb_world_city", *tbWorldCities(userId, cityWid, roleName).toTypedArray()))
+        root.add(table("Tb_user_city", tbUserCity(playerId, playerCityWid, serverOpenTime)))
+        root.add(table("Tb_world_city", *tbWorldCities(worldProjection).toTypedArray()))
         root.add(
             table(
                 "Tb_user_build",
-                tbUserBuild(userId, cityWid, 10, 1),
-                tbUserBuild(userId, cityWid, 30, PlayerState.maxBuildLevel(30)),
+                tbUserBuild(playerId, playerCityWid, 10, 1),
+                tbUserBuild(playerId, playerCityWid, 30, PlayerState.maxBuildLevel(30)),
             ),
         )
-        root.add(table("Tb_build_effect_city", tbBuildEffectCity(userId, cityWid)))
-        root.add(table("Tb_user_inner_city", tbUserInnerCity(userId)))
+        root.add(table("Tb_build_effect_city", tbBuildEffectCity(playerId, playerCityWid)))
+        root.add(table("Tb_user_inner_city", tbUserInnerCity(playerId)))
         // 客户端会用内城配置补齐缺省建筑，暂不伪造不存在的 wid。
         root.add(table("Tb_user_inner_city_building"))
         root.add(table("Tb_user_inner_city_task"))
         root.add(table("Tb_army", tbArmy(state)))
-        root.add(table("Tb_activity", tbActivity(userId)))
+        root.add(table("Tb_activity", tbActivity(playerId)))
         root.add(
             table(
                 "Tb_sys_param",
@@ -113,8 +117,8 @@ object UserInitTableBuilder {
                 "Tb_user_card_extract",
                 *ClientCardPackCatalog.allPacks().map { pack ->
                     tbUserCardExtract(
-                        userId = userId,
-                        extractId = ClientCardPackCatalog.summonUid(userId, pack.packId),
+                        userId = playerId,
+                        extractId = ClientCardPackCatalog.summonUid(playerId, pack.packId),
                         refreshWayId = pack.packId,
                         serverOpenTime = serverOpenTime,
                         isNew = !state.cardPacksSeen,
@@ -122,12 +126,12 @@ object UserInitTableBuilder {
                 }.toTypedArray(),
             ),
         )
-        root.add(table("Tb_hero", *state.allHeroes().map { tbHero(it, userId, state.primaryArmyId()) }.toTypedArray()))
+        root.add(table("Tb_hero", *state.allHeroes().map { tbHero(it, playerId, state.primaryArmyId()) }.toTypedArray()))
         root.add(
             table(
                 "Tb_user_skill",
                 *allSkillIds.mapIndexed { index, skillId ->
-                    tbUserSkill(userId, index, skillId)
+                    tbUserSkill(playerId, index, skillId)
                 }.toTypedArray(),
             ),
         )
@@ -135,7 +139,7 @@ object UserInitTableBuilder {
             table(
                 "Tb_user_facade_card",
                 *HeroFacadeCatalog.all().mapIndexed { index, facade ->
-                    tbUserFacadeCard(userId, index, facade)
+                    tbUserFacadeCard(playerId, index, facade)
                 }.toTypedArray(),
             ),
         )
@@ -143,7 +147,7 @@ object UserInitTableBuilder {
             table(
                 "Tb_user_army_facade_card",
                 *FacadeCatalog.armyFacadeIds.map { facadeId ->
-                    tbUserArmyFacadeCard(userId, facadeId)
+                    tbUserArmyFacadeCard(playerId, facadeId)
                 }.toTypedArray(),
             ),
         )
@@ -151,16 +155,16 @@ object UserInitTableBuilder {
             table(
                 "Tb_user_build_facade",
                 *FacadeCatalog.cityFacadeIds.map { facadeId ->
-                    tbUserBuildFacade(userId, facadeId)
+                    tbUserBuildFacade(playerId, facadeId)
                 }.toTypedArray(),
             ),
         )
-        root.add(table("Tb_user_stuff", tbUserStuff(userId)))
-        root.add(table("Tb_user_stuff_ex", tbUserStuffEx(userId)))
-        root.add(table("Tb_user_stuff_one", tbUserStuffOne(userId)))
-        root.add(table("Tb_user_stuff_temp", tbUserStuffTemp(userId)))
-        root.add(table("Tb_user_stuff_temp_ex", tbUserStuffTempEx(userId)))
-        root.add(table("Tb_user_stuff_temp_one", tbUserStuffTempOne(userId)))
+        root.add(table("Tb_user_stuff", tbUserStuff(playerId)))
+        root.add(table("Tb_user_stuff_ex", tbUserStuffEx(playerId)))
+        root.add(table("Tb_user_stuff_one", tbUserStuffOne(playerId)))
+        root.add(table("Tb_user_stuff_temp", tbUserStuffTemp(playerId)))
+        root.add(table("Tb_user_stuff_temp_ex", tbUserStuffTempEx(playerId)))
+        root.add(table("Tb_user_stuff_temp_one", tbUserStuffTempOne(playerId)))
         addEmptyTables(
             root,
             "Tb_hero_temp",
@@ -332,11 +336,45 @@ object UserInitTableBuilder {
      * 主城中心加八个 PLAYER_SUBURB 副格必须同时存在于登录快照中。世界地图
      * 还会在 5026 中重发同一份归属信息，客户端才能正确渲染完整的自有九格。
      */
-    private fun tbWorldCities(userId: Int, cityWid: Int, roleName: String): List<ArrayNode> =
-        listOf(tbWorldCity(userId, cityWid, cityType = 1, roleName = roleName, belongCity = 0)) +
-            HomeCity.suburbWids(cityWid).map { suburbWid ->
-                tbWorldCity(userId, suburbWid, cityType = 5, roleName = "", belongCity = cityWid)
+    private fun tbWorldCities(world: WorldProjection): List<ArrayNode> =
+        LinkedHashMap<Int, ArrayNode>().apply {
+            world.cities.forEach { city ->
+                put(
+                    city.cityWid,
+                    tbWorldCity(
+                        userId = city.userId,
+                        wid = city.cityWid,
+                        cityType = 1,
+                        roleName = city.roleName,
+                        belongCity = 0,
+                    ),
+                )
+                HomeCity.suburbWids(city.cityWid).forEach { suburbWid ->
+                    put(
+                        suburbWid,
+                        tbWorldCity(
+                            userId = city.userId,
+                            wid = suburbWid,
+                            cityType = 5,
+                            roleName = "",
+                            belongCity = city.cityWid,
+                        ),
+                    )
+                }
             }
+            world.lands.forEach { claim ->
+                putIfAbsent(
+                    claim.wid,
+                    tbWorldCity(
+                        userId = claim.userId,
+                        wid = claim.wid,
+                        cityType = 2,
+                        roleName = "",
+                        belongCity = claim.belongCity,
+                    ),
+                )
+            }
+        }.values.toList()
 
     /** Tb_world_city: 0=wid,1=city_type,5=name(string),6=userid,11=force_type,
      *  12=durability_cur,13=durability_max,19=end_time,21=belong_city,22=state。 */

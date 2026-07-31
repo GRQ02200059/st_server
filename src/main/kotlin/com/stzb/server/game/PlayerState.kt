@@ -175,7 +175,7 @@ class PlayerState(
         nowSec: Int = (System.currentTimeMillis() / 1000).toInt(),
         isAdvanceMaterial: Boolean = false,
     ): PlayerHero {
-        val heroUid = userId * 100_000 + heroSeq.incrementAndGet()
+        val heroUid = nextHeroUid()
         val hero = PlayerHero(
             heroUid = heroUid,
             heroId = heroId,
@@ -379,6 +379,11 @@ class PlayerState(
         if (wid > 0 && wid != cityWid) lands += wid
     }
 
+    fun replaceOccupiedLands(wids: Collection<Int>) {
+        lands.clear()
+        lands.addAll(wids.filter { it > 0 && it != cityWid })
+    }
+
     fun ownsLand(wid: Int): Boolean = wid in lands
 
     fun occupiedLands(): Set<Int> = lands.toSet()
@@ -443,6 +448,17 @@ class PlayerState(
         }
     }
 
+    private fun nextHeroUid(): Int {
+        require(userId in 0..MAX_HERO_UID_USER_ID) {
+            "玩家 ID 超出武将实例 ID 范围: $userId"
+        }
+        val sequence = heroSeq.incrementAndGet()
+        require(sequence in 1 until HERO_UID_STRIDE) {
+            "账号 $userId 的武将数量超过 ${HERO_UID_STRIDE - 1} 个"
+        }
+        return Math.addExact(Math.multiplyExact(userId, HERO_UID_STRIDE), sequence)
+    }
+
     private fun armySlots(armyId: Int): MutableList<Int> =
         armies.getOrPut(normalizeArmyId(armyId)) { MutableList(3) { 0 } }
 
@@ -453,6 +469,9 @@ class PlayerState(
     companion object {
         private const val MARCH_DURATION_SECONDS = 3
         private const val MAX_ARMIES = 5
+        private const val HERO_UID_STRIDE = 1_000
+        private const val MAX_HERO_UID_USER_ID =
+            (Int.MAX_VALUE - (HERO_UID_STRIDE - 1)) / HERO_UID_STRIDE
         const val MAX_BUILD_LEVEL = 8
         const val MAX_COUNTRY_BUILD_LEVEL = 10
 
@@ -536,7 +555,9 @@ class PlayerState(
                     )
                 }
                 state.heroSeq.set(
-                    snapshot.heroes.maxOfOrNull { it.heroUid % 100_000 } ?: 0,
+                    snapshot.heroes.maxOfOrNull {
+                        Math.floorMod(it.heroUid, HERO_UID_STRIDE)
+                    } ?: 0,
                 )
                 state.armies.values.forEach { slots -> slots.fill(0) }
                 val restoredArmies = snapshot.armies.ifEmpty {

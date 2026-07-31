@@ -6,8 +6,59 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class PlayerStateRepositoryTest {
+    @Test
+    fun `high player ids still produce positive hero ids usable by advance`() {
+        val state = PlayerState(userId = 1_500_008, cityWid = 100001, roleName = "主公")
+        val target = state.addHero(100017, nowSec = 1_700_000_000)
+        val material = state.ensureAdvanceMaterials(nowSec = 1_700_000_000).single()
+
+        assertTrue(target.heroUid > 0)
+        assertTrue(material.heroUid > 0)
+        assertNotEquals(target.heroUid, material.heroUid)
+        assertEquals(5, state.advanceHero(target.heroUid, listOf(material.heroUid))?.hero?.advanceNum)
+    }
+
+    @Test
+    fun `two accounts keep independent resources and world land after repository restart`() {
+        val root = createTempDirectory("stzb-multiuser-restart")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            WorldStateRepository.configure(root)
+            val alice = WorldStateRepository.registerOrRestorePlayer(
+                PlayerStateRepository.getOrCreate("sdkuid-alice", GameServerConfig.CITY_WID, "Alice"),
+            )
+            val bob = WorldStateRepository.registerOrRestorePlayer(
+                PlayerStateRepository.getOrCreate("sdkuid-bob", GameServerConfig.CITY_WID, "Bob"),
+            )
+            alice.resources.food = 111
+            bob.resources.food = 222
+            assertTrue(WorldStateRepository.claimLand(alice, 15_081_508, nowSec = 100))
+            PlayerStateRepository.save(bob)
+
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            WorldStateRepository.configure(root)
+            val restoredAlice = WorldStateRepository.registerOrRestorePlayer(
+                PlayerStateRepository.getOrCreate("sdkuid-alice", GameServerConfig.CITY_WID, "Alice"),
+            )
+            val restoredBob = WorldStateRepository.registerOrRestorePlayer(
+                PlayerStateRepository.getOrCreate("sdkuid-bob", GameServerConfig.CITY_WID, "Bob"),
+            )
+
+            assertEquals(111, restoredAlice.resources.food)
+            assertEquals(222, restoredBob.resources.food)
+            assertEquals(setOf(15_081_508), restoredAlice.occupiedLands())
+            assertTrue(restoredBob.occupiedLands().isEmpty())
+            assertEquals(restoredAlice.userId, WorldStateRepository.ownerOf(15_081_508)?.userId)
+        } finally {
+            PlayerStateRepository.reset()
+            WorldStateRepository.reset()
+            root.toFile().deleteRecursively()
+        }
+    }
+
     @Test
     fun `account registry restores the same identity across repository instances`() {
         val root = createTempDirectory("stzb-account-registry")

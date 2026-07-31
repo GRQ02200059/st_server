@@ -2,7 +2,6 @@ package com.stzb.server.game
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class LandDefenderFactoryTest {
@@ -83,17 +82,21 @@ class LandDefenderFactoryTest {
     }
 
     @Test
-    fun `same level lands select varied but stable client combinations`() {
+    fun `resource land army selection follows the canonical level mapping`() {
         val factory = factoryOn2001()
 
-        val first = factory.specsForWid(10_002)
-        val repeated = factory.specsForWid(10_002)
-        val other = factory.specsForWid(10_003)
-
-        assertEquals(first, repeated)
-        assertNotEquals(first.map { it.heroId }, other.map { it.heroId })
-        assertTrue(first in factory.candidateSpecsForLevel(1))
-        assertTrue(other in factory.candidateSpecsForLevel(1))
+        // These entries are Tcfg_army 101 and 203 respectively. The army
+        // selection must be tied to land level, not the world-coordinate modulo.
+        assertEquals(listOf(101), factory.armyIdsForWid(10_002))
+        assertEquals(listOf(203), factory.armyIdsForWid(10_004))
+        assertEquals(
+            factory.candidateSpecsForLevel(1).first(),
+            factory.specsForWid(10_002),
+        )
+        assertEquals(
+            factory.candidateSpecsForLevel(2)[2],
+            factory.specsForWid(10_004),
+        )
     }
 
     @Test

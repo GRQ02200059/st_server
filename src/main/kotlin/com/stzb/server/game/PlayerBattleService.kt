@@ -16,6 +16,7 @@ data class PlayerBattleLaunchResult(
     val battleId: Int,
     val targetWid: Int,
     val outcome: BattleOutcome? = null,
+    val mayClaimLand: Boolean = false,
 )
 
 class PlayerBattleService(
@@ -145,13 +146,11 @@ class PlayerBattleService(
             state.hero(heroUid)?.troops =
                 battleHero.troops.coerceIn(0, PlayerHero.MAX_TROOPS)
         }
-        if (finalResult.outcome == BattleOutcome.ATTACKER_WIN) {
-            state.occupyLand(march.targetWid)
-        }
         return PlayerBattleLaunchResult(
             battleId = requireNotNull(report).battleId,
             targetWid = march.targetWid,
             outcome = finalResult.outcome,
+            mayClaimLand = finalResult.outcome == BattleOutcome.ATTACKER_WIN,
         )
     }
 
