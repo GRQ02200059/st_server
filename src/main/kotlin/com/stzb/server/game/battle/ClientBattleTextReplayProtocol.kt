@@ -20,8 +20,8 @@ internal object ClientBattleTextReplayProtocol {
     const val SKILL_TRIGGERED_COMMAND = 22
     const val SKILL_TRIGGERED_ACTIVE = 23
     const val SKILL_TRIGGERED_PURSUIT = 24
-    const val PREPARATION_BENEFICIAL_EFFECT = 28
-    const val PREPARATION_HARMFUL_EFFECT = 29
+    const val PREPARATION_STATUS_APPLIED = 28
+    const val PREPARATION_STATUS_UNRESOLVED = 29
     const val PREPARE = 4
     const val PREPARATION_HERO = 5
     const val PREPARATION_END = 8
@@ -35,8 +35,9 @@ internal object ClientBattleTextReplayProtocol {
     const val SKILL_BEGIN = 213
     const val SKILL_END = 214
     const val PASSIVE_STAGE_END = 216
-    const val NORMAL_ATTACK_BEGIN = 222
-    const val NORMAL_ATTACK_END = 223
+    const val PREPARATION_EFFECT_BOUNDARY = 217
+    const val PREPARATION_EFFECT_BEGIN = 222
+    const val PREPARATION_EFFECT_END = 223
     const val SKILL_CAST = 301
     const val DERIVED_SKILL_TRIGGERED = 300
     const val SKILL_DAMAGE = 60
@@ -140,23 +141,6 @@ internal object ClientBattleTextReplayProtocol {
         else -> 301
     }
 
-    fun preparationStatusAction(status: BattleStatus): Int =
-        if (
-            status in setOf(
-                BattleStatus.CONFUSION,
-                BattleStatus.HESITATION,
-                BattleStatus.PANIC,
-                BattleStatus.SHAKE,
-                BattleStatus.BURN,
-                BattleStatus.HEX,
-                BattleStatus.DISARM,
-            )
-        ) {
-            PREPARATION_HARMFUL_EFFECT
-        } else {
-            PREPARATION_BENEFICIAL_EFFECT
-        }
-
     fun initialAttributeAction(stat: BattleStat): Int = when (stat) {
         BattleStat.ATTACK -> INITIAL_ATTACK
         BattleStat.DEFENSE -> INITIAL_DEFENSE
@@ -196,4 +180,10 @@ internal object ClientBattleTextReplayProtocol {
             BattlePreparationStage.TROOP -> TROOP_EFFECT_SOURCE
             BattlePreparationStage.EQUIPMENT -> EQUIPMENT_EFFECT_SOURCE
         }
+
+    fun supportsPreparationModifier(effectId: Int): Boolean =
+        effectId in setOf(521, 522, 523, 524, 531, 532, 533, 534)
+
+    fun supportsDerivedPreparationSkill(skillId: Int): Boolean =
+        skillId in 210_000..213_999 || skillId in 450_000..459_999
 }

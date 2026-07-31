@@ -41,7 +41,7 @@ object BattleReportCodec {
             "heroId" to heroId.value,
         )
 
-    private fun BattleEvent.toReportMap(): Map<String, Any> =
+    private fun BattleEvent.toReportMap(): Map<String, Any?> =
         when (this) {
             BattleEvent.BattleStart -> mapOf("type" to "BattleStart")
             is BattleEvent.SkillTriggered -> mapOf(
@@ -151,6 +151,7 @@ object BattleReportCodec {
                 "power" to power,
                 "statDelta" to statDelta.toReportMap(),
                 "skillId" to skillId,
+                "effectId" to effectId,
             )
             is BattleEvent.OngoingDamage -> mapOf(
                 "type" to "OngoingDamage",

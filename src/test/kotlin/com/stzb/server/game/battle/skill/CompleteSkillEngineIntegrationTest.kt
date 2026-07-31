@@ -1095,6 +1095,43 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `tongchou does not react to damage before the first combat round`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100006, 100, listOf(201006), position = 2),
+                    hero(100007, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val hurt = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 2
+        }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = enemy,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.DAMAGE_AFTER,
+            battleView = engine.state.view,
+        )
+
+        val events = engine.applyNormalDamage(0, enemy, hurt, 1, context)
+
+        assertTrue(
+            events.filterIsInstance<BattleEvent.ModifierApplied>()
+                .none { it.skillId == 223006 },
+        )
+    }
+
+    @Test
     fun `fenji attacks at forty percent and clears its accumulated damage buff`() {
         val request = BattleRequest(
             attacker = BattleTeam(

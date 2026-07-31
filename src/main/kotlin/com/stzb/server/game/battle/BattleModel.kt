@@ -374,6 +374,7 @@ sealed interface BattleEvent {
         val power: Int = 0,
         val statDelta: BattleStats = BattleStats.ZERO,
         val skillId: Int = 0,
+        val effectId: Int? = null,
     ) : BattleEvent
     data class OngoingDamage(
         val round: Int,

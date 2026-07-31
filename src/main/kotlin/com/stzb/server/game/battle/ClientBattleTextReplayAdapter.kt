@@ -222,6 +222,13 @@ internal object ClientBattleTextReplayAdapter {
                 -> Unit
             }
         }
+        fun appendPreparationEvent(event: BattleEvent) {
+            if (ClientBattlePreparationEventProjector.appliesTo(event)) {
+                actions += ClientBattlePreparationEventProjector.project(event, diagnostic)
+            } else {
+                appendEvent(event)
+            }
+        }
         val firstRoundIndex = result.events.indexOfFirst { it is BattleEvent.RoundStart }
             .let { if (it < 0) result.events.size else it }
         val preparationEvents = result.events.take(firstRoundIndex)
@@ -231,7 +238,7 @@ internal object ClientBattleTextReplayAdapter {
                 it.trigger == BattleTrigger.BATTLE_COMMAND &&
                 it.rootSkillId == it.skillId
         }.let { if (it < 0) preparationEvents.size else it }
-        preparationEvents.take(firstCommandIndex).forEach(::appendEvent)
+        preparationEvents.take(firstCommandIndex).forEach(::appendPreparationEvent)
         actions += ClientReportAction(ClientBattleTextReplayProtocol.PASSIVE_STAGE_END)
         actions += ClientReportAction(ClientBattleTextReplayProtocol.PREPARE)
         actions += ClientReportAction(ClientBattleTextReplayProtocol.COMMAND_STAGE_BEGIN)
@@ -267,7 +274,7 @@ internal object ClientBattleTextReplayAdapter {
                     ClientBattleTextReplayProtocol.COMMAND_HERO_BEGIN,
                     listOf(position),
                 )
-                commandEventsBySource[source].orEmpty().forEach(::appendEvent)
+                commandEventsBySource[source].orEmpty().forEach(::appendPreparationEvent)
                 actions += ClientReportAction(
                     ClientBattleTextReplayProtocol.COMMAND_HERO_END,
                     listOf(position),
@@ -442,6 +449,7 @@ internal object ClientBattleTextReplayAdapter {
                         ),
                     ),
                 ).let(::addAll)
+                add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_BEGIN))
                 effects.mapTo(this) { effect ->
                     val sourcePosition = effect.sourcePosition
                         ?.let { ClientBattleTextReplayProtocol.position(side, it) }
@@ -500,6 +508,8 @@ internal object ClientBattleTextReplayAdapter {
                         },
                     )
                 }
+                add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_END))
+                add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_BOUNDARY))
             }
         }
     }
@@ -587,10 +597,10 @@ internal object ClientBattleTextReplayAdapter {
     private fun preparationStatus(event: BattleEvent.StatusApplied): List<ClientReportAction> =
         listOf(
             ClientReportAction(
-                ClientBattleTextReplayProtocol.preparationStatusAction(event.status),
+                ClientBattleTextReplayProtocol.PREPARATION_STATUS_APPLIED,
                 listOf(
                     ClientBattleTextReplayProtocol.position(event.target),
-                    ClientBattleTextReplayProtocol.effectId(event.status),
+                    event.effectId ?: ClientBattleTextReplayProtocol.effectId(event.status),
                 ),
             ),
         )

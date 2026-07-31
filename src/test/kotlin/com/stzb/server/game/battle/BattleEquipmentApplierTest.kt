@@ -262,4 +262,36 @@ class BattleEquipmentApplierTest {
         assertEquals(BattleStat.HIT_RANGE, team.preparationEffects.single().stat)
         assertEquals(400084, team.preparationEffects.single().sourceId)
     }
+
+    @Test
+    fun `equipment feature skills become sourced derived preparation actions`() {
+        val team = BattleTeamBuilder(configRepo, equipmentRepo).build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100683,
+                    position = 0,
+                    troops = 9_700,
+                    equipmentIds = listOf(1102),
+                    equipmentSkillIds = listOf(400114),
+                    equipmentSkillLevels = listOf(6),
+                    equipmentFeatureSkillIds = listOf(450037),
+                    equipmentFeatureSkillLevels = listOf(8),
+                ),
+            ),
+        )
+
+        assertEquals(
+            BattlePreparationAction(
+                stage = BattlePreparationStage.EQUIPMENT,
+                sourceId = 450037,
+                sourcePosition = 0,
+                targetPosition = 0,
+                actionId = "8x".toInt(36),
+                amountExact = 8.0,
+                actionParameter = 200957,
+                containerSourceId = 1102,
+            ),
+            team.preparationActions.single { it.sourceId == 450037 },
+        )
+    }
 }

@@ -131,6 +131,54 @@ class ClientBattleTextReplayAdapterTest {
     }
 
     @Test
+    fun `round zero command effects never reuse battle skill wrappers`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val target = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
+        val diagnostics = mutableListOf<String>()
+        val result = twoRoundResult().copy(
+            events = listOf(
+                BattleEvent.SkillTriggered(
+                    round = 0,
+                    source = source,
+                    rootSkillId = 200648,
+                    skillId = 200648,
+                    trigger = com.stzb.server.game.battle.skill.BattleTrigger.BATTLE_COMMAND,
+                ),
+                BattleEvent.SkillDamage(
+                    round = 0,
+                    skillId = 200648,
+                    effectId = 301,
+                    source = source,
+                    target = target,
+                    damage = 358,
+                    targetTroopsAfter = 642,
+                ),
+                BattleEvent.RoundStart(1),
+            ),
+        )
+
+        val preparation = ClientBattleTextReplayAdapter.adapt(result, diagnostics::add)
+            .takeWhile { it.id != ClientBattleTextReplayProtocol.ROUND }
+
+        assertTrue(
+            preparation.none {
+                it.id in setOf(
+                    ClientBattleTextReplayProtocol.SKILL_BEGIN,
+                    ClientBattleTextReplayProtocol.SKILL_END,
+                    ClientBattleTextReplayProtocol.SKILL_CAST,
+                    ClientBattleTextReplayProtocol.SKILL_DAMAGE,
+                )
+            },
+        )
+        assertTrue(
+            preparation.any {
+                it.id == ClientBattleTextReplayProtocol.SKILL_TRIGGERED_COMMAND
+            },
+        )
+        assertTrue(diagnostics.single().contains("round-zero SkillDamage"))
+    }
+
+    @Test
     fun `hero initialization carries real skill levels troop features and equipment slots`() {
         val result = twoRoundResult().let { base ->
             base.copy(
@@ -206,6 +254,61 @@ class ClientBattleTextReplayAdapterTest {
         assertTrue(encoded.contains("5s0,291005"))
         assertTrue(encoded.contains("190,291005,1,23,23,191"))
         assertTrue(encoded.indexOf("5s0,291005") < encoded.indexOf("60"))
+    }
+
+    @Test
+    fun `preparation source effects use official inner envelopes`() {
+        val base = twoRoundResult()
+        val attacker = BattleTeam(
+            heroes = listOf(hero(1, 0)),
+            preparationSources = listOf(
+                BattlePreparationSource(BattlePreparationStage.SYSTEM, 295094),
+            ),
+            preparationEffects = listOf(
+                BattlePreparationEffect(
+                    stage = BattlePreparationStage.SYSTEM,
+                    sourceId = 295094,
+                    targetPosition = 0,
+                    stat = BattleStat.SPEED,
+                    strength = 10,
+                    delta = 10,
+                    valueAfter = 120,
+                    percent = false,
+                ),
+            ),
+        )
+        val actions = ClientBattleTextReplayAdapter.adapt(
+            base.copy(
+                attacker = attacker,
+                defender = BattleTeam(emptyList()),
+                entryAttacker = attacker,
+                entryDefender = BattleTeam(emptyList()),
+                events = emptyList(),
+            ),
+        )
+
+        val sourceIndex = actions.indexOf(
+            ClientReportAction(
+                ClientBattleTextReplayProtocol.SYSTEM_EFFECT_SOURCE,
+                listOf(0, 295094),
+            ),
+        )
+        assertEquals(
+            listOf(
+                ClientReportAction(
+                    ClientBattleTextReplayProtocol.SYSTEM_EFFECT_SOURCE,
+                    listOf(0, 295094),
+                ),
+                ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_BEGIN),
+                ClientReportAction(
+                    ClientBattleTextReplayProtocol.FLAT_SPEED,
+                    listOf(0, 295094, 1, 10, 120),
+                ),
+                ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_END),
+                ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_BOUNDARY),
+            ),
+            actions.subList(sourceIndex, sourceIndex + 5),
+        )
     }
 
     @Test
@@ -380,6 +483,41 @@ class ClientBattleTextReplayAdapterTest {
             ),
         ).map(ClientReportAction::encode)
         assertTrue(guardEncoded.contains("1w3,400072,1,3"))
+    }
+
+    @Test
+    fun `equipment feature action encodes the official 8x shape`() {
+        val team = BattleTeam(
+            heroes = listOf(hero(1, 0)),
+            preparationActions = listOf(
+                BattlePreparationAction(
+                    stage = BattlePreparationStage.EQUIPMENT,
+                    sourceId = 450037,
+                    sourcePosition = 0,
+                    targetPosition = 0,
+                    actionId = "8x".toInt(36),
+                    amountExact = 8.0,
+                    actionParameter = 200957,
+                    containerSourceId = 1102,
+                ),
+            ),
+        )
+        val base = twoRoundResult()
+        val actions = ClientBattleTextReplayAdapter.adapt(
+            base.copy(
+                attacker = team,
+                defender = BattleTeam(emptyList()),
+                entryAttacker = team,
+                entryDefender = BattleTeam(emptyList()),
+                events = emptyList(),
+            ),
+        )
+
+        assertTrue(
+            actions.contains(
+                ClientReportAction("8x".toInt(36), listOf(1, 450037, 1, 200957, 8)),
+            ),
+        )
     }
 
     @Test
@@ -652,7 +790,7 @@ class ClientBattleTextReplayAdapterTest {
     }
 
     @Test
-    fun `preparation statuses use verified beneficial and harmful effect actions`() {
+    fun `successful preparation statuses use applied action and configured effect ids`() {
         val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
         val target = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
         val result = twoRoundResult().copy(
@@ -664,6 +802,7 @@ class ClientBattleTextReplayAdapterTest {
                     BattleStatus.FIRST_ACTION,
                     durationRounds = 3,
                     skillId = 200233,
+                    effectId = 761,
                 ),
                 BattleEvent.StatusApplied(
                     0,
@@ -672,12 +811,13 @@ class ClientBattleTextReplayAdapterTest {
                     BattleStatus.CONFUSION,
                     durationRounds = 2,
                     skillId = 200002,
+                    effectId = 701,
                 ),
             ),
         )
 
         assertEquals(
-            listOf("0s1,761", "0t6,501"),
+            listOf("0s1,761", "0s6,701"),
             ClientBattleTextReplayAdapter.adapt(result)
                 .filter {
                     it.id in setOf(

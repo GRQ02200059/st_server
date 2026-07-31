@@ -75,6 +75,7 @@ data class ScheduledEffectActivationChange(
                 durationRounds = spec.availableRounds,
                 power = spec.potency.value,
                 skillId = spec.skillId,
+                effectId = spec.effectId,
             )
         }
 }
@@ -245,6 +246,7 @@ private class ControlEffectHandler(
                     durationRounds = invocation.rule.raw.availableRounds,
                     power = invocation.rule.raw.constantParam,
                     skillId = invocation.context.currentSkillId,
+                    effectId = ownedEffectId,
                 )
             }
         }

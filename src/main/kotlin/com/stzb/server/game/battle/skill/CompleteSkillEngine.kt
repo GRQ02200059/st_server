@@ -1118,6 +1118,7 @@ class DefaultCompleteSkillEngine private constructor(
                             change.durationRounds,
                             change.potency.value,
                             skillId = change.skillId,
+                            effectId = change.effectId,
                         )
                     }
                 is ScheduledRecoveryEffectChange ->
@@ -1297,6 +1298,7 @@ class DefaultCompleteSkillEngine private constructor(
         hurtTarget: BattleHeroRef,
         context: SkillBattleContext,
     ): SkillExecutionResult {
+        if (context.round <= 0) return SkillExecutionResult.EMPTY
         val owner = state.view.heroes().firstOrNull { candidate ->
             candidate.side == hurtTarget.side &&
                 state.view.state(candidate)?.troops?.let { it > 0 } == true &&
@@ -1387,6 +1389,7 @@ class DefaultCompleteSkillEngine private constructor(
                                 change.durationRounds,
                                 change.potency.value,
                                 skillId = change.skillId,
+                                effectId = change.effectId,
                             ),
                         )
                     }

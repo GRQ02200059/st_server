@@ -104,6 +104,48 @@ class BattleTeamBuilderTest {
     }
 
     @Test
+    fun `troop feature damage bonus retains both official modifier effects`() {
+        val teams = listOf(
+            builder.build(
+                listOf(
+                BattleHeroSpec(
+                    heroId = 100479,
+                    position = 0,
+                    troops = 1000,
+                    troopFeatureIds = listOf(3106),
+                ),
+                ),
+            ),
+            builder.build(
+                listOf(
+                BattleHeroSpec(
+                    heroId = 100017,
+                    position = 0,
+                    troops = 1000,
+                    troopFeatureIds = listOf(3206),
+                ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            setOf(296106, 296132, 296206, 296232),
+            teams.flatMap { it.preparationSources }.mapTo(mutableSetOf()) { it.sourceId },
+        )
+        val modifiers = teams.flatMap { it.preparationModifiers }
+            .filter { it.sourceId == 296132 || it.sourceId == 296232 }
+        assertEquals(setOf(296132, 296232), modifiers.mapTo(mutableSetOf()) { it.sourceId })
+        assertEquals(setOf(531, 533), modifiers.mapTo(mutableSetOf()) { it.effectId })
+        assertEquals(4, modifiers.size)
+        assertTrue(modifiers.all {
+            it.sourcePosition == it.targetPosition && it.amount == 8
+        })
+        assertTrue(teams.flatMap { it.heroes }.all { hero ->
+            hero.modifiers.contains(BattleModifier.DamageDealtPercent(percent = 8))
+        })
+    }
+
+    @Test
     fun `rejects duplicate positions before building team`() {
         assertFailsWith<IllegalArgumentException> {
             builder.build(

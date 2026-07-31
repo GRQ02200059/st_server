@@ -96,7 +96,9 @@ class BattleFormationCalculator(
                 },
             preparationEffects = materializeEffects(staticEffects, resolvedSpecs),
             preparationModifiers = preparationModifiers,
-            preparationActions = equipmentPreparationActions(resolvedSpecs),
+            preparationActions =
+                equipmentPreparationActions(resolvedSpecs) +
+                    equipmentFeaturePreparationActions(resolvedSpecs),
         )
     }
 
@@ -112,8 +114,17 @@ class BattleFormationCalculator(
     private fun troopFeatureSources(specs: List<BattleHeroSpec>): List<TroopFeatureSource> =
         specs.flatMap { spec ->
             spec.troopFeatureIds.take(2).flatMap { featureId ->
-                troopFeatureRepository.skillIds(featureId).map { skillId ->
-                    TroopFeatureSource(spec.position, skillId)
+                troopFeatureRepository.skillIds(featureId).flatMap { skillId ->
+                    val sourceIds = when (skillId) {
+                        296_106 -> listOf(296_106) +
+                            listOfNotNull(296_132.takeIf { spec.position == 0 })
+                        296_206 -> listOf(296_206) +
+                            listOfNotNull(296_232.takeIf { spec.position == 0 })
+                        else -> listOf(skillId)
+                    }
+                    sourceIds.map { sourceId ->
+                        TroopFeatureSource(spec.position, sourceId)
+                    }
                 }
             }
         }
@@ -146,6 +157,16 @@ class BattleFormationCalculator(
                         amount = 8,
                     )
                 }
+                296_132, 296_232 -> listOf(531, 533).map { effectId ->
+                    BattlePreparationModifier(
+                        stage = BattlePreparationStage.TROOP,
+                        sourceId = source.skillId,
+                        sourcePosition = source.position,
+                        targetPosition = source.position,
+                        effectId = effectId,
+                        amount = 8,
+                    )
+                }
                 else -> emptyList()
             }
         }
@@ -155,8 +176,14 @@ class BattleFormationCalculator(
         position: Int,
     ): List<BattleModifier> =
         sources
-            .filter { it.position == position && it.skillId == 296_105 }
-            .map { BattleModifier.DamageTakenPercent(percent = -8) }
+            .filter { it.position == position }
+            .mapNotNull { source ->
+                when (source.skillId) {
+                    296_105 -> BattleModifier.DamageTakenPercent(percent = -8)
+                    296_132, 296_232 -> BattleModifier.DamageDealtPercent(percent = 8)
+                    else -> null
+                }
+            }
 
     private fun fixedTroopEffect(
         source: TroopFeatureSource,
@@ -325,6 +352,31 @@ class BattleFormationCalculator(
                         containerSourceId = equipmentId,
                     )
                 }
+            }
+        }
+
+    private fun equipmentFeaturePreparationActions(
+        specs: List<BattleHeroSpec>,
+    ): List<BattlePreparationAction> =
+        specs.flatMap { spec ->
+            val equipmentId = spec.equipmentIds.singleOrNull() ?: return@flatMap emptyList()
+            val initialSkillId = config.hero(spec.heroId)?.initialSkillId
+                ?.takeIf { it > 0 }
+                ?: return@flatMap emptyList()
+            spec.equipmentFeatureSkillIds.mapIndexedNotNull { index, featureSkillId ->
+                val level = spec.equipmentFeatureSkillLevels.getOrNull(index)
+                    ?.takeIf { it > 0 }
+                    ?: return@mapIndexedNotNull null
+                BattlePreparationAction(
+                    stage = BattlePreparationStage.EQUIPMENT,
+                    sourceId = featureSkillId,
+                    sourcePosition = spec.position,
+                    targetPosition = spec.position,
+                    actionId = "8x".toInt(36),
+                    amountExact = level.toDouble(),
+                    actionParameter = initialSkillId,
+                    containerSourceId = equipmentId,
+                )
             }
         }
 
