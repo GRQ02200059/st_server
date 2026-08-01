@@ -1,6 +1,7 @@
 .gradle/
 build/
 out/
+.worktrees/
 
 *.class
 *.jar
