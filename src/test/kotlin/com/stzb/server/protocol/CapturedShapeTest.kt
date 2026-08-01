@@ -36,7 +36,7 @@ class CapturedShapeTest {
     @Test
     fun `captured null commands answer json null`() {
         listOf(24, 933, 2402, 2404, 2600, 2601, 4326, 4966).forEach { cmd ->
-            assertEquals("null", NetworkResponsePolicy.fallbackBody(cmd), "cmd=$cmd")
+            assertEquals("null", NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
         }
     }
 
@@ -44,7 +44,7 @@ class CapturedShapeTest {
     fun `captured boolean commands keep boolean kind`() {
         // 981 REALNAME_LOGOUT / 4087 CHECK_HAVE_UNION_TO_JOIN 正式服真实 recv 为 bool。
         listOf(191, 748, 888, 981, 2311, 4087).forEach { cmd ->
-            val body = NetworkResponsePolicy.fallbackBody(cmd)!!
+            val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("boolean", ShapeAssert.topLevelKind(body), "cmd=$cmd")
         }
     }
@@ -52,7 +52,7 @@ class CapturedShapeTest {
     @Test
     fun `captured scalar number commands keep number kind`() {
         mapOf(5069 to "200", 750 to "0", 752 to "6500").forEach { (cmd, expected) ->
-            val body = NetworkResponsePolicy.fallbackBody(cmd)!!
+            val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("number", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(expected, body, "cmd=$cmd")
         }
@@ -62,7 +62,7 @@ class CapturedShapeTest {
     fun `captured opaque string commands keep string kind`() {
         // 980 GET_USER_SEASON_RECORD 正式服真实 recv 为序列化 JSON 字符串。
         listOf(671, 980, 40004, 40016).forEach { cmd ->
-            val body = NetworkResponsePolicy.fallbackBody(cmd)!!
+            val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("string", ShapeAssert.topLevelKind(body), "cmd=$cmd")
         }
     }
@@ -71,7 +71,7 @@ class CapturedShapeTest {
     fun `captured object command keeps object kind`() {
         // 5021 GET_SEASON_HISTROY_PARAMS 正式服真实 recv 为对象。
         listOf(40008, 5021).forEach { cmd ->
-            val body = NetworkResponsePolicy.fallbackBody(cmd)!!
+            val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("object", ShapeAssert.topLevelKind(body), "cmd=$cmd")
         }
     }
@@ -90,7 +90,7 @@ class CapturedShapeTest {
             40022 to 2,
         )
         expectedSizes.forEach { (cmd, size) ->
-            val body = NetworkResponsePolicy.fallbackBody(cmd)!!
+            val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(size, ShapeAssert.tupleSize(body), "cmd=$cmd")
         }
@@ -108,7 +108,7 @@ class CapturedShapeTest {
             20003 to 2,
         )
         expectedSizes.forEach { (cmd, size) ->
-            val body = NetworkResponsePolicy.fallbackBody(cmd)!!
+            val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(size, ShapeAssert.tupleSize(body), "cmd=$cmd")
         }
@@ -118,7 +118,7 @@ class CapturedShapeTest {
     fun `captured list iterated commands stay empty arrays`() {
         // 这些命令客户端整体遍历列表，空 [] 即结构正确（保结构不保数值）。
         listOf(92, 103, 143, 171, 711, 871, 6256).forEach { cmd ->
-            val body = NetworkResponsePolicy.fallbackBody(cmd)!!
+            val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(0, ShapeAssert.tupleSize(body), "cmd=$cmd")
         }

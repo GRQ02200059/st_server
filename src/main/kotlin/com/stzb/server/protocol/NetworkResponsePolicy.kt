@@ -13,8 +13,8 @@ object NetworkResponsePolicy {
     private val mapper = jacksonObjectMapper()
 
     private val noOpArrayCommands = setOf(
-        22, 92, 103, 143, 171, 220, 509, 700, 701, 711, 714, 780, 871, 959, 963, 974,
-        3846, 4331, 4967, 5043, 5044, 5045, 5049, 5070, 5082, 6067, 6256, 9099,
+        22, 92, 103, 111, 143, 171, 220, 509, 700, 701, 711, 714, 780, 871, 959, 963, 974,
+        3846, 4080, 4331, 4967, 5043, 5044, 5045, 5049, 5070, 5082, 6067, 6256, 9099,
     )
 
     fun observedShapeCommandIds(): Set<Int> =
@@ -41,7 +41,7 @@ object NetworkResponsePolicy {
                 6092,
             )
 
-    fun fallbackBody(cmdId: Int, requestBody: String? = null): String? =
+    fun observedShapeBody(cmdId: Int, requestBody: String? = null): String? =
         when {
             cmdId == Cmd.UNION_INFO -> GenericGameResponses.unionInfoUnavailable()
             cmdId == Cmd.UNION_CREATE -> "0"
@@ -63,7 +63,6 @@ object NetworkResponsePolicy {
             cmdId in pagedListCommands -> GenericGameResponses.emptyPagedList()
             cmdId in objectResultCommands -> GenericGameResponses.emptyObjectResult()
             cmdId in noOpArrayCommands -> GenericGameResponses.emptyArray()
-            isBusinessCommand(cmdId) -> GenericGameResponses.emptyArray()
             else -> null
         }
 
@@ -160,21 +159,4 @@ object NetworkResponsePolicy {
         val name = request?.get(0)?.asText() ?: ""
         return mapper.writeValueAsString(listOf(name, emptyList<Any>(), emptyList<Any>()))
     }
-
-    private fun isBusinessCommand(cmdId: Int): Boolean =
-        cmdId in 1..99999 && cmdId !in setOf(
-            Cmd.SYS_HEART_BEAT,
-            Cmd.SYS_NOTIFY_DB_UPDATE,
-            Cmd.SYS_SID_INVALID,
-            Cmd.SYS_CHECK_SID,
-            Cmd.SYS_ACKNOWLEDGE,
-            Cmd.SYS_NOTIFY_SID,
-            Cmd.SYS_QUEUE,
-            Cmd.SYS_PLATFORM_LOGIN_CHECK,
-            Cmd.SYS_PRE_SERVER_TOKEN_CHECK,
-            Cmd.SYS_LOGIN,
-            Cmd.BATTLE_REPORT_PROFILE,
-            Cmd.BATTLE_REPORT_DETAIL,
-            Cmd.BATTLE_REPORT_SHORT_DETAIL,
-        )
 }
