@@ -167,8 +167,8 @@ class ClientBattleReportStore private constructor(
             put("defend_hero_type", "0,0,0,0,")
             put("attack_hero_type_advance", "0,0,0,0,")
             put("defend_hero_type_advance", "0,0,0,0,")
-            put("attack_advance", emptyFourRows(6))
-            put("defend_advance", emptyFourRows(6))
+            put("attack_advance", attacker.toAdvanceInfo())
+            put("defend_advance", defender.toAdvanceInfo())
             put("attacker_life_end_time", "")
             put("defender_life_end_time", "")
             put("attacker_army_effect", "")
@@ -204,6 +204,15 @@ class ClientBattleReportStore private constructor(
                 "${hero.id.value},${hero.level},${hero.maxTroops},${hero.troops},${(hero.maxTroops - hero.troops).coerceAtLeast(0)}"
             }
         }
+
+    private fun List<BattleHero>.toAdvanceInfo(): String =
+        (listOf("0,0,0,0,0,0") + (0..2).map { position ->
+            val advanceNum = firstOrNull { it.position == position }
+                ?.advanceLevel
+                ?.coerceAtLeast(0)
+                ?: 0
+            "$advanceNum,0,0,0,0,0"
+        }).joinToString(";")
 
     private fun List<BattleHeroSurface>.toHeroSurfaceInfo(): String =
         (0..2).joinToString(";") { position ->

@@ -147,6 +147,32 @@ class PlayerBattleServiceTest {
     }
 
     @Test
+    fun `settled pve report keeps the departed hero advance number`() {
+        val state = PlayerState(userId = 915, cityWid = 1915, roleName = "主公")
+        val hero = state.addHero(100017).apply {
+            advanceNum = 5
+        }
+        state.saveTeam(listOf(hero.heroUid))
+        val store = ClientBattleReportStore.createEmpty()
+        val service = PlayerBattleService(store, defenderFactory = defendersOn2001())
+
+        service.launchPveBattle(state, targetWid = 10_011, nowSec = 1_700_000_010)
+            ?: error("expedition should start")
+        hero.advanceNum = 0
+
+        val settlement = service.settlePveBattle(state, nowSec = 1_700_000_013)
+            ?: error("arrival should resolve battle")
+        val profile = mapper.readTree(
+            store.profileResponse(state.userId, listOf(settlement.battleId), serverId = 0),
+        )[1][0]
+
+        assertEquals(
+            "0,0,0,0,0,0;5,0,0,0,0,0;0,0,0,0,0,0;0,0,0,0,0,0",
+            profile["attack_advance"].asText(),
+        )
+    }
+
+    @Test
     fun `second army expedition keeps its own army id and team`() {
         val state = PlayerState(userId = 907, cityWid = 1907, roleName = "主公")
         val first = state.addHero(100017)

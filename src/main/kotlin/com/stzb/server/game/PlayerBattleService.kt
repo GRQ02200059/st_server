@@ -67,6 +67,7 @@ class PlayerBattleService(
                     cardBorder = hero.cardBorder,
                     dynamicIcon = hero.dynamicIcon,
                     armyFacadeCardId = hero.armyFacadeCardId,
+                    advanceNum = hero.advanceNum,
                 )
             },
             specialArmyFacadeId = state.activeSpecialArmyFacadeId(),
@@ -100,6 +101,7 @@ class PlayerBattleService(
                                 cardBorder = hero.cardBorder,
                                 dynamicIcon = hero.dynamicIcon,
                                 armyFacadeCardId = hero.armyFacadeCardId,
+                                advanceNum = hero.advanceNum,
                             )
                         }
                 }
@@ -128,6 +130,7 @@ class PlayerBattleService(
                     heroType = participant.heroType,
                     surfaceSkillId = participant.activeFeatureId,
                     attributePoints = participant.attributePoints,
+                    advanceLevel = participant.advanceNum,
                 )
             },
         )
@@ -164,6 +167,7 @@ class PlayerBattleService(
                         heroType = participant.heroType,
                         surfaceSkillId = participant.activeFeatureId,
                         attributePoints = participant.attributePoints,
+                        advanceLevel = participant.advanceNum,
                     )
                 },
             )

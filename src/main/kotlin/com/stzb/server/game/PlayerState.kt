@@ -140,6 +140,7 @@ data class PlayerMarchHero(
     val dynamicIcon: Int = 0,
     val activeFeatureId: Int = 0,
     val armyFacadeCardId: Int = 0,
+    val advanceNum: Int = 0,
 )
 
 data class PlayerHeroSnapshot(
