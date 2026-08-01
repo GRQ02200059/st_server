@@ -134,6 +134,72 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `rank list type zero uses authenticated identity and local world without mutation`() {
+        val alice = newChannel()
+        val bob = newChannel()
+        val aliceId = platformLogin(alice, "rank-alice")
+        val bobId = platformLogin(bob, "rank-bob")
+        val aliceSession = alice.attr(GameServerHandler.SESSION).get() ?: error("missing Alice session")
+        val aliceState = PlayerStateRepository.getOrCreate(
+            accountKey = requireNotNull(aliceSession.accountKey),
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Alice Local",
+        )
+        assertTrue(WorldStateRepository.claimLand(aliceState, wid = 10_002, nowSec = 1))
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+
+        alice.writeInbound(upPacket(Cmd.RANK_LIST, "[0,3,0]", userId = bobId))
+
+        val packet = assertIs<DownPacket>(alice.readOutbound<Any>())
+        assertEquals(Cmd.RANK_LIST, packet.cmd)
+        assertEquals(DownType.PLAIN, packet.dataType)
+        val response = mapper.readTree(packet.body)
+        assertEquals(7, response.size())
+        assertEquals(aliceId, response[2]["user_id"].asInt())
+        assertEquals(1, response[2]["land_count"].asInt())
+        assertEquals(
+            setOf(aliceId, bobId),
+            response[4].map { row -> row[1]["user_id"].asInt() }.toSet(),
+        )
+        assertNull(alice.readOutbound<Any>())
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        alice.finishAndReleaseAll()
+        bob.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `rank list type one reads local union and leaves repository snapshots unchanged`() {
+        val channel = newChannel()
+        val playerId = platformLogin(channel, "rank-union-member")
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = requireNotNull(session.accountKey),
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = GameServerConfig.ROLE_NAME,
+        )
+        val unionId = UnionStateRepository.create(state, "Local Rank Union", nowSec = 1)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+
+        channel.writeInbound(upPacket(Cmd.RANK_LIST, "[0,3,1]", userId = playerId + 10_000))
+
+        val packet = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.RANK_LIST, packet.cmd)
+        assertEquals(DownType.PLAIN, packet.dataType)
+        val response = mapper.readTree(packet.body)
+        assertEquals(6, response.size())
+        assertEquals(0, response[1].asInt())
+        assertEquals(unionId, response[2]["union_id"].asInt())
+        assertEquals("Local Rank Union", response[2]["name"].asText())
+        assertNull(channel.readOutbound<Any>())
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `world chat uses official 2100 shape and is returned by history`() {
         val channel = newChannel()
         val playerId = platformLogin(channel, "alice")

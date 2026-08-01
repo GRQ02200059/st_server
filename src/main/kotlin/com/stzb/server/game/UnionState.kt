@@ -10,6 +10,8 @@ import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.StandardOpenOption.CREATE_NEW
 import java.nio.file.StandardOpenOption.WRITE
+import java.util.Collections
+import java.util.LinkedHashSet
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
@@ -124,6 +126,20 @@ class UnionService(
         unionIdByUser[userId]?.let(unionsById::get)
     }
 
+    fun all(): List<PlayerUnion> = lock.read {
+        Collections.unmodifiableList(
+            unionsById.values
+                .sortedBy(PlayerUnion::unionId)
+                .map { union ->
+                    union.copy(
+                        memberUserIds = Collections.unmodifiableSet(
+                            LinkedHashSet(union.memberUserIds.sorted()),
+                        ),
+                    )
+                },
+        )
+    }
+
     private fun persist() {
         repository.save(
             UnionStateSnapshot(
@@ -154,6 +170,8 @@ object UnionStateRepository {
     fun find(unionId: Int): PlayerUnion? = service.find(unionId)
 
     fun forUser(userId: Int): PlayerUnion? = service.forUser(userId)
+
+    fun all(): List<PlayerUnion> = service.all()
 
     private fun defaultService(): UnionService {
         val root = Path.of(System.getenv("STZB_DATA_DIR") ?: "data")

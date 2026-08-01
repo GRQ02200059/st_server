@@ -41,6 +41,7 @@ object CommandContractCatalog {
             CurrentClientCommand.GET_HOMEPAGE_INFO,
             CurrentClientCommand.CHAT,
             CurrentClientCommand.CHAT_HISTORY,
+            Cmd.RANK_LIST,
             Cmd.ARMY_BATTLE,
             Cmd.BUILD_BUILDING,
             Cmd.UPGRADE_BUILDING,

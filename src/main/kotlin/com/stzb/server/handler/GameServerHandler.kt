@@ -15,6 +15,7 @@ import com.stzb.server.game.PlayerBattleService
 import com.stzb.server.game.PlayerConscriptService
 import com.stzb.server.game.PlayerStateRepository
 import com.stzb.server.game.ProfileResponses
+import com.stzb.server.game.RankListResponses
 import com.stzb.server.game.RecruitResultParser
 import com.stzb.server.game.SkillOperationRequestParser
 import com.stzb.server.game.TeamRequestParser
@@ -166,6 +167,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT -> {
                 logIn(msg)
                 sendUnionChatMembers(ctx, session, msg)
+            }
+
+            Cmd.RANK_LIST -> {
+                logIn(msg)
+                sendRankList(ctx, session, msg)
             }
 
             Cmd.GET_HOMEPAGE_INFO -> {
@@ -1109,6 +1115,18 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             ?: GameResponses.emptyArray()
         ctx.writeAndFlush(DownPacket.json(msg.cmdId, json, dataType = DownType.PLAIN))
         log.info(">> cmd=143 同盟分组聊天成员已下发 (uid=$userId, hasUnion=${union != null})")
+    }
+
+    private fun sendRankList(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.playerId ?: msg.userId
+        val json = RankListResponses.response(
+            requestBody = msg.bodyText,
+            userId = userId,
+            world = WorldStateRepository.projection(),
+            unions = UnionStateRepository.all(),
+        )
+        ctx.writeAndFlush(DownPacket.json(Cmd.RANK_LIST, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=700 排行榜已下发 (uid=$userId)")
     }
 
     private fun sendHomepageInfo(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {

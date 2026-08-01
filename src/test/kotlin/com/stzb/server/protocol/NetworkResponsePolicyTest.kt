@@ -25,6 +25,11 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `rank list requires the explicit handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.RANK_LIST))
+    }
+
+    @Test
     fun `unregistered command has no shape response`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(45_678))
         assertTrue(!CommandContractCatalog.registry.isShapeResponseAllowed(45_678))
@@ -141,7 +146,6 @@ class NetworkResponsePolicyTest {
         val expectedSizes = mapOf(
             135 to 5,
             172 to 2,
-            700 to 6,
             725 to 4,
             1436 to 3,
             2529 to 3,

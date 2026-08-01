@@ -58,6 +58,7 @@ object Cmd {
     const val USE_TROOP_FACADE_CARD = 677
     const val UNLOCK_TROOP_FACADE_CARD = 678
     const val BATCH_ACTIVE_ARMY_FACADE_CARD = 682
+    const val RANK_LIST = 700
     const val CHAT = 710
     const val CHAT_HISTORY = 711
     const val GEAR_EQUIP = 1226
