@@ -15,8 +15,8 @@
 |----|------------|------------|--------|----------|
 | A | The process listening on 59979 has not loaded the aligned build. | High | Low | Rejected |
 | B | Android port 59979 routes to a different or absent Mac service. | High | Low | Confirmed pre-fix; route corrected |
-| C | Client dynamic land tables or runtime map cache override the static map 5 level. | High | Medium | Table overrides rejected; cache export inconclusive |
-| D | The client runtime loaded a different map container despite cfgDataIndex 5. | Medium | Medium | Inconclusive |
+| C | Client dynamic land tables or runtime map cache override the static map 5 level. | High | Medium | Rejected |
+| D | Client and server decode the same map 5 resource byte with different encoding rules. | High | Medium | Confirmed |
 | E | The client-selected wid differs from the previously verified 15061504 sample. | Medium | Low | Rejected for captured 4331 |
 
 ## Log Evidence
@@ -37,10 +37,31 @@
   `[15061504,"611,612"]`.
 - Line 7: `exportMapCache` failed with `TargetInvocationException`, so
   `MapWidData.NewResLv` is not yet directly observable through that exporter.
+- Line 8: The user confirmed wid 15061504 renders as level 3 while the live
+  server still selected level 6 armies 611 and 612.
+- Line 9: The fixed single-coordinate probe read the client runtime directly:
+  `cfgIndex=5`, `mapSize=3001`, `mapResourceLength=9006001`,
+  `rawResourceCode=65`, `isNewResource=false`, `resourceLevel=33`, and
+  `realResourceLevel=33`. Dynamic level sources remain zero or absent.
+- Line 10: The staged distribution resolves wid 15061504 to level 3, army
+  305, and matching 4329/4331 payloads. Its SHA-256 is
+  `055272b5214a4dec617a5aea28d7414e54ce07254bbd4fab85ce76c97ef4648f`.
+- Line 11: After the user restarted the server, live PID 89307 returned
+  `[15061504,"305"]` for both 4329 and 4331 while the client probe still
+  returned resource type 33.
 
 ## Verification Conclusion
-The static resources are byte-identical, the corrected Android route reaches
-the inspected Mac 59979 process, and no dynamic database-table override exists
-for wid 15061504. The live server response is the map-5 result `611,612`.
-Direct observation of the client-rendered level remains the final verification
-because the generic map-cache exporter cannot currently read the runtime cache.
+The map file and cfg index are aligned. The mismatch is the resource encoding:
+map 5 stores the legacy code `65`, which the client maps to resource type `33`
+because `ClientConfigCfg.IsNewResource=false`. The server incorrectly treated
+the same byte as the new-format resource type `65`, producing level 6 defenders.
+
+The staged server fix applies the client's legacy resource mapping to map 5
+while preserving new-format decoding for maps 984, 2001, and 2002. Focused
+tests and the built distribution resolve wid 15061504 to level 3 and army 305.
+After restart, the live client/server protocol result is aligned:
+
+- pre-fix: client `33` versus server `611,612`
+- post-fix: client `33` and server `305`
+
+The debug session remains open until the user confirms the in-client result.

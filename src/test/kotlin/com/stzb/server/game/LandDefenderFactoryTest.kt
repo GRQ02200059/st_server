@@ -43,11 +43,11 @@ class LandDefenderFactoryTest {
     }
 
     @Test
-    fun `default defender map follows the resource map selected by the client config`() {
+    fun `default defender map decodes map 5 with the client legacy resource mapping`() {
         val factory = LandDefenderFactory()
 
-        assertEquals(6, factory.levelForWid(15_061_504))
-        assertEquals(listOf(611, 612), factory.armyIdsForWid(15_061_504))
+        assertEquals(3, factory.levelForWid(15_061_504))
+        assertEquals(listOf(305), factory.armyIdsForWid(15_061_504))
     }
 
     @Test

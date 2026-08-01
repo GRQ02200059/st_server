@@ -171,13 +171,13 @@ class GameServerHandlerProtocolTest {
         val mapGuard = assertIs<DownPacket>(channel.readOutbound<Any>())
         assertEquals(4329, mapGuard.cmd)
         assertEquals(UpFlag.XOR, mapGuard.dataType)
-        assertEquals("""[15061504,"611,612"]""", mapGuard.body.toString(Charsets.UTF_8))
+        assertEquals("""[15061504,"305"]""", mapGuard.body.toString(Charsets.UTF_8))
 
         channel.writeInbound(upPacket(4331, "[15061504]"))
         val detail = assertIs<DownPacket>(channel.readOutbound<Any>())
         assertEquals(4331, detail.cmd)
         assertEquals(UpFlag.XOR, detail.dataType)
-        assertEquals("""[15061504,"611,612"]""", detail.body.toString(Charsets.UTF_8))
+        assertEquals("""[15061504,"305"]""", detail.body.toString(Charsets.UTF_8))
         assertNull(channel.readOutbound<Any>())
         channel.finishAndReleaseAll()
     }
@@ -318,7 +318,7 @@ class GameServerHandlerProtocolTest {
         }
         state.saveTeam(listOf(hero.heroUid))
         PlayerStateRepository.save(state)
-        val targetWid = 10_011
+        val targetWid = 10_002
 
         alice.writeInbound(
             upPacket(

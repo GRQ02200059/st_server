@@ -19,6 +19,7 @@ data class LandTileConfig(
 class LandMapRepository private constructor(
     val mapSize: Int,
     private val resourcesInMap: ByteArray,
+    private val resourceEncoding: ResourceEncoding,
 ) {
     fun tile(wid: Int): LandTileConfig? {
         val x = wid / WID_COORDINATE_BASE
@@ -26,7 +27,7 @@ class LandMapRepository private constructor(
         if (x !in 1..mapSize || y !in 1..mapSize) return null
 
         val encoded = resourcesInMap[(x - 1) * mapSize + y - 1].toInt() and 0xff
-        val resourceType = decodeResourceType(encoded) ?: return null
+        val resourceType = decodeResourceType(encoded, resourceEncoding) ?: return null
         return LandTileConfig(
             wid = wid,
             resourceType = resourceType,
@@ -36,6 +37,30 @@ class LandMapRepository private constructor(
 
     companion object {
         private const val WID_COORDINATE_BASE = 10_000
+        private const val LEGACY_RESOURCE_CODES =
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWX"
+        private val LEGACY_RESOURCE_TYPES = intArrayOf(
+            91, 92, 93, 94,
+            81, 82, 83, 84,
+            71, 72, 73, 74,
+            61, 62, 63, 64,
+            51, 52, 53, 54,
+            41, 42, 43, 44,
+            31, 32, 33, 34,
+            22, 23, 24, 25,
+            11, 12, 18,
+            56, 57, 58,
+            66, 67, 68,
+            76, 77, 78,
+            86, 87, 88,
+            96, 97, 98,
+        )
+        private val RESOURCE_ENCODINGS = mapOf(
+            5 to ResourceEncoding.LEGACY,
+            984 to ResourceEncoding.NEW,
+            2001 to ResourceEncoding.NEW,
+            2002 to ResourceEncoding.NEW,
+        )
 
         /**
          * Loads the resource-land map for the given login cfgDataIndex.
@@ -48,6 +73,9 @@ class LandMapRepository private constructor(
          */
         fun load(cfgIndex: Int): LandMapRepository {
             val resource = "/map/$cfgIndex/resources_in_map.mbd"
+            val resourceEncoding = requireNotNull(RESOURCE_ENCODINGS[cfgIndex]) {
+                "missing resource encoding for cfgIndex=$cfgIndex"
+            }
             val compressed = requireNotNull(LandMapRepository::class.java.getResourceAsStream(resource)) {
                 "missing map resource $resource"
             }
@@ -56,18 +84,33 @@ class LandMapRepository private constructor(
             require(mapSize * mapSize == decoded.size) {
                 "resources_in_map for cfgIndex=$cfgIndex is not square: ${decoded.size}"
             }
-            return LandMapRepository(mapSize, decoded)
+            return LandMapRepository(mapSize, decoded, resourceEncoding)
         }
 
         /** Loads the resource map advertised to the active client. */
         fun loadDefault(): LandMapRepository = load(GameServerConfig.CFG_DB_ID)
 
-        private fun decodeResourceType(encoded: Int): Int? {
-            if (encoded >= 100) {
-                val decoded = (encoded - 100) / 16 * 10 + (encoded - 100) % 16 / 4 + 11
-                return if (decoded / 10 == 2) decoded + 1 else decoded
+        private fun decodeResourceType(
+            encoded: Int,
+            resourceEncoding: ResourceEncoding,
+        ): Int? {
+            if (resourceEncoding == ResourceEncoding.LEGACY) {
+                val index = LEGACY_RESOURCE_CODES.indexOf(encoded.toChar())
+                return LEGACY_RESOURCE_TYPES.getOrNull(index)
             }
-            return encoded.takeIf { it / 10 in 1..9 }
+
+            val resourceType = if (encoded >= 100) {
+                val decoded = (encoded - 100) / 16 * 10 + (encoded - 100) % 16 / 4 + 11
+                if (decoded / 10 == 2) decoded + 1 else decoded
+            } else {
+                encoded
+            }
+            return resourceType.takeIf { it / 10 in 1..9 }
         }
+    }
+
+    private enum class ResourceEncoding {
+        LEGACY,
+        NEW,
     }
 }
