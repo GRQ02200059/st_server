@@ -362,6 +362,7 @@ object GameResponses {
                     userId = city.userId,
                     name = city.roleName,
                     belongCity = 0,
+                    customView = city.customView,
                 )
                 HomeCity.suburbWids(city.cityWid).forEach { suburbWid ->
                     putWorldCity(
@@ -392,6 +393,7 @@ object GameResponses {
         userId: Int,
         name: String,
         belongCity: Int,
+        customView: String? = null,
     ) {
         val isMainCity = cityType == 1
         val cityChunk = putObject(wid.toString())
@@ -411,7 +413,7 @@ object GameResponses {
         }
         if (isMainCity) {
             cityChunk.putArray("4")
-                .add(FacadeCatalog.DEFAULT_CITY_CUSTOM_VIEW)
+                .add(customView ?: FacadeCatalog.DEFAULT_CITY_CUSTOM_VIEW)
                 .add("")
         }
     }

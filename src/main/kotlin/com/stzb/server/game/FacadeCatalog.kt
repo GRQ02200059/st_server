@@ -54,3 +54,34 @@ object FacadeCatalog {
         1132201, 1142203, 1142204, 1142205, 1142206, 1142207, 1142208, 1143301, 1143302,
     )
 }
+
+object CityFacadeLayout {
+    private val supportedFacadeIds = FacadeCatalog.cityFacadeIds.toSet()
+
+    fun normalize(serialized: String): String? {
+        val trimmed = serialized.trim().trimEnd(';')
+        if (trimmed.isEmpty()) return null
+        val rawPlacements = trimmed.split(';')
+        val placements = rawPlacements.mapNotNull(::parsePlacement)
+        if (placements.size != rawPlacements.size) return null
+        if (placements.map(CityFacadePlacement::position).toSet().size != placements.size) return null
+        return "$trimmed;"
+    }
+
+    private fun parsePlacement(entry: String): CityFacadePlacement? {
+        val values = entry.split(',')
+        if (values.size !in 2..3) return null
+        val encodedFacade = values[0].toIntOrNull() ?: return null
+        val position = values[1].toIntOrNull() ?: return null
+        if (values.size == 3 && values[2].toIntOrNull() == null) return null
+        if (encodedFacade <= 0 || encodedFacade % 10 != 0 || position < 0) return null
+        val facadeId = encodedFacade / 10
+        if (facadeId !in supportedFacadeIds) return null
+        return CityFacadePlacement(facadeId, position)
+    }
+
+    private data class CityFacadePlacement(
+        val facadeId: Int,
+        val position: Int,
+    )
+}

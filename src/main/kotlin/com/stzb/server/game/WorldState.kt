@@ -47,6 +47,7 @@ data class WorldCity(
     val cityWid: Int,
     val userId: Int,
     val roleName: String,
+    val customView: String = FacadeCatalog.DEFAULT_CITY_CUSTOM_VIEW,
 )
 
 data class LandClaim(
@@ -210,6 +211,18 @@ class WorldService(
         true
     }
 
+    fun updateCityCustomView(state: PlayerState, cityWid: Int, customView: String): Boolean = lock.write {
+        if (cityWid != state.cityWid) return@write false
+        val normalizedView = CityFacadeLayout.normalize(customView) ?: return@write false
+        val city = citiesByUser[state.userId] ?: return@write false
+        if (city.cityWid != cityWid) return@write false
+        if (city.customView == normalizedView) return@write false
+
+        citiesByUser[state.userId] = city.copy(customView = normalizedView)
+        persist()
+        true
+    }
+
     fun projection(): WorldProjection = lock.read {
         WorldProjection(
             cities = citiesByUser.values.sortedBy(WorldCity::userId),
@@ -270,6 +283,9 @@ object WorldStateRepository {
 
     fun claimLand(state: PlayerState, wid: Int, nowSec: Int): Boolean =
         service.claimLand(state, wid, nowSec)
+
+    fun updateCityCustomView(state: PlayerState, cityWid: Int, customView: String): Boolean =
+        service.updateCityCustomView(state, cityWid, customView)
 
     fun projection(): WorldProjection = service.projection()
 
