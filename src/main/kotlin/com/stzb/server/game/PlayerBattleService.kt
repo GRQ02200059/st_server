@@ -9,6 +9,7 @@ import com.stzb.server.game.battle.BattleOutcome
 import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleResult
 import com.stzb.server.game.battle.BattleTeamBuilder
+import com.stzb.server.game.battle.BattleHeroSurface
 import com.stzb.server.game.battle.ClientBattleReportStore
 import com.stzb.server.game.battle.SeededBattleRandom
 
@@ -60,8 +61,15 @@ class PlayerBattleService(
                     troops = hero.troops,
                     level = hero.level,
                     skillIds = hero.normalizedSkillIds(),
+                    heroType = hero.heroType,
+                    attributePoints = hero.attributePoints,
+                    activeFeatureId = hero.activeFeatureId,
+                    cardBorder = hero.cardBorder,
+                    dynamicIcon = hero.dynamicIcon,
+                    armyFacadeCardId = hero.armyFacadeCardId,
                 )
             },
+            specialArmyFacadeId = state.activeSpecialArmyFacadeId(),
         )
         return PlayerBattleLaunchResult(battleId = 0, targetWid = targetWid)
     }
@@ -86,12 +94,27 @@ class PlayerBattleService(
                                 troops = hero.troops,
                                 level = hero.level,
                                 skillIds = hero.normalizedSkillIds(),
+                                heroType = hero.heroType,
+                                attributePoints = hero.attributePoints,
+                                activeFeatureId = hero.activeFeatureId,
+                                cardBorder = hero.cardBorder,
+                                dynamicIcon = hero.dynamicIcon,
+                                armyFacadeCardId = hero.armyFacadeCardId,
                             )
                         }
                 }
         }
         if (participants.isEmpty()) return null
 
+        val attackerSurfaces = participants.map { participant ->
+            BattleHeroSurface(
+                heroId = participant.heroId,
+                position = participant.position,
+                cardBorder = participant.cardBorder,
+                dynamicIcon = participant.dynamicIcon,
+                activeFeatureId = participant.activeFeatureId,
+            )
+        }
         var attacker = builder.build(
             participants.map { participant ->
                 BattleHeroSpec(
@@ -102,6 +125,9 @@ class PlayerBattleService(
                     extraSkillIds = participant.skillIds.drop(1).filter { it > 0 },
                     skillLevels = participant.skillIds.filter { it > 0 }
                         .map { PlayerHero.MAX_SKILL_LEVEL },
+                    heroType = participant.heroType,
+                    surfaceSkillId = participant.activeFeatureId,
+                    attributePoints = participant.attributePoints,
                 )
             },
         )
@@ -119,6 +145,7 @@ class PlayerBattleService(
                 wid = march.targetWid,
                 timeSec = nowSec,
                 result = result,
+                attackerSurfaces = attackerSurfaces,
             )
             attacker = builder.build(
                 participants.map { participant ->
@@ -134,6 +161,9 @@ class PlayerBattleService(
                         extraSkillIds = participant.skillIds.drop(1).filter { it > 0 },
                         skillLevels = participant.skillIds.filter { it > 0 }
                             .map { PlayerHero.MAX_SKILL_LEVEL },
+                        heroType = participant.heroType,
+                        surfaceSkillId = participant.activeFeatureId,
+                        attributePoints = participant.attributePoints,
                     )
                 },
             )

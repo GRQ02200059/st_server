@@ -140,6 +140,47 @@ class ClientBattleReportStoreTest {
     }
 
     @Test
+    fun `profile encodes frozen hero card border and dynamic icon surfaces`() {
+        val store = ClientBattleReportStore.createDefault(nowSec = 1_700_000_000)
+        val base = store.getOrCreateDefault()
+        val report = store.record(
+            ownerUserId = 10001,
+            wid = 10001,
+            timeSec = 1_700_000_001,
+            result = base.result,
+            attackerSurfaces = listOf(
+                BattleHeroSurface(
+                    heroId = 100017,
+                    position = 0,
+                    cardBorder = 101260,
+                    dynamicIcon = 100534,
+                ),
+                BattleHeroSurface(
+                    heroId = 100023,
+                    position = 1,
+                    cardBorder = 110997,
+                    dynamicIcon = 0,
+                ),
+            ),
+        )
+
+        val profile = mapper.readTree(
+            store.profileResponse(listOf(report.battleId), serverId = 0),
+        )[1][0]
+
+        assertEquals(
+            "100017,100534;100023,0;0,0",
+            profile["attack_all_surface"].asText(),
+        )
+        assertEquals(
+            "0,0,0;101260,100534,0;110997,0,0;0,0,0",
+            profile["attacker_surface"].asText(),
+        )
+        assertEquals("0,0;0,0;0,0", profile["defend_all_surface"].asText())
+        assertEquals("0,0,0;0,0,0;0,0,0;0,0,0", profile["defender_surface"].asText())
+    }
+
+    @Test
     fun `profile encodes a normal battle draw with the client result six`() {
         val store = ClientBattleReportStore.createDefault(nowSec = 1_700_000_000)
         val base = store.getOrCreateDefault()

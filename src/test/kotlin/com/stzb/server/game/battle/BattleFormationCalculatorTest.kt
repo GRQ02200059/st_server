@@ -119,4 +119,89 @@ class BattleFormationCalculatorTest {
         assertEquals(setOf(0, 1, 2), effects.mapTo(mutableSetOf()) { it.targetPosition })
         assertEquals(12, effects.size)
     }
+
+    @Test
+    fun `active hero feature applies its configured flat attributes during surface preparation`() {
+        val baseline = calculator.calculate(
+            listOf(BattleHeroSpec(heroId = 100648, position = 1, troops = 1_000, level = 44)),
+        ).heroes.single()
+        val team = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                    level = 44,
+                    surfaceSkillId = 285314,
+                ),
+            ),
+        )
+        val hero = team.heroes.single()
+        val effects = team.preparationEffects.filter { it.sourceId == 285314 }
+
+        assertEquals(
+            listOf(BattleStat.SPEED, BattleStat.DEFENSE, BattleStat.STRATEGY),
+            effects.map { it.stat },
+        )
+        assertEquals(listOf(2.0, 5.0, 2.0), effects.map { it.deltaExact })
+        assertEquals(setOf(BattlePreparationStage.SURFACE), effects.mapTo(mutableSetOf()) { it.stage })
+        assertEquals(baseline.stats.speed + 2, hero.stats.speed)
+        assertEquals(baseline.stats.defense + 5, hero.stats.defense)
+        assertEquals(baseline.stats.strategy + 2, hero.stats.strategy)
+    }
+
+    @Test
+    fun `non battle hero feature placeholder details do not change battle attributes`() {
+        val baseline = calculator.calculate(
+            listOf(BattleHeroSpec(heroId = 100648, position = 1, troops = 1_000, level = 44)),
+        ).heroes.single()
+        val team = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                    level = 44,
+                    surfaceSkillId = 281015,
+                ),
+            ),
+        )
+
+        assertEquals(baseline.stats, team.heroes.single().stats)
+        assertEquals(emptyList(), team.preparationEffects.filter { it.sourceId == 281015 })
+    }
+
+    @Test
+    fun `active hero feature applies configured damage modifier and preparation action`() {
+        val team = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                    surfaceSkillId = 281003,
+                ),
+            ),
+        )
+        val hero = team.heroes.single()
+
+        assertEquals(
+            listOf(BattleModifier.DamageDealtPercent(school = DamageSchool.STRATEGY, percent = 5)),
+            hero.modifiers,
+        )
+        assertEquals(
+            listOf(
+                BattlePreparationAction(
+                    stage = BattlePreparationStage.SURFACE,
+                    sourceId = 281003,
+                    sourcePosition = 1,
+                    targetPosition = 1,
+                    actionId = "0s".toInt(36),
+                    actionParameter = 533,
+                    compactStatusAction = true,
+                ),
+            ),
+            team.preparationActions,
+        )
+    }
 }

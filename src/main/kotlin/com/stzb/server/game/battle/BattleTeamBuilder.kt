@@ -2,6 +2,7 @@ package com.stzb.server.game.battle
 
 import com.stzb.server.game.ClientTroopFeatureRepository
 import com.stzb.server.game.ClientEquipmentSkillRepository
+import com.stzb.server.game.ClientTroopTypeRepository
 
 data class BattleHeroSpec(
     val heroId: Int,
@@ -10,6 +11,8 @@ data class BattleHeroSpec(
     val extraSkillIds: List<Int> = emptyList(),
     val skillLevels: List<Int> = emptyList(),
     val troopFeatureIds: List<Int> = emptyList(),
+    val heroType: Int? = null,
+    val surfaceSkillId: Int = 0,
     val equipmentIds: List<Int> = emptyList(),
     val equipmentSkillIds: List<Int> = emptyList(),
     val equipmentSkillLevels: List<Int> = emptyList(),
@@ -28,6 +31,8 @@ class BattleTeamBuilder(
         ClientTroopFeatureRepository.loadDefault(),
     private val equipmentSkillRepository: ClientEquipmentSkillRepository =
         ClientEquipmentSkillRepository.loadDefault(),
+    private val troopTypeRepository: ClientTroopTypeRepository =
+        ClientTroopTypeRepository.loadDefault(),
 ) {
     fun build(specs: List<BattleHeroSpec>): BattleTeam =
         BattleFormationCalculator(
@@ -35,5 +40,6 @@ class BattleTeamBuilder(
             equipmentRepository,
             troopFeatureRepository,
             equipmentSkillRepository,
+            troopTypeRepository,
         ).calculate(specs)
 }

@@ -46,6 +46,30 @@ class PlayerBattleServiceTest {
     }
 
     @Test
+    fun `starting pve expedition freezes selected army facades`() {
+        val state = PlayerState(userId = 914, cityWid = 1914, roleName = "主公")
+        val hero = state.addHero(HeroCatalog.defaultFiveStarHeroIds().first())
+        requireNotNull(state.bindArmyFacadeCards(101138, listOf(hero.heroUid)))
+        val xiyuan = state.specialArmyFacadeCards().single { it.facadeId == 101515 }
+        requireNotNull(state.setSpecialArmyFacadeState(xiyuan.heroUid, 2))
+        state.saveTeam(listOf(hero.heroUid))
+
+        PlayerBattleService(
+            reportStore = ClientBattleReportStore.createEmpty(),
+            defenderFactory = defendersOn2001(),
+        ).launchPveBattle(
+            state = state,
+            targetWid = 10_011,
+            nowSec = 1_700_000_010,
+        ) ?: error("expedition should start")
+
+        val march = state.activeMarch() ?: error("battle launch should create a visible march")
+        assertEquals(101515, march.specialArmyFacadeId)
+        assertEquals(101138, march.participants.single().armyFacadeCardId)
+        assertEquals("101515,0;", march.facadeIds())
+    }
+
+    @Test
     fun `expired persisted march does not permanently block another expedition`() {
         val state = PlayerState(userId = 909, cityWid = 1909, roleName = "主公")
         val hero = state.addHero(heroId = 100017, nowSec = 1_700_000_001)
@@ -89,6 +113,37 @@ class PlayerBattleServiceTest {
         )[1][0]
         assertEquals(result.battleId, profile["battle_id"].asInt())
         assertEquals(10_011, profile["wid"].asInt())
+    }
+
+    @Test
+    fun `settled pve report keeps the card border and dynamic icon from departure`() {
+        val state = PlayerState(userId = 913, cityWid = 1913, roleName = "主公")
+        val hero = state.addHero(100017).apply {
+            dynamicIcon = 100534
+            cardBorder = CardBorderCatalog.DEFAULT_ID
+        }
+        state.saveTeam(listOf(hero.heroUid))
+        val store = ClientBattleReportStore.createEmpty()
+        val service = PlayerBattleService(store, defenderFactory = defendersOn2001())
+
+        service.launchPveBattle(state, targetWid = 10_011, nowSec = 1_700_000_010)
+            ?: error("expedition should start")
+        hero.cardBorder = 110997
+        hero.dynamicIcon = 0
+
+        val settlement = service.settlePveBattle(state, nowSec = 1_700_000_013)
+            ?: error("arrival should resolve battle")
+        val profile = mapper.readTree(
+            store.profileResponse(state.userId, listOf(settlement.battleId), serverId = 0),
+        )[1][0]
+
+        assertEquals("100017,100534;0,0;0,0", profile["attack_all_surface"].asText())
+        assertEquals(
+            "0,0,0;101260,100534,0;0,0,0;0,0,0",
+            profile["attacker_surface"].asText(),
+        )
+        assertEquals("0,0;0,0;0,0", profile["defend_all_surface"].asText())
+        assertEquals("0,0,0;0,0,0;0,0,0;0,0,0", profile["defender_surface"].asText())
     }
 
     @Test

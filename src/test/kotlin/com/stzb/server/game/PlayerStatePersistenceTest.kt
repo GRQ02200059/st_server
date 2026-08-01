@@ -1,5 +1,6 @@
 package com.stzb.server.game
 
+import com.stzb.server.game.battle.BattleStats
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -130,6 +131,40 @@ class PlayerStatePersistenceTest {
         assertEquals(100534, restored.hero(hero.heroUid)?.dynamicIcon)
         assertTrue(restored.selectHeroFacade(hero.heroUid, 0))
         assertEquals(0, restored.hero(hero.heroUid)?.dynamicIcon)
+    }
+
+    @Test
+    fun `card border defaults to yulong persists and accepts only supported borders`() {
+        val state = PlayerState(userId = 57, cityWid = 10057, roleName = "主公")
+        val hero = state.addHero(100017)
+
+        assertEquals(CardBorderCatalog.DEFAULT_ID, hero.cardBorder)
+        assertTrue(state.selectHeroCardBorder(hero.heroUid, 110997))
+        assertFalse(state.selectHeroCardBorder(hero.heroUid, 777777))
+
+        val restored = PlayerState.fromSnapshot(state.toSnapshot())
+        assertEquals(110997, restored.hero(hero.heroUid)?.cardBorder)
+    }
+
+    @Test
+    fun `legacy hero snapshot gains the yulong default card border`() {
+        val restored = PlayerState.fromSnapshot(
+            PlayerStateSnapshot(
+                accountKey = "legacy-card-border",
+                userId = 58,
+                cityWid = 10058,
+                roleName = "主公",
+                heroes = listOf(
+                    PlayerHeroSnapshot(
+                        heroUid = 58_000_001,
+                        heroId = 100017,
+                        createdAtSec = 1_700_000_000,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(CardBorderCatalog.DEFAULT_ID, restored.hero(58_000_001)?.cardBorder)
     }
 
     @Test
@@ -293,10 +328,37 @@ class PlayerStatePersistenceTest {
         assertEquals(PlayerHero.MAX_STAMINA, restored.hero(hero.heroUid)?.stamina)
         assertEquals(PlayerHero.DEFAULT_LEVEL, restored.hero(hero.heroUid)?.level)
         assertEquals(listOf(hero.heroUid, 0, 0), restored.teamHeroes())
-        assertEquals(PlayerState.MAX_BUILD_LEVEL, restored.buildLevel(10))
+        assertEquals(4, restored.buildLevel(10))
         assertEquals(123456, restored.resources.food)
         assertEquals(setOf(100103), restored.occupiedLands())
         assertEquals(100102, restored.activeMarch()?.targetWid)
+    }
+
+    @Test
+    fun `march snapshot retains battle attributes and selected troop type`() {
+        val participant = PlayerMarchHero(
+            heroUid = 123,
+            position = 1,
+            heroId = 100035,
+            troops = 900,
+            level = 43,
+            skillIds = listOf(200648, 200220, 200684),
+            heroType = 31,
+            attributePoints = BattleStats(18, 7, 12, 3, 0, 0),
+            activeFeatureId = 281004,
+        )
+        val snapshot = PlayerMarchSnapshot(
+            armyId = 1001,
+            fromWid = 10,
+            targetWid = 11,
+            beginSec = 1,
+            endSec = 9,
+            participants = listOf(participant),
+        )
+
+        assertEquals(31, snapshot.participants.single().heroType)
+        assertEquals(18, snapshot.participants.single().attributePoints.attack)
+        assertEquals(281004, snapshot.participants.single().activeFeatureId)
     }
 
     @Test
@@ -320,5 +382,92 @@ class PlayerStatePersistenceTest {
         val restored = PlayerState.fromSnapshot(snapshot, nowSec = 1_700_000_010)
 
         assertTrue(restored.activeMarches().isEmpty())
+    }
+
+    @Test
+    fun `each normal army facade has five cards and bound cards survive restore`() {
+        val state = PlayerState(userId = 71, cityWid = 10071, roleName = "主公")
+        val heroes = HeroCatalog.defaultFiveStarHeroIds().take(5).map(state::addHero)
+        require(heroes.size == 5)
+
+        assertEquals(60, state.armyFacadeCards().size)
+        val mutation = requireNotNull(
+            state.bindArmyFacadeCards(101138, heroes.map(PlayerHero::heroUid)),
+        )
+        assertEquals(5, mutation.cardCfgHeroIds.size)
+        assertTrue(heroes.all { it.armyFacadeCardId == 101138 })
+
+        val restored = PlayerState.fromSnapshot(state.toSnapshot())
+        assertEquals(
+            heroes.map(PlayerHero::heroId).toSet(),
+            restored.armyFacadeCards()
+                .filter { it.facadeId == 101138 && it.cfgHeroId > 0 }
+                .map(PlayerArmyFacadeCard::cfgHeroId)
+                .toSet(),
+        )
+        assertTrue(heroes.all { restored.hero(it.heroUid)?.armyFacadeCardId == 101138 })
+    }
+
+    @Test
+    fun `army facade binding rejects duplicate configs non five stars and unsupported facades`() {
+        val state = PlayerState(userId = 72, cityWid = 10072, roleName = "主公")
+        val fiveStarId = HeroCatalog.defaultFiveStarHeroIds().first()
+        val sameConfigA = state.addHero(fiveStarId)
+        val sameConfigB = state.addHero(fiveStarId)
+        val nonFiveStar = state.addHero(
+            HeroCatalog.recruitableHeroIds().first { HeroCatalog.heroQuality(it) != 4 },
+        )
+
+        assertNull(state.bindArmyFacadeCards(101138, listOf(sameConfigA.heroUid, sameConfigB.heroUid)))
+        assertNull(state.bindArmyFacadeCards(101138, listOf(nonFiveStar.heroUid)))
+        assertNull(state.bindArmyFacadeCards(999999, listOf(sameConfigA.heroUid)))
+        assertEquals(0, sameConfigA.armyFacadeCardId)
+    }
+
+    @Test
+    fun `legacy snapshots gain special army facades and marches retain the selected facade`() {
+        val restored = PlayerState.fromSnapshot(
+            PlayerStateSnapshot(
+                accountKey = "legacy-army-facade",
+                userId = 73,
+                cityWid = 10073,
+                roleName = "主公",
+            ),
+        )
+        val hero = restored.addHero(HeroCatalog.defaultFiveStarHeroIds().first())
+        restored.assignTeamHero(hero.heroUid, pos = 1)
+        assertTrue(restored.useArmyFacade(hero.heroUid, ArmyFacadeCatalog.YUXI_FACADE_ID) != null)
+
+        val xiyuan = restored.specialArmyFacadeCards().single { it.facadeId == 101515 }
+        val xiyuanYuxi = restored.specialArmyFacadeCards().single { it.facadeId == 101618 }
+        assertTrue(restored.setSpecialArmyFacadeState(xiyuan.heroUid, 2) != null)
+        assertTrue(restored.setSpecialArmyFacadeState(xiyuanYuxi.heroUid, 2) != null)
+        assertEquals(0, restored.specialArmyFacadeCards().single { it.heroUid == xiyuan.heroUid }.state)
+        assertEquals(2, restored.specialArmyFacadeCards().single { it.heroUid == xiyuanYuxi.heroUid }.state)
+
+        val march = restored.startMarch(
+            targetWid = 10074,
+            nowSec = 1,
+            participants = listOf(
+                PlayerMarchHero(
+                    heroUid = hero.heroUid,
+                    position = 0,
+                    heroId = hero.heroId,
+                    troops = hero.troops,
+                    level = hero.level,
+                    skillIds = hero.normalizedSkillIds(),
+                    armyFacadeCardId = hero.armyFacadeCardId,
+                ),
+            ),
+            specialArmyFacadeId = restored.activeSpecialArmyFacadeId(),
+        )
+
+        assertEquals(60, restored.armyFacadeCards().size)
+        assertEquals(4, restored.specialArmyFacadeCards().size)
+        assertEquals("101618,0;", march.facadeIds())
+        assertEquals(
+            "101618,0;",
+            PlayerState.fromSnapshot(restored.toSnapshot(), nowSec = 1).activeMarch()?.facadeIds(),
+        )
     }
 }

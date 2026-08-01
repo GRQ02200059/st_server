@@ -3,6 +3,7 @@ package com.stzb.server.game.battle.skill
 import com.stzb.server.game.battle.ActionPermission
 import com.stzb.server.game.battle.ActiveSkillEffect
 import com.stzb.server.game.battle.BattleEffectValueUnit
+import com.stzb.server.game.battle.BattleEvent
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleModifier
@@ -137,6 +138,7 @@ class SkillBattleState(
 
     private val states = mutableMapOf<BattleHeroRef, MutableHeroState>()
     private val damageDealt = mutableMapOf<BattleHeroRef, Int>()
+    private val skillRangeBonuses = mutableMapOf<Pair<BattleHeroRef, SkillKind>, Int>()
     internal val effectStatuses = mutableMapOf<EffectKey, BattleStatus>()
     internal val effectModifiers = mutableMapOf<EffectKey, BattleModifier>()
 
@@ -180,6 +182,9 @@ class SkillBattleState(
         override fun currentMorale(ref: BattleHeroRef): Int? = states[ref]?.morale
 
         override fun currentAttackRange(ref: BattleHeroRef): Int? = states[ref]?.stats?.hitRange
+
+        override fun skillRangeBonus(ref: BattleHeroRef, kind: SkillKind): Int =
+            skillRangeBonuses[ref to kind] ?: 0
 
         override fun linkedTarget(source: BattleHeroRef): BattleHeroRef? =
             historyAdapter?.linkedTarget(source)
@@ -260,6 +265,26 @@ class SkillBattleState(
 
     internal fun recordDamage(source: BattleHeroRef, amount: Int) {
         damageDealt[source] = (damageDealt[source] ?: 0) + amount
+    }
+
+    internal fun applySkillRangeChange(
+        change: MetaEffectChange,
+        kind: SkillKind,
+        delta: Int,
+        round: Int,
+    ): BattleEvent.SkillRangeChanged {
+        val key = change.target to kind
+        val total = (skillRangeBonuses[key] ?: 0) + delta
+        skillRangeBonuses[key] = total
+        return BattleEvent.SkillRangeChanged(
+            round = round,
+            source = change.source,
+            target = change.target,
+            skillId = change.skillId,
+            skillKind = kind,
+            delta = delta,
+            displayRangeAfter = liveHero(change.target).stats.hitRange + total,
+        )
     }
 
     internal fun liveHero(ref: BattleHeroRef): BattleHero {
@@ -543,6 +568,7 @@ class BattleStateChangeApplier(
                 require(change.percent != 0) { "damage modifier percent must not be zero" }
                 modifierEffect(change)
             }
+            is ModifierEffectChange -> validateSpec(change.spec, delayedActivation)
             is ApplyBattleEffectChange -> validateSpec(change.spec, delayedActivation)
             is ScheduledDamageEffectChange -> validateSpec(change.spec, delayedActivation)
             is ScheduledRecoveryEffectChange -> validateSpec(change.spec, delayedActivation)
@@ -659,6 +685,9 @@ class BattleStateChangeApplier(
                 }
                 if (accepted) outputs += BattleStateOutput.ModifierApplied(change)
             }
+            is ModifierEffectChange -> applyEffect(change.spec, outputs) { key, _ ->
+                state.effectModifiers[key] = change.modifier
+            }
             is ApplyBattleEffectChange -> applyEffect(change.spec, outputs) { key, _ ->
                 statusFor(change.spec.effectId)?.let { state.effectStatuses[key] = it }
             }
@@ -772,7 +801,12 @@ class BattleStateChangeApplier(
         val target = state.mutable(targetRef)
         val room = (target.entry.maxTroops - target.troops).coerceAtLeast(0)
         val limit = if (limitedByWounded) target.woundedTroops else Int.MAX_VALUE
-        val amount = minOf(requestedAmount.coerceAtLeast(0), room, limit)
+        val recoveryPercent = state.liveHero(targetRef).modifiers
+            .filterIsInstance<BattleModifier.RecoveryTakenPercent>()
+            .sumOf { it.percent }
+        val modifiedAmount = requestedAmount.coerceAtLeast(0).toLong() *
+            (100 + recoveryPercent).coerceAtLeast(0) / 100
+        val amount = minOf(modifiedAmount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), room, limit)
         target.troops += amount
         recovered[RecoveryKey(targetRef, skillId, effectId)] =
             (recovered[RecoveryKey(targetRef, skillId, effectId)] ?: 0) + amount
@@ -850,10 +884,10 @@ class BattleStateChangeApplier(
                     .filter { (key, modifier) -> key.target == ref && modifier.kind == kind }
                 val flat = modifiers
                     .filter { (_, modifier) -> modifier.unit == BattleEffectValueUnit.FLAT }
-                    .sumOf { (key, modifier) -> key.strength() * modifier.sign }
+                    .sumOf { (key, modifier) -> key.strengthExact() * modifier.sign }
                 val percent = modifiers
                     .filter { (_, modifier) -> modifier.unit == BattleEffectValueUnit.PERCENT }
-                    .sumOf { (key, modifier) -> key.strength() * modifier.sign }
+                    .sumOf { (key, modifier) -> key.strengthExact() * modifier.sign }
                 base + percentBase * percent / 100.0 + flat
             }
             mutable.stats = BattleStats.fromHundredths(
@@ -987,6 +1021,12 @@ class BattleStateChangeApplier(
             .singleOrNull { it.key() == this }
             ?.effectiveStrength
             ?: 0
+
+    private fun EffectKey.strengthExact(): Double =
+        state.effectStore.effectsFor(target)
+            .singleOrNull { it.key() == this }
+            ?.effectiveStrengthExact
+            ?: 0.0
 
     private fun statusFor(effectId: Int): BattleStatus? = when (effectId) {
         501, 701, 901 -> BattleStatus.CONFUSION

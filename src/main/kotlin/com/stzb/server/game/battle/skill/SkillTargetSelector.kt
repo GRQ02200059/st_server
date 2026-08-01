@@ -95,7 +95,13 @@ class SkillTargetSelector(
             else -> candidates.filter { target ->
                 target.side == context.source.side ||
                     attackTypeIgnoresRange(raw.attackType) ||
-                    inSkillRange(context.source, target, rule.skillHitRange)
+                    inSkillRange(
+                        context.source,
+                        target,
+                        rule.skillHitRange?.plus(
+                            context.battleView.skillRangeBonus(context.source, rule.skillKind),
+                        ),
+                    )
             }
         }
 

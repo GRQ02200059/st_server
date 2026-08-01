@@ -72,6 +72,9 @@ enum class DamageOrigin {
 enum class DamageTag {
     ONGOING,
     FIRE,
+    SHAKE,
+    PANIC,
+    HEX,
 }
 
 sealed interface BattleModifier {
@@ -88,8 +91,20 @@ sealed interface BattleModifier {
         val tag: DamageTag? = null,
         val percent: Int,
     ) : BattleModifier
-    data class SkillProbabilityPercent(val percent: Int) : BattleModifier
-    data class DefenseIgnorePercent(val percent: Int) : BattleModifier
+    data class SkillProbabilityPercent(
+        val percent: Int,
+        val skillId: Int? = null,
+        val skillKind: SkillKind? = null,
+    ) : BattleModifier
+    data class EffectProbabilityPercent(
+        val detailId: Int,
+        val percent: Int,
+    ) : BattleModifier
+    data class RecoveryTakenPercent(val percent: Int) : BattleModifier
+    data class DefenseIgnorePercent(
+        val percent: Int,
+        val stat: BattleStat = BattleStat.DEFENSE,
+    ) : BattleModifier
     data class Unsupported(val sourceId: Int, val rawDescription: String) : BattleModifier
 }
 
@@ -180,6 +195,7 @@ data class BattleHero(
     val advanceLevel: Int = 0,
     val morale: Int = 100,
     val inherentStats: BattleStats = stats,
+    val surfaceSkillId: Int = 0,
 )
 
 data class BattleEquipmentSlot(
@@ -192,6 +208,7 @@ enum class BattlePreparationStage {
     ARMY,
     TROOP,
     EQUIPMENT,
+    SURFACE,
 }
 
 data class BattlePreparationEffect(
@@ -235,6 +252,7 @@ data class BattlePreparationAction(
     val amountExact: Double? = null,
     val actionParameter: Int? = null,
     val appendSourcePosition: Boolean = false,
+    val compactStatusAction: Boolean = false,
     val containerSourceId: Int = sourceId,
 )
 
@@ -404,6 +422,7 @@ sealed interface BattleEvent {
         val valueAfter: Int? = null,
         val deltaExact: Double = delta.toDouble(),
         val valueAfterExact: Double? = valueAfter?.toDouble(),
+        val unit: BattleEffectValueUnit = BattleEffectValueUnit.PERCENT,
     ) : BattleEvent
     data class ModifierApplied(
         val round: Int,
@@ -413,6 +432,15 @@ sealed interface BattleEvent {
         val effectId: Int,
         val amount: Int,
         val durationRounds: Int,
+    ) : BattleEvent
+    data class SkillRangeChanged(
+        val round: Int,
+        val source: BattleHeroRef,
+        val target: BattleHeroRef,
+        val skillId: Int,
+        val skillKind: SkillKind,
+        val delta: Int,
+        val displayRangeAfter: Int,
     ) : BattleEvent
     data class UnsupportedSkillEffect(
         val round: Int,
@@ -484,11 +512,16 @@ class ActiveSkillEffect(
     var remainingHits: Int?,
     val clearPerHit: Boolean,
     val clearable: Boolean = true,
+    val strengthExact: Double = strength.toDouble(),
 ) {
     private var layerStrengths: List<Int> = List(stacks) { strength }
+    private var exactLayerStrengths: List<Double> = List(stacks) { strengthExact }
 
     val effectiveStrength: Int
         get() = layerStrengths.sum()
+
+    val effectiveStrengthExact: Double
+        get() = exactLayerStrengths.sum()
 
     val stacks: Int
         get() = layerStrengths.size
@@ -516,9 +549,10 @@ class ActiveSkillEffect(
         }
     }
 
-    internal fun addLayer(layerStrength: Int) {
+    internal fun addLayer(layerStrength: Int, layerStrengthExact: Double = layerStrength.toDouble()) {
         require(stacks < maxStacks) { "Cannot exceed maxStacks=$maxStacks" }
         layerStrengths = layerStrengths + layerStrength
+        exactLayerStrengths = exactLayerStrengths + layerStrengthExact
     }
 
     internal fun detachedCopy(): ActiveSkillEffect =
@@ -534,6 +568,7 @@ class ActiveSkillEffect(
             category = category,
             conflict = conflict,
             strength = strength,
+            strengthExact = strengthExact,
             replaceType = replaceType,
             bindFlag = bindFlag,
             maxStacks = maxStacks,

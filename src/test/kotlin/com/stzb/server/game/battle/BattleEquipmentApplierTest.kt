@@ -294,4 +294,75 @@ class BattleEquipmentApplierTest {
             team.preparationActions.single { it.sourceId == 450037 },
         )
     }
+
+    @Test
+    fun `equipment child skill effects emit the official compact derived action`() {
+        val team = BattleTeamBuilder(configRepo, equipmentRepo).build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100683,
+                    position = 0,
+                    troops = 9_700,
+                    equipmentIds = listOf(1045),
+                    equipmentSkillIds = listOf(400045),
+                    equipmentSkillLevels = listOf(1),
+                ),
+            ),
+        )
+
+        assertEquals(
+            BattlePreparationAction(
+                stage = BattlePreparationStage.EQUIPMENT,
+                sourceId = 400045,
+                sourcePosition = 0,
+                targetPosition = 0,
+                actionId = "8c".toInt(36),
+                actionParameter = 401045,
+                compactStatusAction = true,
+                containerSourceId = 1045,
+            ),
+            team.preparationActions.single(),
+        )
+    }
+
+    @Test
+    fun `equipment features choose their configured official action family`() {
+        val team = BattleTeamBuilder(configRepo, equipmentRepo).build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100683,
+                    position = 0,
+                    troops = 9_700,
+                    equipmentIds = listOf(1102),
+                    equipmentFeatureSkillIds = listOf(450016, 450038),
+                    equipmentFeatureSkillLevels = listOf(7, 8),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                BattlePreparationAction(
+                    stage = BattlePreparationStage.EQUIPMENT,
+                    sourceId = 450016,
+                    sourcePosition = 0,
+                    targetPosition = 0,
+                    actionId = "9c".toInt(36),
+                    amountExact = 7.0,
+                    containerSourceId = 1102,
+                ),
+                BattlePreparationAction(
+                    stage = BattlePreparationStage.EQUIPMENT,
+                    sourceId = 450038,
+                    sourcePosition = 0,
+                    targetPosition = 0,
+                    actionId = "8c".toInt(36),
+                    actionParameter = 451038,
+                    compactStatusAction = true,
+                    containerSourceId = 1102,
+                ),
+            ),
+            team.preparationActions.filter { it.sourceId in setOf(450016, 450038) },
+        )
+    }
 }

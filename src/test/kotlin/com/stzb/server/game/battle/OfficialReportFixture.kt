@@ -2,6 +2,8 @@ package com.stzb.server.game.battle
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.game.battle.skill.BattleTargetDecisionSource
+import com.stzb.server.game.ClientTroopFeatureRepository
+import com.stzb.server.game.ClientTroopTypeRepository
 import java.nio.file.Path
 import java.util.ArrayDeque
 import kotlin.math.roundToInt
@@ -36,6 +38,9 @@ internal object OfficialReportFixture {
 
     fun read(path: Path): List<Action> =
         parseText(mapper.readTree(path.toFile())[1]["report"].asText())
+
+    fun hasReport(path: Path): Boolean =
+        mapper.readTree(path.toFile()).path(1).path("report").isTextual
 
     fun parseText(text: String): List<Action> =
         text.split('#').map { raw ->
@@ -78,13 +83,61 @@ internal object OfficialReportFixture {
             .filter { it.id == ClientBattleTextReplayProtocol.EQUIPMENT_EFFECT_SOURCE }
             .groupBy { it.intParam(0) }
             .mapValues { (_, sources) -> sources.map { it.intParam(1) }.distinct() }
-        val equipmentFeaturesByClientPosition = preparation
+        val explicitEquipmentFeaturesByClientPosition = preparation
             .filter {
-                it.id == "8x".toInt(36) &&
-                    it.params.size >= 5 &&
+                it.id in setOf("8x".toInt(36), "9c".toInt(36)) &&
+                    it.params.size >= 4 &&
                     it.intParam(1) in 450_000..459_999
             }
             .groupBy { it.intParam(0) }
+            .mapValues { (_, actions) ->
+                actions.map { action -> action.intParam(1) to action.params.last().toInt() }
+            }
+        val featureParentByChild = config.allSkillIds()
+            .asSequence()
+            .filter { it in 450_000..469_999 }
+            .flatMap { parentId ->
+                config.skillDetails(parentId).asSequence()
+                    .filter { it.effectId == 122 && it.constantParam > 0 }
+                    .map { detail -> detail.constantParam to parentId }
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, parents) -> parents.distinct().single() }
+        val derivedEquipmentFeaturesByClientPosition = preparation
+            .filter { it.id == "8c".toInt(36) && it.params.size == 2 }
+            .mapNotNull { action ->
+                val parentId = featureParentByChild[action.intParam(1)] ?: return@mapNotNull null
+                action.intParam(0) to (parentId to 1)
+            }
+            .groupBy({ it.first }, { it.second })
+        val equipmentFeaturesByClientPosition =
+            (explicitEquipmentFeaturesByClientPosition.keys +
+                derivedEquipmentFeaturesByClientPosition.keys).associateWith { position ->
+                (explicitEquipmentFeaturesByClientPosition[position].orEmpty() +
+                    derivedEquipmentFeaturesByClientPosition[position].orEmpty())
+                    .distinctBy(Pair<Int, Int>::first)
+            }
+        val learnedTroopSkillsByClientPosition = preparation
+            .filter { it.id == ClientBattleTextReplayProtocol.HERO_INFO }
+            .associate { heroInfo ->
+                val featureRepository = ClientTroopFeatureRepository.loadDefault()
+                heroInfo.intParam(0) to listOf(heroInfo.intParam(9), heroInfo.intParam(10))
+                    .flatMap(featureRepository::skillIds)
+                    .toSet()
+            }
+        val troopTypeRepository = ClientTroopTypeRepository.loadDefault()
+        val surfaceSkillByClientPosition = preparation
+            .filter { it.id == ClientBattleTextReplayProtocol.SURFACE_EFFECT_SOURCE }
+            .associate { it.intParam(0) to it.intParam(1) }
+        val troopTypeByClientPosition = preparation
+            .filter { it.id == ClientBattleTextReplayProtocol.TROOP_EFFECT_SOURCE }
+            .groupBy { it.intParam(0) }
+            .mapValues { (clientPosition, sources) ->
+                val learnedSkills = learnedTroopSkillsByClientPosition[clientPosition].orEmpty()
+                troopTypeRepository.heroTypeForSkillIds(
+                    sources.map { it.intParam(1) }.filterNot(learnedSkills::contains),
+                )
+            }
 
         val specsByClientPosition = preparation
             .filter { it.id == ClientBattleTextReplayProtocol.HERO_INFO }
@@ -108,6 +161,8 @@ internal object OfficialReportFixture {
                         heroInfo.intParam(8),
                     ),
                     troopFeatureIds = listOf(heroInfo.intParam(9), heroInfo.intParam(10)),
+                    heroType = troopTypeByClientPosition[clientPosition],
+                    surfaceSkillId = surfaceSkillByClientPosition[clientPosition] ?: 0,
                     equipmentIds = equipmentIdsByClientPosition[clientPosition].orEmpty(),
                     equipmentSkillIds = listOf(
                         heroInfo.intParam(12),
@@ -122,11 +177,11 @@ internal object OfficialReportFixture {
                     equipmentFeatureSkillIds =
                         equipmentFeaturesByClientPosition[clientPosition]
                             .orEmpty()
-                            .map { it.intParam(1) },
+                            .map(Pair<Int, Int>::first),
                     equipmentFeatureSkillLevels =
                         equipmentFeaturesByClientPosition[clientPosition]
                             .orEmpty()
-                            .map { it.intParam(4) },
+                            .map(Pair<Int, Int>::second),
                     level = heroInfo.intParam(1),
                 )
             }
@@ -136,22 +191,28 @@ internal object OfficialReportFixture {
             equipmentRepository = BattleEquipmentRepository.loadDefault(),
         )
         val preciseStats = preciseStatsBeforeBattle(actions)
+        val commandEntryStats = commandEntryStats(actions)
         fun withPreciseStats(team: BattleTeam, side: Side): BattleTeam = team.copy(
             heroes = team.heroes.map { hero ->
                 val clientPosition = ClientBattleTextReplayProtocol.position(side, hero.position)
-                val recorded = preciseStats.entry[clientPosition]
-                    ?: return@map hero
+                val recorded = preciseStats.entry[clientPosition].orEmpty()
+                val commandEntry = commandEntryStats[clientPosition].orEmpty()
+                if (recorded.isEmpty() && commandEntry.isEmpty()) return@map hero
                 val inherent = preciseStats.inherent[clientPosition].orEmpty()
                 val stats = hero.stats
                 hero.copy(
                     stats = BattleStats.fromHundredths(
-                        attack = recorded[BattleStat.ATTACK]
+                        attack = commandEntry[BattleStat.ATTACK]
+                            ?: recorded[BattleStat.ATTACK]
                             ?: (stats.precise(BattleStat.ATTACK) * 100).roundToInt(),
-                        defense = recorded[BattleStat.DEFENSE]
+                        defense = commandEntry[BattleStat.DEFENSE]
+                            ?: recorded[BattleStat.DEFENSE]
                             ?: (stats.precise(BattleStat.DEFENSE) * 100).roundToInt(),
-                        strategy = recorded[BattleStat.STRATEGY]
+                        strategy = commandEntry[BattleStat.STRATEGY]
+                            ?: recorded[BattleStat.STRATEGY]
                             ?: (stats.precise(BattleStat.STRATEGY) * 100).roundToInt(),
-                        speed = recorded[BattleStat.SPEED]
+                        speed = commandEntry[BattleStat.SPEED]
+                            ?: recorded[BattleStat.SPEED]
                             ?: (stats.precise(BattleStat.SPEED) * 100).roundToInt(),
                         siege = (stats.precise(BattleStat.SIEGE) * 100).roundToInt(),
                         hitRange = stats.hitRange,
@@ -171,13 +232,63 @@ internal object OfficialReportFixture {
                 )
             },
         )
+        fun withPaperPreparationValues(team: BattleTeam, side: Side): BattleTeam {
+            data class PaperEffectFormat(
+                val stat: BattleStat,
+                val deltaIndex: Int,
+                val valueAfterIndex: Int,
+            )
+            val formats = mapOf(
+                "19".toInt(36) to PaperEffectFormat(BattleStat.ATTACK, 4, 5),
+                "1a".toInt(36) to PaperEffectFormat(BattleStat.DEFENSE, 4, 5),
+                "1b".toInt(36) to PaperEffectFormat(BattleStat.STRATEGY, 4, 5),
+                "1c".toInt(36) to PaperEffectFormat(BattleStat.SPEED, 4, 5),
+                "0v".toInt(36) to PaperEffectFormat(BattleStat.ATTACK, 3, 4),
+                "0w".toInt(36) to PaperEffectFormat(BattleStat.DEFENSE, 3, 4),
+                "0x".toInt(36) to PaperEffectFormat(BattleStat.STRATEGY, 3, 4),
+                "0y".toInt(36) to PaperEffectFormat(BattleStat.SPEED, 3, 4),
+                "0z".toInt(36) to PaperEffectFormat(BattleStat.SIEGE, 3, 4),
+                "10".toInt(36) to PaperEffectFormat(BattleStat.HIT_RANGE, 3, 4),
+                "17".toInt(36) to PaperEffectFormat(BattleStat.HIT_RANGE, 3, 4),
+            )
+            data class EffectKey(val sourceId: Int, val target: Int, val stat: BattleStat)
+            val paperValues = preparation(actions).mapNotNull { action ->
+                val format = formats[action.id] ?: return@mapNotNull null
+                if (action.params.size <= format.valueAfterIndex) return@mapNotNull null
+                EffectKey(action.intParam(1), action.intParam(2), format.stat) to
+                    (
+                        action.params[format.deltaIndex].toDouble() to
+                            action.params[format.valueAfterIndex].toDouble()
+                        )
+            }.toMap()
+            return team.copy(
+                preparationEffects = team.preparationEffects.map { effect ->
+                    val target = ClientBattleTextReplayProtocol.position(side, effect.targetPosition)
+                    val (delta, after) = paperValues[
+                        EffectKey(effect.sourceId, target, effect.stat)
+                    ] ?: return@map effect
+                    effect.copy(
+                        delta = delta.toInt(),
+                        valueAfter = after.toInt(),
+                        deltaExact = delta,
+                        valueAfterExact = after,
+                    )
+                },
+            )
+        }
         return BattleRequest(
-            attacker = withPreciseStats(
-                teamBuilder.build((1..3).mapNotNull(specsByClientPosition::get)),
+            attacker = withPaperPreparationValues(
+                withPreciseStats(
+                    teamBuilder.build((1..3).mapNotNull(specsByClientPosition::get)),
+                    Side.ATTACKER,
+                ),
                 Side.ATTACKER,
             ),
-            defender = withPreciseStats(
-                teamBuilder.build((4..6).mapNotNull(specsByClientPosition::get)),
+            defender = withPaperPreparationValues(
+                withPreciseStats(
+                    teamBuilder.build((4..6).mapNotNull(specsByClientPosition::get)),
+                    Side.DEFENDER,
+                ),
                 Side.DEFENDER,
             ),
         )
@@ -205,6 +316,47 @@ internal object OfficialReportFixture {
             currentTargets += tuple.targetPosition
         }
         flush()
+
+        var commandSourcePosition: Int? = null
+        var commandSkillId: Int? = null
+        var statusKey: DecisionKey? = null
+        var statusTargets = mutableListOf<Int>()
+        fun flushStatuses() {
+            val key = statusKey ?: return
+            queues.getOrPut(key, ::ArrayDeque).addLast(statusTargets.toList())
+            statusKey = null
+            statusTargets = mutableListOf()
+        }
+        actions.forEach { action ->
+            when (action.id) {
+                "0m".toInt(36) -> {
+                    flushStatuses()
+                    commandSourcePosition = action.intParam(0)
+                    commandSkillId = action.intParam(1)
+                }
+                "0s".toInt(36) -> {
+                    val sourcePosition = commandSourcePosition ?: return@forEach
+                    val skillId = commandSkillId ?: return@forEach
+                    val key = DecisionKey(sourcePosition, skillId, action.intParam(1))
+                    if (statusKey != null && statusKey != key) flushStatuses()
+                    statusKey = key
+                    statusTargets += action.intParam(0)
+                }
+                "7a".toInt(36) -> {
+                    val key = DecisionKey(action.intParam(0), action.intParam(1), 332)
+                    if (statusKey != null && statusKey != key) flushStatuses()
+                    statusKey = key
+                    statusTargets += action.intParam(2)
+                }
+                "hx".toInt(36) -> {
+                    flushStatuses()
+                    commandSourcePosition = null
+                    commandSkillId = null
+                }
+                else -> if (statusKey != null) flushStatuses()
+            }
+        }
+        flushStatuses()
 
         return BattleTargetDecisionSource { request ->
             val key = DecisionKey(
@@ -260,6 +412,7 @@ internal object OfficialReportFixture {
             "0w".toInt(36) to (BattleStat.DEFENSE to 4),
             "0x".toInt(36) to (BattleStat.STRATEGY to 4),
             "0y".toInt(36) to (BattleStat.SPEED to 4),
+            "0z".toInt(36) to (BattleStat.SIEGE to 4),
         )
         val result = linkedMapOf<Int, MutableMap<BattleStat, Int>>()
         val inherent = linkedMapOf<Int, MutableMap<BattleStat, Int>>()
@@ -269,7 +422,7 @@ internal object OfficialReportFixture {
             val targetPosition = action.intParam(2)
             val hundredths = action.params[valueIndex].toBigDecimal().movePointRight(2).intValueExact()
             result.getOrPut(targetPosition, ::linkedMapOf)[stat] = hundredths
-            if (valueIndex == 5 && action.intParam(3) != 0) {
+            if (valueIndex == 5 && action.params[3].toBigDecimal().signum() != 0) {
                 val inferredHundredths = action.params[4].toBigDecimal()
                     .movePointRight(4)
                     .divide(action.params[3].toBigDecimal(), 0, java.math.RoundingMode.HALF_UP)
@@ -278,6 +431,30 @@ internal object OfficialReportFixture {
             }
         }
         return PrecisePaperStats(result, inherent)
+    }
+
+    private fun commandEntryStats(actions: List<Action>): Map<Int, Map<BattleStat, Int>> {
+        val formats = mapOf(
+            "0v".toInt(36) to BattleStat.ATTACK,
+            "0w".toInt(36) to BattleStat.DEFENSE,
+            "0x".toInt(36) to BattleStat.STRATEGY,
+            "0y".toInt(36) to BattleStat.SPEED,
+        )
+        val result = linkedMapOf<Int, MutableMap<BattleStat, Int>>()
+        actions.dropWhile { it.id != "hp".toInt(36) }
+            .takeWhile { it.id != ClientBattleTextReplayProtocol.ROUND }
+            .forEach { action ->
+                val stat = formats[action.id] ?: return@forEach
+                if (action.params.size != 5) return@forEach
+                val targetPosition = action.intParam(2)
+                val delta = action.params[3].toBigDecimal()
+                val valueAfter = action.params[4].toBigDecimal()
+                val hundredths = valueAfter.subtract(delta)
+                    .movePointRight(2)
+                    .intValueExact()
+                result.getOrPut(targetPosition, ::linkedMapOf).putIfAbsent(stat, hundredths)
+            }
+        return result
     }
 
     private fun formationPosition(clientPosition: Int): Int =

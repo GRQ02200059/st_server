@@ -25,6 +25,7 @@ internal object ClientBattlePreparationEventProjector {
             is BattleEvent.Evaded -> event.round == 0
             is BattleEvent.StatChanged -> event.round == 0
             is BattleEvent.ModifierApplied -> event.round == 0
+            is BattleEvent.SkillRangeChanged -> event.round == 0
             is BattleEvent.UnsupportedSkillEffect -> event.round == 0
             is BattleEvent.UnsupportedEquipmentEffect -> event.round == 0
             is BattleEvent.HeroActionEnd -> event.round == 0
@@ -43,12 +44,30 @@ internal object ClientBattlePreparationEventProjector {
             is BattleEvent.StatChanged ->
                 if (event.skillId > 0) listOf(statChanged(event)) else emptyList()
             is BattleEvent.ModifierApplied -> modifierApplied(event, diagnostic)
+            is BattleEvent.SkillRangeChanged -> listOf(
+                ClientReportAction(
+                    ClientBattleTextReplayProtocol.SKILL_RANGE_CHANGED,
+                    listOf(
+                        ClientBattleTextReplayProtocol.position(event.source),
+                        event.skillId,
+                        ClientBattleTextReplayProtocol.position(event.target),
+                        event.delta,
+                        event.displayRangeAfter,
+                    ),
+                ),
+            )
             is BattleEvent.StatusApplied -> statusApplied(event)
-            is BattleEvent.SkillDamage,
             is BattleEvent.Recovery,
             is BattleEvent.OngoingDamage,
             is BattleEvent.NormalAttack,
             -> unsupportedRoundZero(event, diagnostic)
+            is BattleEvent.SkillDamage -> unsupported(
+                "Unsupported round-zero SkillDamage: " +
+                    "skill=${event.skillId} effect=${event.effectId} " +
+                    "source=${ClientBattleTextReplayProtocol.position(event.source)} " +
+                    "target=${ClientBattleTextReplayProtocol.position(event.target)}",
+                diagnostic,
+            )
             is BattleEvent.UnsupportedSkillEffect -> unsupported(
                 "Unsupported round-zero skill effect projection: " +
                     "skill=${event.skillId} effect=${event.effectId}",
@@ -122,26 +141,56 @@ internal object ClientBattlePreparationEventProjector {
     }
 
     private fun statChanged(event: BattleEvent.StatChanged): ClientReportAction =
-        ClientReportAction(
-            ClientBattleTextReplayProtocol.attributeChangeAction(event.stat, event.delta),
-            listOf(
-                ClientBattleTextReplayProtocol.position(event.source),
-                event.skillId,
-                ClientBattleTextReplayProtocol.position(event.target),
-                event.strength,
-                reportNumber(kotlin.math.abs(event.deltaExact)),
-                reportNumber(
-                    event.valueAfterExact
-                        ?: event.valueAfter?.toDouble()
-                        ?: event.deltaExact,
+        if (event.unit == BattleEffectValueUnit.FLAT) {
+            ClientReportAction(
+                ClientBattleTextReplayProtocol.flatAttributeAction(event.stat),
+                listOf(
+                    ClientBattleTextReplayProtocol.position(event.source),
+                    event.skillId,
+                    ClientBattleTextReplayProtocol.position(event.target),
+                    reportNumber(kotlin.math.abs(event.deltaExact)),
+                    reportNumber(
+                        event.valueAfterExact
+                            ?: event.valueAfter?.toDouble()
+                            ?: event.deltaExact,
+                    ),
                 ),
-            ),
-        )
+            )
+        } else {
+            ClientReportAction(
+                ClientBattleTextReplayProtocol.attributeChangeAction(event.stat, event.delta),
+                listOf(
+                    ClientBattleTextReplayProtocol.position(event.source),
+                    event.skillId,
+                    ClientBattleTextReplayProtocol.position(event.target),
+                    event.strength,
+                    reportNumber(kotlin.math.abs(event.deltaExact)),
+                    reportNumber(
+                        event.valueAfterExact
+                            ?: event.valueAfter?.toDouble()
+                            ?: event.deltaExact,
+                    ),
+                ),
+            )
+        }
 
     private fun modifierApplied(
         event: BattleEvent.ModifierApplied,
         diagnostic: (String) -> Unit,
     ): List<ClientReportAction> {
+        if (event.skillId == 200_220 && event.effectId == 332) {
+            return listOf(
+                ClientReportAction(
+                    ClientBattleTextReplayProtocol.ACTIVE_SKILL_DAMAGE_REDUCTION,
+                    listOf(
+                        ClientBattleTextReplayProtocol.position(event.source),
+                        event.skillId,
+                        ClientBattleTextReplayProtocol.position(event.target),
+                        1001,
+                    ),
+                ),
+            )
+        }
         if (!ClientBattleTextReplayProtocol.supportsPreparationModifier(event.effectId)) {
             return unsupported(
                 "Unsupported preparation modifier projection: " +

@@ -162,6 +162,22 @@ class GameResponsesTest {
     }
 
     @Test
+    fun `hero upsert exposes the active hero feature in the client field format`() {
+        val hero = PlayerHero(
+            heroUid = 4_200_003,
+            heroId = 100648,
+            createdAtSec = 1_700_000_000,
+            activeFeatureId = 285314,
+        )
+
+        val row = mapper.readTree(
+            GameResponses.heroUpsertNotify(userId = 42, heroes = listOf(hero)),
+        )[0][2]
+
+        assertEquals("285314,1;", row[37].asText())
+    }
+
+    @Test
     fun `hero upsert serializes persistent empty and replaced skill slots`() {
         val hero = PlayerHero(
             heroUid = 4_200_004,
@@ -251,6 +267,42 @@ class GameResponsesTest {
         )[0][2]
 
         assertEquals(100534, row[43].asInt())
+    }
+
+    @Test
+    fun `hero upsert contains selected card border and dynamic icon`() {
+        val hero = PlayerHero(
+            heroUid = 4_200_004,
+            heroId = 100067,
+            createdAtSec = 1_700_000_000,
+            cardBorder = 110997,
+            dynamicIcon = 100534,
+        )
+
+        val row = mapper.readTree(
+            GameResponses.heroUpsertNotify(userId = 42, heroes = listOf(hero)),
+        )[0][2]
+
+        assertEquals(110997, row[42].asInt())
+        assertEquals(100534, row[43].asInt())
+    }
+
+    @Test
+    fun `card border update uses sparse hero field forty two`() {
+        val update = mapper.readTree(
+            GameResponses.heroCardBorderUpdateNotify(
+                heroUid = 4_200_004,
+                cardBorder = 110997,
+            ),
+        )
+
+        assertEquals(1, update.size())
+        assertEquals(2, update[0][0].asInt())
+        assertEquals("Tb_hero", update[0][1].asText())
+        assertEquals(
+            listOf(0, 4_200_004, 42, 110997),
+            update[0][2].map { it.asInt() },
+        )
     }
 
     @Test
@@ -447,17 +499,17 @@ class GameResponsesTest {
     }
 
     @Test
-    fun `building upsert notify updates user build level`() {
+    fun `building upsert notify refreshes every front slot and user build level`() {
+        val state = PlayerState(userId = 42, cityWid = 10001, roleName = "主公")
         val json = GameResponses.userBuildUpsertNotify(
-            userId = 42,
-            cityWid = 10001,
+            state = state,
             buildId = 10,
             level = 2,
             resources = PlayerResources(money = 999, wood = 998, stone = 997, iron = 996, food = 995),
         )
         val response = mapper.readTree(json)
 
-        assertEquals(3, response.size())
+        assertEquals(8, response.size())
         assertEquals(1, response[0][0].asInt())
         assertEquals("Tb_user_build", response[0][1].asText())
         val row = response[0][2]
@@ -475,15 +527,23 @@ class GameResponsesTest {
         assertEquals(PlayerState.MAX_COUNTRY_BUILD_LEVEL, response[1][2][7].asInt())
         assertEquals("295140", response[1][2][16].asText())
         assertEquals(PlayerState.MAX_COUNTRY_BUILD_LEVEL, response[1][2][17].asInt())
+        assertEquals(5, response[1][2][23].asInt())
+        assertEquals(5, response[1][2][25].asInt())
+        val armies = (2..6).map { response[it] }
+        assertEquals(
+            state.armyIds(),
+            armies.map { it[2][0].asInt() },
+        )
+        assertTrue(armies.all { it[1].asText() == "Tb_army" })
         assertEquals(100, response[1][2][26].asInt())
-        assertEquals(1, response[2][0].asInt())
-        assertEquals("Tb_user_res", response[2][1].asText())
-        assertEquals(42, response[2][2][0].asInt())
-        assertEquals(999, response[2][2][2].asInt())
-        assertEquals(998, response[2][2][3].asInt())
-        assertEquals(997, response[2][2][4].asInt())
-        assertEquals(996, response[2][2][5].asInt())
-        assertEquals(995, response[2][2][6].asInt())
+        assertEquals(1, response[7][0].asInt())
+        assertEquals("Tb_user_res", response[7][1].asText())
+        assertEquals(42, response[7][2][0].asInt())
+        assertEquals(999, response[7][2][2].asInt())
+        assertEquals(998, response[7][2][3].asInt())
+        assertEquals(997, response[7][2][4].asInt())
+        assertEquals(996, response[7][2][5].asInt())
+        assertEquals(995, response[7][2][6].asInt())
     }
 
     @Test
@@ -624,6 +684,50 @@ class GameResponsesTest {
         assertEquals(42, response[14]["10001"]["0"][2].asInt())
         assertEquals("主公", response[14]["10001"]["0"][6].asText())
         assertEquals(0, response[14]["10001"]["0"][12].asInt())
+    }
+
+    @Test
+    fun `world scene sends city facade and build data only for the main city`() {
+        val cityWid = 15_061_506
+        val response = mapper.readTree(
+            GameResponses.worldSceneFullInfo(
+                userId = 42,
+                cityWid = cityWid,
+                roleName = "主公",
+            ),
+        )
+
+        val cities = response[14]
+        val mainCityChunk = cities[cityWid.toString()]
+        val mainCity = mainCityChunk["0"]
+        assertEquals(1, mainCity[0].asInt())
+        assertEquals("\"4P-e0Go[=)')(',0(*',(,-*)", mainCity[5].asText())
+        assertEquals(
+            "10,8,13,20,20,20,21,20,22,20,23,20,24,20,25,1,30,20," +
+                "31,10,32,10,33,10,34,10,35,10,36,20,37,10,40,5,42,5," +
+                "43,15,44,3,51,10,52,10,53,10,54,10,61,5,62,6,63,5," +
+                "64,5,65,5,66,10,67,3,160,10",
+            mainCity[13].asText(),
+        )
+        assertTrue(mainCityChunk.has("4"))
+        assertEquals(
+            "1112130,20004,110005;1121120,120004,120003;1122050,100010;" +
+                "1122070,100003;1122090,100008;1122140,100009;1133050,50005;" +
+                "1212010,10008;1222040,50011;1222060,10002;1233080,50003;" +
+                "1299010,0;1322030,30004;1322110,90011;1322130,120005;" +
+                "1333070,40008;1333090,80002;1333150,20011;",
+            mainCityChunk["4"][0].asText(),
+        )
+        assertEquals("", mainCityChunk["4"][1].asText())
+
+        HomeCity.suburbWids(cityWid).forEach { suburbWid ->
+            val suburbChunk = cities[suburbWid.toString()]
+            val suburb = suburbChunk["0"]
+            assertEquals(5, suburb[0].asInt())
+            assertEquals("", suburb[5].asText())
+            assertEquals("", suburb[13].asText())
+            assertTrue(!suburbChunk.has("4"))
+        }
     }
 
     @Test
@@ -773,6 +877,57 @@ class GameResponsesTest {
     }
 
     @Test
+    fun `army facade notification updates cards before heroes with sparse fields`() {
+        val state = PlayerState(userId = 84, cityWid = 10084, roleName = "主公")
+        val hero = state.addHero(HeroCatalog.defaultFiveStarHeroIds().first())
+        val mutation = requireNotNull(state.bindArmyFacadeCards(101138, listOf(hero.heroUid)))
+
+        val update = mapper.readTree(GameResponses.armyFacadeNotify(state, mutation))
+
+        assertEquals(2, update.size())
+        assertEquals("Tb_user_army_facade_card", update[0][1].asText())
+        assertEquals(
+            listOf(0, ArmyFacadeCatalog.cardId(101138, 1), 5, hero.heroId),
+            update[0][2].map { it.asInt() },
+        )
+        assertEquals("Tb_hero", update[1][1].asText())
+        assertEquals(listOf(0, hero.heroUid, 72, 101138), update[1][2].map { it.asInt() })
+    }
+
+    @Test
+    fun `world scene uses captured army facade ids at tuple index fifteen`() {
+        val march = PlayerMarch(
+            armyId = 100_841,
+            fromWid = 10084,
+            targetWid = 10085,
+            beginSec = 1,
+            endSec = 4,
+            participants = listOf(
+                PlayerMarchHero(
+                    heroUid = 1,
+                    position = 0,
+                    heroId = 100017,
+                    troops = 1_000,
+                    level = 50,
+                    skillIds = listOf(200017),
+                    armyFacadeCardId = 101138,
+                ),
+            ),
+        )
+
+        val response = mapper.readTree(
+            GameResponses.worldSceneFullInfo(
+                userId = 84,
+                cityWid = 10084,
+                roleName = "主公",
+                marches = listOf(march),
+            ),
+        )
+
+        assertEquals("101138,0;", response[6][march.armyId.toString()][15].asText())
+    }
+
+    @Test
     fun `hero upsert retains the equipped gear uid`() {
         val hero = PlayerHero(
             heroUid = 4_200_008,
@@ -785,4 +940,5 @@ class GameResponsesTest {
 
         assertEquals(800_001_042, row[23].asInt())
     }
+
 }

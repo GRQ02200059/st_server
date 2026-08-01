@@ -30,17 +30,18 @@ object ProfileResponses {
     fun homepageInfo(
         userId: Int = 10001,
         roleName: String = GameServerConfig.ROLE_NAME,
+        playerUnion: PlayerUnion? = null,
     ): String =
         mapper.writeValueAsString(
             nf.arrayNode()
                 .add(200)                          // [0] 状态码，必须 != 0
-                .add(homepageDict(userId, roleName)), // [1] 主页字典
+                .add(homepageDict(userId, roleName, playerUnion)), // [1] 主页字典
         )
 
-    private fun homepageDict(userId: Int, roleName: String): ObjectNode =
+    private fun homepageDict(userId: Int, roleName: String, playerUnion: PlayerUnion?): ObjectNode =
         nf.objectNode().apply {
             set<ArrayNode>("personal", personal(userId, roleName))
-            set<ArrayNode>("union", union())
+            set<ArrayNode>("union", union(playerUnion))
             set<ArrayNode>("server", server())
             set<ArrayNode>("history", nf.arrayNode())        // 战报/历史列表（可空）
             set<ArrayNode>("zanAndvistor", zanAndVisitor())
@@ -83,12 +84,12 @@ object ProfileResponses {
         }
 
     /** union 子列表：val2[0..13]，全部定长强转。无同盟时给零值/空串。 */
-    private fun union(): ArrayNode =
+    private fun union(union: PlayerUnion?): ArrayNode =
         nf.arrayNode().apply {
             add(0)   // [0]  clan_id             int
             add("")  // [1]  clan_name           string
-            add(0)   // [2]  union_id            int
-            add("")  // [3]  union_name          string
+            add(union?.unionId ?: 0)   // [2]  union_id            int
+            add(union?.name ?: "")     // [3]  union_name          string
             add("")  // [4]  group_name          string
             add("")  // [5]  npc_city_name       string
             add(0)   // [6]  official_id         int

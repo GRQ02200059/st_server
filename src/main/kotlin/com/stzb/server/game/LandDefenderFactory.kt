@@ -54,6 +54,8 @@ class LandDefenderFactory(
                 position = position,
                 troops = hero.troops.coerceAtMost(PlayerHero.MAX_TROOPS),
                 level = hero.level,
+                heroType = hero.heroType,
+                surfaceSkillId = hero.heroFeatureSkillId,
                 // BattleTeamBuilder already adds the configured initial skill.
                 extraSkillIds = hero.skillIds.drop(1),
                 skillLevels = hero.skillLevels,

@@ -8,6 +8,7 @@ data class SkillCoverageReport(
     val effectIds: Int,
     val detailRules: Int,
     val unsupportedEffects: Set<Int>,
+    val unconsumedMetaEffects: Set<Int>,
     val unknownConditions: Set<SkillConditionCode>,
     val unknownSelectors: Set<Int>,
     val brokenDependencies: Set<SkillDiagnostic>,
@@ -40,6 +41,10 @@ data class SkillCoverageReport(
                 .registerControlEffects(BattleEffectStore())
                 .registerMetaEffects()
             val unsupportedEffects = graph.effectIds - effectRegistry.implementedEffectIds()
+            val unconsumedMetaEffects = graph.effectIds
+                .intersect(MetaEffectHandlers.effectIds)
+                .minus(RUNTIME_CONSUMED_META_EFFECT_IDS)
+                .minus(0)
             val selector = SkillTargetSelector()
             val unknownSelectors = graph.details.mapNotNullTo(linkedSetOf()) { detail ->
                 runCatching { selector.compile(detail) }
@@ -61,6 +66,7 @@ data class SkillCoverageReport(
                 effectIds = graph.effectIds.size,
                 detailRules = graph.details.size,
                 unsupportedEffects = immutableSet(unsupportedEffects),
+                unconsumedMetaEffects = immutableSet(unconsumedMetaEffects),
                 unknownConditions = immutableSet(pending),
                 unknownSelectors = immutableSet(unknownSelectors),
                 brokenDependencies = immutableSet(brokenDependencies),
@@ -108,5 +114,22 @@ data class SkillCoverageReport(
 
         private fun <T> immutableSet(values: Collection<T>): Set<T> =
             Collections.unmodifiableSet(LinkedHashSet(values))
+
+        /**
+         * Meta handlers are declarative adapters. An effect only belongs here
+         * after its emitted state change is consumed by the interpreter,
+         * engine, or state applier. Merely registering a MetaEffectChange does
+         * not constitute executable coverage.
+         */
+        private val RUNTIME_CONSUMED_META_EFFECT_IDS = setOf(
+            77,
+            113, 114, 121,
+            122, 123,
+            129, 130, 131, 141,
+            151, 152, 153, 161,
+            171, 181,
+            210, 231, 261, 281, 313,
+            408,
+        )
     }
 }

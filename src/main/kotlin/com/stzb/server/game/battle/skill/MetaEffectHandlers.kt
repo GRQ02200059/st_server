@@ -3,6 +3,8 @@ package com.stzb.server.game.battle.skill
 import com.stzb.server.game.battle.BattleEffectValueUnit
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleModifier
+import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.ConfiguredBattleEffectValue
 import com.stzb.server.game.battle.SkillKind
 
@@ -170,6 +172,11 @@ data class MetaEffectChange(
     val effectId: Int,
     val operation: MetaEffectOperation,
     val parameters: MetaEffectParameters,
+) : BattleStateChange
+
+data class ModifierEffectChange(
+    val spec: PersistentEffectSpec,
+    val modifier: com.stzb.server.game.battle.BattleModifier,
 ) : BattleStateChange
 
 data class MoraleEffectChange(
@@ -388,6 +395,105 @@ private class MetaEffectHandler(
                     parameters = parameters,
                 ),
             )
+            131, 231 -> targets.map { target ->
+                val rawSkillId = raw.effectParam
+                val skillId = rawSkillId.takeIf { it > 0 }
+                val skillKind = when (rawSkillId) {
+                    -11, -1_000_003 -> SkillKind.ACTIVE
+                    -14, -1_000_004 -> SkillKind.PURSUIT
+                    -21 -> SkillKind.COMMAND
+                    else -> null
+                }
+                val sign = if (ownedEffectId == 231) -1 else 1
+                ModifierEffectChange(
+                    spec = persistentSpec(
+                        invocation,
+                        target,
+                        TypedBattlePotency.percent(sign * raw.constantParam),
+                    ),
+                    modifier = BattleModifier.SkillProbabilityPercent(
+                        percent = sign * raw.constantParam,
+                        skillId = skillId,
+                        skillKind = skillKind,
+                    ),
+                )
+            }
+            141 -> targets.map { target ->
+                val referencedDetailId = raw.effectParam
+                requireNotNull(detailResolver(referencedDetailId)) {
+                    "Missing referenced probability detail=$referencedDetailId"
+                }
+                val potency = TypedBattlePotency.percent(raw.constantParam)
+                ModifierEffectChange(
+                    spec = persistentSpec(invocation, target, potency),
+                    modifier = BattleModifier.EffectProbabilityPercent(
+                        detailId = referencedDetailId,
+                        percent = potency.value,
+                    ),
+                )
+            }
+            281 -> {
+                val potency = invocation.valueOverride ?: configuredPotency(invocation)
+                targets.map { target ->
+                    ModifierEffectChange(
+                        spec = persistentSpec(invocation, target, potency),
+                        modifier = BattleModifier.RecoveryTakenPercent(potency.value),
+                    )
+                }
+            }
+            261 -> {
+                val potency = invocation.valueOverride ?: configuredPotency(invocation)
+                val tag = when (raw.effectParam) {
+                    303 -> com.stzb.server.game.battle.DamageTag.SHAKE
+                    304 -> com.stzb.server.game.battle.DamageTag.PANIC
+                    305 -> com.stzb.server.game.battle.DamageTag.FIRE
+                    306 -> com.stzb.server.game.battle.DamageTag.HEX
+                    307 -> com.stzb.server.game.battle.DamageTag.FIRE
+                    else -> null
+                }
+                targets.map { target ->
+                    ModifierEffectChange(
+                        spec = persistentSpec(invocation, target, potency),
+                        modifier = BattleModifier.DamageTakenPercent(
+                            tag = tag,
+                            percent = potency.value,
+                        ),
+                    )
+                }
+            }
+            161 -> {
+                val potency = defenseIgnorePotency(invocation)
+                val stat = when (raw.effectParam) {
+                    2 -> BattleStat.DEFENSE
+                    3 -> BattleStat.STRATEGY
+                    else -> throw UnsupportedConfiguredBattleValueException(
+                        BattleEffectDiagnostic(
+                            code = EffectFailureCode.UNSUPPORTED_CONFIGURED_VALUE,
+                            skillId = context.currentSkillId,
+                            detailId = invocation.rule.detailId,
+                            effectId = invocation.rule.effectId,
+                            trigger = context.trigger,
+                            callPath = invocation.callPath,
+                            reason = "Unsupported ignored attribute effectParam=${raw.effectParam}",
+                        ),
+                    )
+                }
+                targets.map { target ->
+                    ModifierEffectChange(
+                        spec = persistentSpec(invocation, target, potency),
+                        modifier = BattleModifier.DefenseIgnorePercent(potency.value, stat),
+                    )
+                }
+            }
+            121 -> targets.map { target ->
+                ApplyBattleEffectChange(
+                    persistentSpec(
+                        invocation,
+                        target,
+                        TypedBattlePotency.flat(1),
+                    ),
+                )
+            }
             151, 153, 408 -> {
                 val referenced = referencedDetail(invocation)
                 listOf(
@@ -463,6 +569,42 @@ private class MetaEffectHandler(
                 invocation.rule.raw.effectParam,
             )
 
+    private fun persistentSpec(
+        invocation: EffectInvocation,
+        target: BattleHeroRef,
+        potency: TypedBattlePotency.Resolved,
+    ): PersistentEffectSpec {
+        val raw = invocation.rule.raw
+        return PersistentEffectSpec(
+            source = invocation.context.source,
+            target = target,
+            rootSkillId = invocation.context.rootSkillId,
+            skillId = invocation.context.currentSkillId,
+            skillKind = invocation.rule.skillKind,
+            rawSkillType = invocation.rule.rawSkillType,
+            detailId = invocation.rule.detailId,
+            effectId = invocation.rule.effectId,
+            category = com.stzb.server.game.battle.EffectCategory.fromClientBuffType(
+                invocation.rule.effectBuffType,
+            ),
+            conflict = raw.hideConflict,
+            replaceType = invocation.rule.effectReplaceType,
+            bindFlag = raw.bindFlag,
+            maxStacks = raw.addCountMax + 1,
+            delayRound = raw.delayRound,
+            delayHit = raw.delayHit,
+            availableRounds = raw.availableRounds,
+            availableHit = raw.availableHit,
+            clearPerHit = raw.clearPerHit,
+            startBoundary = if (raw.delayRound > 0 || raw.delayHit > 0) {
+                EffectStartBoundary.AFTER_DELAY
+            } else {
+                EffectStartBoundary.IMMEDIATE
+            },
+            potency = potency,
+        )
+    }
+
     private fun configuredPotency(invocation: EffectInvocation): TypedBattlePotency.Resolved {
         val source = sourceHero(invocation)
         val calculated = calculator.effectValue(
@@ -484,6 +626,15 @@ private class MetaEffectHandler(
                 ),
             )
         }
+    }
+
+    private fun defenseIgnorePotency(invocation: EffectInvocation): TypedBattlePotency.Resolved {
+        val source = sourceHero(invocation)
+        val level = invocation.rootSkillLevel(source)
+        val ratio = invocation.rule.raw.initEffectRatio +
+            (level - 1) * (100 - invocation.rule.raw.initEffectRatio) / 9.0
+        val percent = invocation.rule.raw.constantParam / 1_000.0 * ratio / 100.0
+        return TypedBattlePotency.percent(percent.toInt())
     }
 
     private fun sourceHero(invocation: EffectInvocation): BattleHero {

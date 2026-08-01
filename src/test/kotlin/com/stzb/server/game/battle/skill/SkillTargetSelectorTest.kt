@@ -11,6 +11,7 @@ import com.stzb.server.game.battle.BattleStatus
 import com.stzb.server.game.battle.BattleTeam
 import com.stzb.server.game.battle.FixedBattleRandom
 import com.stzb.server.game.battle.Side
+import com.stzb.server.game.battle.SkillKind
 import com.stzb.server.game.battle.SkillDetailConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -988,6 +989,27 @@ class SkillTargetSelectorTest {
         assertEquals(listOf(enemyBase), select(rule(attackType = 81), context))
     }
 
+    @Test
+    fun `active skill range bonus expands skill targeting without changing normal attack range`() {
+        val states = mapOf(source to state(attackRange = 2), enemyBase to state())
+        val withoutBonus = view(states = states, sourceRange = 2)
+        val withBonus = view(
+            states = states,
+            sourceRange = 2,
+            skillRangeBonuses = mapOf((source to SkillKind.ACTIVE) to 1),
+        )
+        val activeRule = rule(
+            attackType = 43,
+            attackMax = 1,
+            skillHitRange = 2,
+            skillKind = SkillKind.ACTIVE,
+        )
+
+        assertEquals(emptyList(), select(activeRule, context(withoutBonus)))
+        assertEquals(listOf(enemyBase), select(activeRule, context(withBonus)))
+        assertEquals(2, withBonus.currentAttackRange(source))
+    }
+
     private fun select(rule: SkillEffectRule, context: SkillBattleContext): List<BattleHeroRef> =
         SkillTargetSelector().compile(rule).select(context)
 
@@ -1024,6 +1046,7 @@ class SkillTargetSelectorTest {
         previousTargets: Map<BattleHeroRef, BattleHeroRef> = emptyMap(),
         acceptedStateFilters: Map<SkillTargetStateFilter, BattleHeroRef> = emptyMap(),
         activeEffects: Map<BattleHeroRef, Set<Int>> = emptyMap(),
+        skillRangeBonuses: Map<Pair<BattleHeroRef, SkillKind>, Int> = emptyMap(),
     ): SkillBattleView {
         val liveStates = states.toMutableMap()
         liveStates[source] = liveStates.getValue(source).copy(attackRange = sourceRange)
@@ -1037,6 +1060,7 @@ class SkillTargetSelectorTest {
             previousTargets = previousTargets,
             acceptedStateFilters = acceptedStateFilters,
             activeEffects = activeEffects,
+            skillRangeBonuses = skillRangeBonuses,
         )
     }
 
@@ -1087,6 +1111,7 @@ class SkillTargetSelectorTest {
         precondition: Int = 0,
         condition: Int = 0,
         castCondition: Int = 0,
+        skillKind: SkillKind = SkillKind.UNKNOWN,
     ) = SkillEffectRule(
         detailId = detailId,
         effectId = 301,
@@ -1113,6 +1138,14 @@ class SkillTargetSelectorTest {
         ),
         skillHitRange = skillHitRange,
         effectBuffType = effectBuffType,
+        skillKind = skillKind,
+        rawSkillType = when (skillKind) {
+            SkillKind.PASSIVE -> 1
+            SkillKind.COMMAND -> 2
+            SkillKind.ACTIVE -> 3
+            SkillKind.PURSUIT -> 4
+            SkillKind.UNKNOWN -> 0
+        },
     )
 
     private fun ref(side: Side, position: Int, heroId: Int) =
@@ -1138,6 +1171,7 @@ class SkillTargetSelectorTest {
         private val previousTargets: Map<BattleHeroRef, BattleHeroRef>,
         private val acceptedStateFilters: Map<SkillTargetStateFilter, BattleHeroRef>,
         private val activeEffects: Map<BattleHeroRef, Set<Int>>,
+        private val skillRangeBonuses: Map<Pair<BattleHeroRef, SkillKind>, Int> = emptyMap(),
     ) : SkillBattleView {
         override val capabilities: Set<SkillBattleViewCapability> =
             SkillBattleViewCapability.entries.toSet()
@@ -1148,6 +1182,8 @@ class SkillTargetSelectorTest {
         override fun accumulatedDamageDealt(ref: BattleHeroRef): Int = damageDealt[ref] ?: 0
         override fun currentMorale(ref: BattleHeroRef): Int? = states[ref]?.morale
         override fun currentAttackRange(ref: BattleHeroRef): Int? = states[ref]?.attackRange
+        override fun skillRangeBonus(ref: BattleHeroRef, kind: SkillKind): Int =
+            skillRangeBonuses[ref to kind] ?: 0
         override fun linkedTarget(source: BattleHeroRef): BattleHeroRef? = linkedTarget
         override fun currentTarget(source: BattleHeroRef): BattleHeroRef? = currentTarget
         override fun previousTarget(source: BattleHeroRef): BattleHeroRef? = previousTargets[source]

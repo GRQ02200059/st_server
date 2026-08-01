@@ -1,5 +1,6 @@
 package com.stzb.server.game
 
+import com.stzb.server.game.battle.BattleStats
 import com.stzb.server.protocol.GameServerConfig
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -28,11 +29,15 @@ class PlayerHero(
     var stamina: Int = MAX_STAMINA,
     var level: Int = DEFAULT_LEVEL,
     var heroType: Int = PlayerHeroTypes.forHero(heroId),
+    var activeFeatureId: Int = 0,
     var dynamicIcon: Int = 0,
+    var armyFacadeCardId: Int = 0,
     var gearUid: Int = 0,
+    var cardBorder: Int = CardBorderCatalog.DEFAULT_ID,
     var awakeState: Int = 1,
     var skillIds: MutableList<Int> = HeroCatalog.defaultSkillIds(heroId).toMutableList(),
     var advanceNum: Int = initialAdvanceNum(heroId),
+    var attributePoints: BattleStats = BattleStats.ZERO,
     val isAdvanceMaterial: Boolean = false,
 ) {
     var troops: Int = troops.coerceIn(0, MAX_TROOPS)
@@ -51,6 +56,9 @@ class PlayerHero(
         normalizedSkillIds().joinToString(separator = "") { skillId ->
             if (skillId > 0) "$skillId,$MAX_SKILL_LEVEL;" else "0,0;"
         }
+
+    fun heroFeaturesString(): String =
+        activeFeatureId.takeIf { it > 0 }?.let { "$it,1;" }.orEmpty()
 
     companion object {
         // Tb_hero.energy uses 1/10,000 display units; 1,000,000 displays as 100 energy.
@@ -78,6 +86,37 @@ data class GearEquipResult(
     val gearHeroUids: Map<Int, Int>,
 )
 
+data class PlayerArmyFacadeCard(
+    val cardId: Int,
+    val facadeId: Int,
+    var cfgHeroId: Int = 0,
+)
+
+data class PlayerSpecialArmyFacadeCard(
+    val heroUid: Int,
+    val facadeId: Int,
+    var state: Int = 0,
+)
+
+data class PlayerArmyFacadeCardSnapshot(
+    val cardId: Int,
+    val facadeId: Int,
+    val cfgHeroId: Int = 0,
+)
+
+data class PlayerSpecialArmyFacadeCardSnapshot(
+    val heroUid: Int,
+    val facadeId: Int,
+    val state: Int = 0,
+)
+
+data class ArmyFacadeMutation(
+    val cardCfgHeroIds: Map<Int, Int> = emptyMap(),
+    val heroFacadeIds: Map<Int, Int> = emptyMap(),
+    val specialCardStates: Map<Int, Int> = emptyMap(),
+    val affectedArmyIds: Set<Int> = emptySet(),
+)
+
 data class PlayerMarch(
     val armyId: Int,
     val fromWid: Int,
@@ -85,6 +124,7 @@ data class PlayerMarch(
     val beginSec: Int,
     val endSec: Int,
     val participants: List<PlayerMarchHero> = emptyList(),
+    val specialArmyFacadeId: Int = 0,
 )
 
 data class PlayerMarchHero(
@@ -94,6 +134,12 @@ data class PlayerMarchHero(
     val troops: Int,
     val level: Int,
     val skillIds: List<Int>,
+    val heroType: Int = PlayerHeroTypes.forHero(heroId),
+    val attributePoints: BattleStats = BattleStats.ZERO,
+    val cardBorder: Int = 0,
+    val dynamicIcon: Int = 0,
+    val activeFeatureId: Int = 0,
+    val armyFacadeCardId: Int = 0,
 )
 
 data class PlayerHeroSnapshot(
@@ -105,11 +151,15 @@ data class PlayerHeroSnapshot(
     val stamina: Int = PlayerHero.MAX_STAMINA,
     val level: Int = PlayerHero.DEFAULT_LEVEL,
     val heroType: Int = PlayerHeroTypes.forHero(heroId),
+    val activeFeatureId: Int = 0,
     val dynamicIcon: Int = 0,
+    val armyFacadeCardId: Int = 0,
     val gearUid: Int = 0,
+    val cardBorder: Int = CardBorderCatalog.DEFAULT_ID,
     val awakeState: Int = 1,
     val skillIds: List<Int> = emptyList(),
     val advanceNum: Int = 0,
+    val attributePoints: BattleStats = BattleStats.ZERO,
     val isAdvanceMaterial: Boolean = false,
 )
 
@@ -120,6 +170,7 @@ data class PlayerMarchSnapshot(
     val beginSec: Int,
     val endSec: Int,
     val participants: List<PlayerMarchHero> = emptyList(),
+    val specialArmyFacadeId: Int = 0,
 )
 
 data class PlayerStateSnapshot(
@@ -136,6 +187,8 @@ data class PlayerStateSnapshot(
     val marches: Map<Int, PlayerMarchSnapshot> = emptyMap(),
     val occupiedLands: Set<Int> = emptySet(),
     val cardPacksSeen: Boolean = false,
+    val armyFacadeCards: List<PlayerArmyFacadeCardSnapshot> = emptyList(),
+    val specialArmyFacadeCards: List<PlayerSpecialArmyFacadeCardSnapshot> = emptyList(),
 )
 
 /**
@@ -154,7 +207,10 @@ class PlayerState(
     val accountKey: String = "legacy-user-$userId",
 ) {
     val resources = PlayerResources()
-    private val buildLevels = ConcurrentHashMap<Int, Int>().apply { this[10] = maxBuildLevel(10) }
+    private val buildLevels = ConcurrentHashMap<Int, Int>().apply {
+        this[10] = 1
+        this[30] = maxBuildLevel(30)
+    }
     private val heroes = LinkedHashMap<Int, PlayerHero>()
     private val armies = LinkedHashMap<Int, MutableList<Int>>().apply {
         repeat(MAX_ARMIES) { index -> this[cityWid * 10 + index + 1] = MutableList(3) { 0 } }
@@ -162,17 +218,27 @@ class PlayerState(
     private val heroSeq = AtomicInteger(0)
     private val marches = LinkedHashMap<Int, PlayerMarch>()
     private val lands = linkedSetOf<Int>()
+    private val armyFacadeCards = mutableListOf<PlayerArmyFacadeCard>()
+    private val specialArmyFacadeCards = mutableListOf<PlayerSpecialArmyFacadeCard>()
     var cardPacksSeen: Boolean = false
         private set
+
+    init {
+        normalizeArmyFacades()
+    }
 
     fun markCardPacksSeen() {
         cardPacksSeen = true
     }
 
-    fun buildLevel(buildId: Int): Int = maxBuildLevel(buildId)
+    fun buildLevel(buildId: Int): Int = buildLevels[buildId] ?: 1
+
+    fun allBuildLevels(): Map<Int, Int> = buildLevels.toMap()
 
     fun upgradeBuild(buildId: Int, targetLevel: Int): Int {
-        val next = maxBuildLevel(buildId)
+        val current = buildLevel(buildId)
+        val requested = targetLevel.takeIf { it > current } ?: current + 1
+        val next = requested.coerceIn(current, maxBuildLevel(buildId))
         buildLevels[buildId] = next
         return next
     }
@@ -202,6 +268,108 @@ class PlayerState(
 
     fun hero(heroUid: Int): PlayerHero? =
         heroes[heroUid]
+
+    fun armyFacadeCards(): List<PlayerArmyFacadeCard> =
+        armyFacadeCards.sortedBy(PlayerArmyFacadeCard::cardId)
+
+    fun specialArmyFacadeCards(): List<PlayerSpecialArmyFacadeCard> =
+        specialArmyFacadeCards.sortedBy(PlayerSpecialArmyFacadeCard::heroUid)
+
+    fun activeSpecialArmyFacadeId(): Int =
+        specialArmyFacadeCards
+            .firstOrNull { it.facadeId != ArmyFacadeCatalog.YUXI_FACADE_ID && it.state == 2 }
+            ?.facadeId
+            ?: 0
+
+    fun bindArmyFacadeCards(facadeId: Int, heroUids: List<Int>): ArmyFacadeMutation? {
+        if (!ArmyFacadeCatalog.isStandardFacade(facadeId)) return null
+        val distinctUids = heroUids.distinct()
+        if (distinctUids.isEmpty() || distinctUids.size != heroUids.size) return null
+        val heroesToBind = distinctUids.map { hero(it) ?: return null }
+        if (heroesToBind.any { it.isAdvanceMaterial || HeroCatalog.heroQuality(it.heroId) != 4 }) return null
+        if (heroesToBind.map(PlayerHero::heroId).toSet().size != heroesToBind.size) return null
+        if (
+            heroesToBind.any { target ->
+                armyFacadeCards.any { it.facadeId == facadeId && it.cfgHeroId == target.heroId }
+            }
+        ) {
+            return null
+        }
+
+        val availableCards = armyFacadeCards
+            .filter { it.facadeId == facadeId && it.cfgHeroId == 0 }
+            .sortedBy(PlayerArmyFacadeCard::cardId)
+        if (availableCards.size < heroesToBind.size) return null
+
+        val changedCards = linkedMapOf<Int, Int>()
+        val changedHeroes = linkedMapOf<Int, Int>()
+        heroesToBind.zip(availableCards).forEach { (target, card) ->
+            card.cfgHeroId = target.heroId
+            target.armyFacadeCardId = facadeId
+            changedCards[card.cardId] = card.cfgHeroId
+            changedHeroes[target.heroUid] = facadeId
+        }
+        return ArmyFacadeMutation(
+            cardCfgHeroIds = changedCards,
+            heroFacadeIds = changedHeroes,
+            affectedArmyIds = heroesToBind.map(PlayerHero::armyId).filter { it > 0 }.toSortedSet(),
+        )
+    }
+
+    fun useArmyFacade(heroUid: Int, facadeId: Int): ArmyFacadeMutation? {
+        val target = hero(heroUid) ?: return null
+        if (target.isAdvanceMaterial || HeroCatalog.heroQuality(target.heroId) != 4) return null
+        val allowed = when {
+            facadeId == 0 -> true
+            facadeId == ArmyFacadeCatalog.YUXI_FACADE_ID ->
+                specialArmyFacadeCards.any { it.facadeId == facadeId }
+            ArmyFacadeCatalog.isStandardFacade(facadeId) ->
+                armyFacadeCards.any { it.facadeId == facadeId && it.cfgHeroId == target.heroId }
+            else -> false
+        }
+        if (!allowed || target.armyFacadeCardId == facadeId) return null
+
+        target.armyFacadeCardId = facadeId
+        return ArmyFacadeMutation(
+            heroFacadeIds = mapOf(target.heroUid to facadeId),
+            affectedArmyIds = setOfNotNull(target.armyId.takeIf { it > 0 }),
+        )
+    }
+
+    fun setSpecialArmyFacadeState(cardUid: Int, state: Int): ArmyFacadeMutation? {
+        if (state !in setOf(0, 2)) return null
+        val target = specialArmyFacadeCards.singleOrNull { it.heroUid == cardUid } ?: return null
+        if (target.facadeId == ArmyFacadeCatalog.YUXI_FACADE_ID || target.state == state) return null
+
+        val changed = linkedMapOf<Int, Int>()
+        if (state == 2) {
+            specialArmyFacadeCards
+                .filter { it.facadeId != ArmyFacadeCatalog.YUXI_FACADE_ID && it.state != 0 }
+                .forEach {
+                    it.state = 0
+                    changed[it.heroUid] = 0
+                }
+        }
+        target.state = state
+        changed[target.heroUid] = state
+        return ArmyFacadeMutation(
+            specialCardStates = changed,
+            affectedArmyIds = armyIds().toSortedSet(),
+        )
+    }
+
+    fun armyFacadeIds(armyId: Int): String {
+        val specialFacadeId = activeSpecialArmyFacadeId()
+        return encodeArmyFacadeIds(
+            teamHeroes(armyId).mapIndexedNotNull { position, heroUid ->
+                hero(heroUid)?.let { current ->
+                    (specialFacadeId.takeIf { it > 0 } ?: current.armyFacadeCardId)
+                        .takeIf { it > 0 }
+                        ?.let { facadeId -> facadeId to position }
+                }
+            },
+        )
+    }
 
     fun equippedGearUid(heroUid: Int): Int =
         hero(heroUid)?.gearUid ?: 0
@@ -311,6 +479,13 @@ class PlayerState(
         return true
     }
 
+    fun selectHeroCardBorder(heroUid: Int, cardBorder: Int): Boolean {
+        val hero = hero(heroUid) ?: return false
+        if (!CardBorderCatalog.isSupported(cardBorder)) return false
+        hero.cardBorder = cardBorder
+        return true
+    }
+
     fun learnHeroSkill(heroUid: Int, skillId: Int, slotIndex: Int): Boolean {
         val hero = hero(heroUid) ?: return false
         if (skillId <= 0 || slotIndex !in 2..PlayerHero.SKILL_SLOT_COUNT) return false
@@ -390,6 +565,7 @@ class PlayerState(
         nowSec: Int,
         armyId: Int = primaryArmyId(),
         participants: List<PlayerMarchHero> = emptyList(),
+        specialArmyFacadeId: Int = 0,
     ): PlayerMarch {
         val beginSec = nowSec.coerceAtLeast(1)
         return PlayerMarch(
@@ -399,6 +575,9 @@ class PlayerState(
             beginSec = beginSec,
             endSec = beginSec + MARCH_DURATION_SECONDS,
             participants = participants,
+            specialArmyFacadeId = specialArmyFacadeId.takeIf {
+                it != ArmyFacadeCatalog.YUXI_FACADE_ID && ArmyFacadeCatalog.isSpecialFacade(it)
+            } ?: 0,
         ).also { marches[it.armyId] = it }
     }
 
@@ -448,11 +627,15 @@ class PlayerState(
                     stamina = hero.stamina,
                     level = hero.level,
                     heroType = hero.heroType,
+                    activeFeatureId = hero.activeFeatureId,
                     dynamicIcon = hero.dynamicIcon,
+                    armyFacadeCardId = hero.armyFacadeCardId,
                     gearUid = hero.gearUid,
+                    cardBorder = hero.cardBorder,
                     awakeState = hero.awakeState,
                     skillIds = hero.normalizedSkillIds(),
                     advanceNum = hero.advanceNum,
+                    attributePoints = hero.attributePoints,
                     isAdvanceMaterial = hero.isAdvanceMaterial,
                 )
             },
@@ -466,6 +649,7 @@ class PlayerState(
                     beginSec = it.beginSec,
                     endSec = it.endSec,
                     participants = it.participants,
+                    specialArmyFacadeId = it.specialArmyFacadeId,
                 )
             },
             marches = marches.mapValues { (_, march) ->
@@ -476,10 +660,25 @@ class PlayerState(
                     beginSec = march.beginSec,
                     endSec = march.endSec,
                     participants = march.participants,
+                    specialArmyFacadeId = march.specialArmyFacadeId,
                 )
             },
             occupiedLands = lands.toSet(),
             cardPacksSeen = cardPacksSeen,
+            armyFacadeCards = armyFacadeCards.map { card ->
+                PlayerArmyFacadeCardSnapshot(
+                    cardId = card.cardId,
+                    facadeId = card.facadeId,
+                    cfgHeroId = card.cfgHeroId,
+                )
+            },
+            specialArmyFacadeCards = specialArmyFacadeCards.map { card ->
+                PlayerSpecialArmyFacadeCardSnapshot(
+                    heroUid = card.heroUid,
+                    facadeId = card.facadeId,
+                    state = card.state,
+                )
+            },
         )
 
     private fun refreshHeroArmyIds() {
@@ -515,6 +714,83 @@ class PlayerState(
             if (gearUid == 0) return@forEach
             if (!InventoryCatalog.isGrantedGearUid(gearUid) || !claimedGearUids.add(gearUid)) {
                 hero.gearUid = 0
+            }
+        }
+    }
+
+    private fun normalizeArmyFacades() {
+        val defaultCardsById = ArmyFacadeCatalog.defaultCards().associateBy(ArmyFacadeCardSeed::cardId)
+        val savedCardsById = linkedMapOf<Int, PlayerArmyFacadeCard>()
+        armyFacadeCards
+            .filter { card -> defaultCardsById[card.cardId]?.facadeId == card.facadeId }
+            .sortedBy(PlayerArmyFacadeCard::cardId)
+            .forEach { card -> savedCardsById.putIfAbsent(card.cardId, card) }
+        armyFacadeCards.clear()
+        defaultCardsById.values
+            .sortedBy(ArmyFacadeCardSeed::cardId)
+            .forEach { seed ->
+                val saved = savedCardsById[seed.cardId]
+                armyFacadeCards += PlayerArmyFacadeCard(
+                    cardId = seed.cardId,
+                    facadeId = seed.facadeId,
+                    cfgHeroId = saved?.cfgHeroId ?: 0,
+                )
+            }
+
+        val validCfgHeroIds = heroes.values
+            .filter { !it.isAdvanceMaterial && HeroCatalog.heroQuality(it.heroId) == 4 }
+            .map(PlayerHero::heroId)
+            .toSet()
+        val claimedBindings = mutableSetOf<Pair<Int, Int>>()
+        armyFacadeCards
+            .sortedBy(PlayerArmyFacadeCard::cardId)
+            .forEach { card ->
+                val binding = card.facadeId to card.cfgHeroId
+                if (card.cfgHeroId !in validCfgHeroIds || !claimedBindings.add(binding)) {
+                    card.cfgHeroId = 0
+                }
+            }
+
+        val savedSpecialStates = specialArmyFacadeCards
+            .filter { card -> ArmyFacadeCatalog.isSpecialFacade(card.facadeId) }
+            .associateBy(PlayerSpecialArmyFacadeCard::facadeId)
+        specialArmyFacadeCards.clear()
+        ArmyFacadeCatalog.specialFacadeIds()
+            .sorted()
+            .forEach { facadeId ->
+                val saved = savedSpecialStates[facadeId]
+                specialArmyFacadeCards += PlayerSpecialArmyFacadeCard(
+                    heroUid = ArmyFacadeCatalog.specialCardUid(facadeId),
+                    facadeId = facadeId,
+                    state = if (facadeId == ArmyFacadeCatalog.YUXI_FACADE_ID) {
+                        0
+                    } else {
+                        saved?.state?.takeIf { it == 2 } ?: 0
+                    },
+                )
+            }
+        var activeSpecialSeen = false
+        specialArmyFacadeCards
+            .filter { it.facadeId != ArmyFacadeCatalog.YUXI_FACADE_ID }
+            .sortedBy(PlayerSpecialArmyFacadeCard::heroUid)
+            .forEach { card ->
+                if (card.state == 2 && !activeSpecialSeen) {
+                    activeSpecialSeen = true
+                } else {
+                    card.state = 0
+                }
+            }
+
+        heroes.values.forEach { hero ->
+            val validNormalFacade = armyFacadeCards.any { card ->
+                card.facadeId == hero.armyFacadeCardId && card.cfgHeroId == hero.heroId
+            }
+            val validYuxiFacade =
+                hero.armyFacadeCardId == ArmyFacadeCatalog.YUXI_FACADE_ID &&
+                    !hero.isAdvanceMaterial &&
+                    HeroCatalog.heroQuality(hero.heroId) == 4
+            if (!validNormalFacade && !validYuxiFacade) {
+                hero.armyFacadeCardId = 0
             }
         }
     }
@@ -592,11 +868,14 @@ class PlayerState(
                 state.resources.freeYuanBao = snapshot.resources.freeYuanBao
                 state.buildLevels.clear()
                 state.buildLevels.putAll(
-                    snapshot.buildLevels.mapValues { (buildId, _) ->
-                        maxBuildLevel(buildId)
+                    snapshot.buildLevels.mapValues { (buildId, savedLevel) ->
+                        savedLevel.coerceIn(1, maxBuildLevel(buildId))
                     },
                 )
-                if (state.buildLevels.isEmpty()) state.buildLevels[10] = maxBuildLevel(10)
+                if (state.buildLevels.isEmpty()) {
+                    state.buildLevels[10] = 1
+                    state.buildLevels[30] = maxBuildLevel(30)
+                }
                 state.heroes.clear()
                 snapshot.heroes.forEach { saved ->
                     state.heroes[saved.heroUid] = PlayerHero(
@@ -607,12 +886,15 @@ class PlayerState(
                         troops = saved.troops.coerceIn(0, PlayerHero.MAX_TROOPS),
                         stamina = PlayerHero.MAX_STAMINA,
                         level = saved.level.coerceAtLeast(PlayerHero.DEFAULT_LEVEL),
-                        heroType = saved.heroType.takeIf { it in 1..3 }
+                        heroType = saved.heroType.takeIf { it > 0 }
                             ?: PlayerHeroTypes.forHero(saved.heroId),
+                        activeFeatureId = saved.activeFeatureId,
                         dynamicIcon = saved.dynamicIcon.takeIf {
                             it == 0 || HeroFacadeCatalog.canUse(it, saved.heroId)
                         } ?: 0,
+                        armyFacadeCardId = saved.armyFacadeCardId,
                         gearUid = saved.gearUid,
+                        cardBorder = CardBorderCatalog.normalizePersisted(saved.cardBorder),
                         awakeState = 1,
                         skillIds = normalizedSavedSkillIds(saved.heroId, saved.skillIds),
                         advanceNum = if (saved.isAdvanceMaterial) {
@@ -623,10 +905,28 @@ class PlayerState(
                                 ?.coerceAtMost(PlayerHero.maxAdvanceNum(saved.heroId))
                                 ?: PlayerHero.initialAdvanceNum(saved.heroId)
                         },
+                        attributePoints = saved.attributePoints,
                         isAdvanceMaterial = saved.isAdvanceMaterial,
                     )
                 }
+                state.armyFacadeCards.clear()
+                state.armyFacadeCards += snapshot.armyFacadeCards.map { saved ->
+                    PlayerArmyFacadeCard(
+                        cardId = saved.cardId,
+                        facadeId = saved.facadeId,
+                        cfgHeroId = saved.cfgHeroId,
+                    )
+                }
+                state.specialArmyFacadeCards.clear()
+                state.specialArmyFacadeCards += snapshot.specialArmyFacadeCards.map { saved ->
+                    PlayerSpecialArmyFacadeCard(
+                        heroUid = saved.heroUid,
+                        facadeId = saved.facadeId,
+                        state = saved.state,
+                    )
+                }
                 state.normalizeEquippedGears()
+                state.normalizeArmyFacades()
                 state.heroSeq.set(
                     snapshot.heroes.maxOfOrNull {
                         Math.floorMod(it.heroUid, HERO_UID_STRIDE)
@@ -657,6 +957,7 @@ class PlayerState(
                         beginSec = saved.beginSec,
                         endSec = saved.endSec,
                         participants = saved.participants,
+                        specialArmyFacadeId = saved.specialArmyFacadeId,
                     )
                 }
                 state.lands.clear()
@@ -676,6 +977,20 @@ class PlayerState(
         }
     }
 }
+
+fun PlayerMarch.facadeIds(): String =
+    encodeArmyFacadeIds(
+        participants
+            .sortedBy(PlayerMarchHero::position)
+            .mapNotNull { participant ->
+                (specialArmyFacadeId.takeIf { it > 0 } ?: participant.armyFacadeCardId)
+                    .takeIf { facadeId -> facadeId > 0 }
+                    ?.let { facadeId -> facadeId to participant.position }
+            },
+    )
+
+private fun encodeArmyFacadeIds(entries: List<Pair<Int, Int>>): String =
+    entries.joinToString(separator = "") { (facadeId, position) -> "$facadeId,$position;" }
 
 object PlayerStateRepository {
     private val players = ConcurrentHashMap<String, PlayerState>()

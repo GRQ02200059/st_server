@@ -41,6 +41,25 @@ class DefaultCompleteSkillEngine private constructor(
             val sources = livingHeroesInSpeedOrder()
             sources.forEach { source ->
                 addAll(trigger(BattleTrigger.BATTLE_PASSIVE, context.copy(source = source)))
+                if (201006 in state.liveHero(source).skillIds) {
+                    state.view.heroes()
+                        .filter { candidate ->
+                            candidate.side == source.side &&
+                                (state.view.state(candidate)?.troops ?: 0) > 0
+                        }
+                        .sortedBy(BattleHeroRef::position)
+                        .forEach { target ->
+                            add(
+                                BattleEvent.SkillTriggered(
+                                    round = context.round,
+                                    source = target,
+                                    rootSkillId = 201006,
+                                    skillId = 221006,
+                                    trigger = BattleTrigger.BATTLE_PASSIVE,
+                                ),
+                            )
+                        }
+                }
             }
             sources.forEach { source ->
                 addAll(trigger(BattleTrigger.BATTLE_COMMAND, context.copy(source = source)))
@@ -1134,9 +1153,40 @@ class DefaultCompleteSkillEngine private constructor(
                 is ExecuteChildSkillChange,
                 is RetriggerSkillChange,
                 is TriggerReferencedEffectChange,
-                is MetaEffectChange,
                 -> Unit
+                is MetaEffectChange -> {
+                    when (change.operation) {
+                        MetaEffectOperation.SKILL_RANGE_INCREASE -> {
+                            val kinds = when (change.parameters.selectSkillParameter) {
+                                3 -> listOf(SkillKind.ACTIVE)
+                                4 -> listOf(SkillKind.PURSUIT)
+                                else -> listOf(SkillKind.ACTIVE, SkillKind.PURSUIT)
+                            }
+                            kinds.forEach { kind ->
+                                events += state.applySkillRangeChange(
+                                    change,
+                                    kind,
+                                    change.parameters.constant,
+                                    context.round,
+                                )
+                            }
+                        }
+                        MetaEffectOperation.SKILL_RANGE_DECREASE -> {
+                            listOf(SkillKind.ACTIVE, SkillKind.PURSUIT).forEach { kind ->
+                                events += state.applySkillRangeChange(
+                                    change,
+                                    kind,
+                                    -change.parameters.constant,
+                                    context.round,
+                                )
+                            }
+                        }
+                        else -> Unit
+                    }
+                }
                 is MoraleEffectChange ->
+                    events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
+                is ModifierEffectChange ->
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 is MarkerEffectChange -> Unit
                 is DamageModifierChange ->
@@ -1229,6 +1279,9 @@ class DefaultCompleteSkillEngine private constructor(
                 )
             }
             events += trigger(BattleTrigger.HURT_AFTER, hurtContext)
+            if (output.amount > 0) {
+                events += emergencyRecoveryEvents(output.target, hurtContext)
+            }
             events += apply(timing.onHit(damageContext), damageContext)
             if (output.amount > 0) {
                 events += apply(
@@ -1240,21 +1293,30 @@ class DefaultCompleteSkillEngine private constructor(
         result.outputs.filterIsInstance<BattleStateOutput.TroopsRecovered>()
             .filter { it.amount > 0 }
             .forEach { output ->
+                val registrationOwner = state.effectStore.effectsFor(output.target)
+                    .firstOrNull { effect ->
+                        effect.effectId == output.effectId &&
+                            effect.skillId == output.skillId &&
+                            effect.source == output.source
+                    }
+                    ?.source
+                val recoveryOwner = registrationOwner ?: output.source
                 val recoveryCount = state.runtime.recordBattleTriggerOccurrence(
-                    output.source,
+                    recoveryOwner,
                     BattleTrigger.RECOVERY_AFTER,
                 )
                 if (
-                    200016 in state.liveHero(output.source).skillIds &&
+                    output.skillId == 200016 &&
+                    200016 in state.liveHero(recoveryOwner).skillIds &&
                     state.runtime.consumeThreshold(
-                        owner = output.source,
+                        owner = recoveryOwner,
                         namespace = "skill.200016.actual-recovery",
                         count = recoveryCount,
                         threshold = 3,
                     )
                 ) {
                     val listenerContext = context.copy(
-                        source = output.source,
+                        source = recoveryOwner,
                         rootSkillId = 200016,
                         currentSkillId = 200016,
                         trigger = BattleTrigger.RECOVERY_AFTER,
@@ -1293,6 +1355,48 @@ class DefaultCompleteSkillEngine private constructor(
             .toEvents(context.round)
         return events
     }
+
+    private fun emergencyRecoveryEvents(
+        target: BattleHeroRef,
+        context: SkillBattleContext,
+    ): List<BattleEvent> =
+        state.effectStore.effectsFor(target)
+            .filter { effect -> effect.effectId == 401 && effect.detailId > 0 }
+            .flatMap { effect ->
+                val detail = graph.details.singleOrNull { it.detailId == effect.detailId }
+                    ?: return@flatMap emptyList()
+                val increment = graph.details
+                    .singleOrNull { it.detailId == 21101601 && it.raw.effectParam == detail.detailId }
+                    ?.raw
+                    ?.constantParam
+                    ?: 0
+                val actualRecoveries = state.runtime.count(
+                    effect.source,
+                    BattleTrigger.RECOVERY_AFTER,
+                )
+                val probability = (
+                    detail.raw.probabilityInit + actualRecoveries / 3 * increment
+                    ).coerceAtMost(100)
+                if (context.random.nextInt(100) >= probability) {
+                    emptyList()
+                } else {
+                    val recoveryContext = context.copy(
+                        source = effect.source,
+                        rootSkillId = effect.rootSkillId,
+                        currentSkillId = effect.skillId,
+                        trigger = BattleTrigger.HURT_AFTER,
+                    )
+                    apply(
+                        interpreter.executeDetailForEngine(
+                            detail = detail,
+                            context = recoveryContext,
+                            preselectedTargets = listOf(target),
+                            probabilityAlreadyAccepted = true,
+                        ),
+                        recoveryContext,
+                    )
+                }
+            }
 
     private fun tongchouHurtResult(
         hurtTarget: BattleHeroRef,
@@ -1462,6 +1566,7 @@ class DefaultCompleteSkillEngine private constructor(
             valueAfter = valueAfter,
             deltaExact = deltaExact,
             valueAfterExact = valueAfterExact,
+            unit = change.potency.unit,
         )
     }
 

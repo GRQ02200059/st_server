@@ -39,15 +39,60 @@ internal object ClientBattleTextReplayAdapter {
                 listOf(ClientBattleTextReplayProtocol.position(side, hero.position), hero.id.value),
             )
         }
-        entryHeroes.forEach { (side, hero) ->
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.INITIALIZATION_READY)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.INITIALIZATION_BEGIN)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.ATTACKER_INFO_BEGIN)
+        entryHeroes.filter { it.first == Side.ATTACKER }.forEach { (side, hero) ->
             actions += heroInfo(side, hero)
         }
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.DEFENDER_INFO_BEGIN)
+        entryHeroes.filter { it.first == Side.DEFENDER }.forEach { (side, hero) ->
+            actions += heroInfo(side, hero)
+        }
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.HERO_INFO_END)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_READY)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_BEGIN)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_RULES_BEGIN)
         val attackerEntry = result.entryAttacker ?: result.attacker
         val defenderEntry = result.entryDefender ?: result.defender
-        BattlePreparationStage.entries.forEach { stage ->
-            actions += preparationEffects(Side.ATTACKER, attackerEntry, stage)
-            actions += preparationEffects(Side.DEFENDER, defenderEntry, stage)
-        }
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.SYSTEM_STAGE_BEGIN)
+        actions += preparationEffects(Side.ATTACKER, attackerEntry, BattlePreparationStage.SYSTEM)
+        actions += preparationEffects(Side.DEFENDER, defenderEntry, BattlePreparationStage.SYSTEM)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.COUNTRY_STAGE_BEGIN)
+        actions += preparationEffects(
+            Side.ATTACKER,
+            attackerEntry,
+            BattlePreparationStage.ARMY,
+        ) { it >= 295_000 }
+        actions += preparationEffects(
+            Side.DEFENDER,
+            defenderEntry,
+            BattlePreparationStage.ARMY,
+        ) { it >= 295_000 }
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.COUNTRY_STAGE_END)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.ARMY_STAGE_READY)
+        actions += preparationEffects(
+            Side.ATTACKER,
+            attackerEntry,
+            BattlePreparationStage.ARMY,
+        ) { it < 295_000 }
+        actions += preparationEffects(
+            Side.DEFENDER,
+            defenderEntry,
+            BattlePreparationStage.ARMY,
+        ) { it < 295_000 }
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.TROOP_STAGE_BEGIN)
+        actions += preparationEffects(Side.ATTACKER, attackerEntry, BattlePreparationStage.TROOP)
+        actions += preparationEffects(Side.DEFENDER, defenderEntry, BattlePreparationStage.TROOP)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.EQUIPMENT_STAGE_BEGIN)
+        actions += preparationEffects(Side.ATTACKER, attackerEntry, BattlePreparationStage.EQUIPMENT)
+        actions += preparationEffects(Side.DEFENDER, defenderEntry, BattlePreparationStage.EQUIPMENT)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.SURFACE_STAGE_READY)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.SURFACE_STAGE_BEGIN)
+        actions += preparationEffects(Side.ATTACKER, attackerEntry, BattlePreparationStage.SURFACE)
+        actions += preparationEffects(Side.DEFENDER, defenderEntry, BattlePreparationStage.SURFACE)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.SURFACE_STAGE_END)
+        actions += ClientReportAction(ClientBattleTextReplayProtocol.PASSIVE_STAGE_BEGIN)
 
         fun appendEvent(event: BattleEvent) {
             when (event) {
@@ -201,6 +246,16 @@ internal object ClientBattleTextReplayAdapter {
                         event.amount,
                     ),
                 )
+                is BattleEvent.SkillRangeChanged -> actions += ClientReportAction(
+                    ClientBattleTextReplayProtocol.SKILL_RANGE_CHANGED,
+                    listOf(
+                        ClientBattleTextReplayProtocol.position(event.source),
+                        event.skillId,
+                        ClientBattleTextReplayProtocol.position(event.target),
+                        event.delta,
+                        event.displayRangeAfter,
+                    ),
+                )
                 is BattleEvent.UnsupportedSkillEffect -> {
                     unsupported(
                         "Unsupported skill effect projection: skill=${event.skillId} " +
@@ -324,6 +379,15 @@ internal object ClientBattleTextReplayAdapter {
     )
 
     private fun blockedEffect(event: BattleEvent.EffectBlocked): ClientReportAction? {
+        if (event.blockingEffectId == 207) {
+            return ClientReportAction(
+                ClientBattleTextReplayProtocol.EFFECT_BLOCKED,
+                listOf(
+                    ClientBattleTextReplayProtocol.position(event.target),
+                    event.blockingEffectId,
+                ),
+            )
+        }
         val actionId = when {
             event.blockingEffectId == ClientBattleTextReplayProtocol.effectId(BattleStatus.EVADE) ->
                 ClientBattleTextReplayProtocol.DAMAGE_EVADED
@@ -400,18 +464,35 @@ internal object ClientBattleTextReplayAdapter {
         side: Side,
         team: BattleTeam,
         stage: BattlePreparationStage? = null,
+        sourceFilter: (Int) -> Boolean = { true },
     ): List<ClientReportAction> {
         val effectsBySource = team.preparationEffects
-            .filter { stage == null || it.stage == stage }
+            .filter { (stage == null || it.stage == stage) && sourceFilter(it.sourceId) }
             .groupBy { Triple(it.stage, it.containerSourceId, it.sourcePosition) }
         val modifiersBySource = team.preparationModifiers
-            .filter { stage == null || it.stage == stage }
+            .filter { (stage == null || it.stage == stage) && sourceFilter(it.sourceId) }
             .groupBy { Triple(it.stage, it.containerSourceId, it.sourcePosition) }
         val actionsBySource = team.preparationActions
-            .filter { stage == null || it.stage == stage }
+            .filter { (stage == null || it.stage == stage) && sourceFilter(it.sourceId) }
             .groupBy { Triple(it.stage, it.containerSourceId, it.sourcePosition) }
+        val surfaceSources = if (stage == null || stage == BattlePreparationStage.SURFACE) {
+            team.heroes.mapNotNull { hero ->
+                hero.surfaceSkillId.takeIf { it > 0 }?.let { surfaceSkillId ->
+                    BattlePreparationSource(
+                        stage = BattlePreparationStage.SURFACE,
+                        sourceId = surfaceSkillId,
+                        sourcePosition = hero.position,
+                    )
+                }
+            }
+        } else {
+            emptyList()
+        }
         val sources = (
-            team.preparationSources.filter { stage == null || it.stage == stage } +
+            team.preparationSources.filter {
+                (stage == null || it.stage == stage) && sourceFilter(it.sourceId)
+            } +
+                surfaceSources +
                 effectsBySource.keys.map { (stage, sourceId, sourcePosition) ->
                     BattlePreparationSource(stage, sourceId, sourcePosition)
                 } +
@@ -424,7 +505,15 @@ internal object ClientBattleTextReplayAdapter {
             ).distinct()
             .sortedWith(
                 compareBy<BattlePreparationSource> { it.stage.ordinal }
-                    .thenBy { it.sourcePosition ?: -1 }
+                    .thenBy { source ->
+                        if (source.stage == BattlePreparationStage.SURFACE) {
+                            source.sourcePosition
+                                ?.let { ClientBattleTextReplayProtocol.position(side, it) }
+                                ?: ClientBattleTextReplayProtocol.teamPosition(side)
+                        } else {
+                            source.sourcePosition ?: -1
+                        }
+                    }
                     .thenBy(BattlePreparationSource::sourceId),
             )
         return sources.flatMap { source ->
@@ -438,7 +527,7 @@ internal object ClientBattleTextReplayAdapter {
                 Triple(source.stage, source.sourceId, source.sourcePosition)
             ].orEmpty()
             buildList {
-                listOf(
+                add(
                     ClientReportAction(
                         ClientBattleTextReplayProtocol.preparationSourceAction(source.stage),
                         listOf(
@@ -448,67 +537,89 @@ internal object ClientBattleTextReplayAdapter {
                             source.sourceId,
                         ),
                     ),
-                ).let(::addAll)
-                add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_BEGIN))
-                effects.mapTo(this) { effect ->
-                    val sourcePosition = effect.sourcePosition
-                        ?.let { ClientBattleTextReplayProtocol.position(side, it) }
-                        ?: ClientBattleTextReplayProtocol.teamPosition(side)
-                    if (effect.percent) {
+                )
+                val payload = buildList {
+                    effects.mapTo(this) { effect ->
+                        val sourcePosition = effect.sourcePosition
+                            ?.let { ClientBattleTextReplayProtocol.position(side, it) }
+                            ?: ClientBattleTextReplayProtocol.teamPosition(side)
+                        if (effect.percent) {
+                            ClientReportAction(
+                                ClientBattleTextReplayProtocol.attributeChangeAction(effect.stat, effect.delta),
+                                listOf(
+                                    sourcePosition,
+                                    effect.sourceId,
+                                    ClientBattleTextReplayProtocol.position(side, effect.targetPosition),
+                                    reportNumber(effect.strengthExact),
+                                    reportNumber(kotlin.math.abs(effect.deltaExact)),
+                                    reportNumber(effect.valueAfterExact),
+                                ),
+                            )
+                        } else {
+                            ClientReportAction(
+                                when (effect.sourceId) {
+                                    296_133 -> "17".toInt(36)
+                                    296_241 -> "15".toInt(36)
+                                    else -> ClientBattleTextReplayProtocol.flatAttributeAction(effect.stat)
+                                },
+                                listOf(
+                                    sourcePosition,
+                                    effect.sourceId,
+                                    ClientBattleTextReplayProtocol.position(side, effect.targetPosition),
+                                    reportNumber(kotlin.math.abs(effect.deltaExact)),
+                                    reportNumber(effect.valueAfterExact),
+                                ),
+                            )
+                        }
+                    }
+                    modifiers.mapTo(this) { modifier ->
                         ClientReportAction(
-                            ClientBattleTextReplayProtocol.attributeChangeAction(effect.stat, effect.delta),
+                            ClientBattleTextReplayProtocol.MODIFIER_APPLIED,
                             listOf(
-                                sourcePosition,
-                                effect.sourceId,
-                                ClientBattleTextReplayProtocol.position(side, effect.targetPosition),
-                                reportNumber(effect.strengthExact),
-                                reportNumber(kotlin.math.abs(effect.deltaExact)),
-                                reportNumber(effect.valueAfterExact),
-                            ),
-                        )
-                    } else {
-                        ClientReportAction(
-                            ClientBattleTextReplayProtocol.flatAttributeAction(effect.stat),
-                            listOf(
-                                sourcePosition,
-                                effect.sourceId,
-                                ClientBattleTextReplayProtocol.position(side, effect.targetPosition),
-                                reportNumber(kotlin.math.abs(effect.deltaExact)),
-                                reportNumber(effect.valueAfterExact),
+                                ClientBattleTextReplayProtocol.position(side, modifier.sourcePosition),
+                                modifier.sourceId,
+                                ClientBattleTextReplayProtocol.position(side, modifier.targetPosition),
+                                modifier.effectId,
+                                modifier.amount,
                             ),
                         )
                     }
+                    preparationActions.mapTo(this) { action ->
+                        ClientReportAction(
+                            action.actionId,
+                            buildList {
+                                val sourcePosition =
+                                    ClientBattleTextReplayProtocol.position(side, action.sourcePosition)
+                                add(sourcePosition)
+                                if (action.compactStatusAction) {
+                                    action.actionParameter?.let(::add)
+                                } else {
+                                    add(action.sourceId)
+                                    add(ClientBattleTextReplayProtocol.position(side, action.targetPosition))
+                                    action.actionParameter?.let(::add)
+                                    action.amountExact?.let { add(reportNumber(it)) }
+                                    if (action.appendSourcePosition) add(sourcePosition)
+                                }
+                            },
+                        )
+                    }
                 }
-                modifiers.mapTo(this) { modifier ->
-                    ClientReportAction(
-                        ClientBattleTextReplayProtocol.MODIFIER_APPLIED,
-                        listOf(
-                            ClientBattleTextReplayProtocol.position(side, modifier.sourcePosition),
-                            modifier.sourceId,
-                            ClientBattleTextReplayProtocol.position(side, modifier.targetPosition),
-                            modifier.effectId,
-                            modifier.amount,
-                        ),
-                    )
+                if (source.stage == BattlePreparationStage.SURFACE) {
+                    if (payload.isEmpty()) {
+                        add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_BEGIN))
+                        add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_END))
+                    } else {
+                        payload.forEach { action ->
+                            add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_BEGIN))
+                            add(action)
+                            add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_END))
+                        }
+                    }
+                } else {
+                    add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_BEGIN))
+                    addAll(payload)
+                    add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_END))
                 }
-                preparationActions.mapTo(this) { action ->
-                    ClientReportAction(
-                        action.actionId,
-                        buildList {
-                            add(
-                            ClientBattleTextReplayProtocol.position(side, action.sourcePosition),
-                            )
-                            add(action.sourceId)
-                            add(ClientBattleTextReplayProtocol.position(side, action.targetPosition))
-                            action.actionParameter?.let(::add)
-                            action.amountExact?.let { add(reportNumber(it)) }
-                            if (action.appendSourcePosition) {
-                                add(ClientBattleTextReplayProtocol.position(side, action.sourcePosition))
-                            }
-                        },
-                    )
-                }
-                add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_END))
                 add(ClientReportAction(ClientBattleTextReplayProtocol.PREPARATION_EFFECT_BOUNDARY))
             }
         }

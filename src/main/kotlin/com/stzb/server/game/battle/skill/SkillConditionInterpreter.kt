@@ -120,6 +120,7 @@ sealed interface SkillCondition {
         enum class Kind {
             SAME_COUNTRY,
             SAME_TROOP_TYPE,
+            DISTINCT_TROOP_TYPE,
             DISTINCT_COUNTRY,
             DISTINCT_BASE_ATTACK_RANGE,
         }
@@ -314,6 +315,14 @@ class CompiledSkillCondition internal constructor(
                 formation.map { context.battleView.metadata(it)?.troopType ?: return false }
                     .distinct()
                     .size == 1
+            }
+            SkillCondition.FormationRoster.Kind.DISTINCT_TROOP_TYPE -> {
+                if (SkillBattleViewCapability.HERO_METADATA !in context.battleView.capabilities) {
+                    return false
+                }
+                formation.map { context.battleView.metadata(it)?.troopType ?: return false }
+                    .distinct()
+                    .size == FORMATION_HERO_COUNT
             }
             SkillCondition.FormationRoster.Kind.DISTINCT_COUNTRY -> {
                 if (SkillBattleViewCapability.HERO_METADATA !in context.battleView.capabilities) {
@@ -666,6 +675,8 @@ private class BuiltInClientBranchConditionPlugin(
         listOf(
             SkillCondition.ConfigBranch(
                 enabled = when {
+                    code.value == 227068901 -> true
+                    code.value == 127068901 -> false
                     code.value.toString().startsWith(CURRENT_CLIENT_BRANCH_PREFIX) -> true
                     code.value.toString().startsWith(LEGACY_CLIENT_BRANCH_PREFIX) -> false
                     code.value in CURRENT_PARAMETER_BRANCHES -> true
@@ -1554,6 +1565,9 @@ private class BuiltInFormationConditionPlugin(
                     SkillCondition.FormationRoster.Kind.SAME_TROOP_TYPE,
                     negated = true,
                 )
+                3 -> SkillCondition.FormationRoster(
+                    SkillCondition.FormationRoster.Kind.DISTINCT_TROOP_TYPE,
+                )
                 13 -> SkillCondition.FormationRoster(
                     SkillCondition.FormationRoster.Kind.DISTINCT_COUNTRY,
                 )
@@ -1903,7 +1917,7 @@ private val TROOP_RATIO_CONDITIONS = setOf(1030, 1050, 1060, 1070, 1080, 1090, 2
 private val STATUS_TARGET_CONDITIONS = setOf(500, 4000, 7001, 18306)
 private val MORALE_TARGET_CONDITIONS = setOf(20160)
 private val ATTACK_RANGE_CONDITIONS = setOf(32002, 32011)
-private val FORMATION_PRECONDITIONS = setOf(1, 2, -2, 13, 19)
+private val FORMATION_PRECONDITIONS = setOf(1, 2, -2, 3, 13, 19)
 private val ATTRIBUTE_CAST_CONDITIONS =
     setOf(
         1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013,

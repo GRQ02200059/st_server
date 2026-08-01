@@ -116,7 +116,8 @@ class UserInitTableBuilderTest {
         )
 
         val armies = tables.getValue("Tb_army")[1]
-        assertEquals(1, armies.size())
+        assertEquals(5, armies.size())
+        assertEquals((1..5).map { 10001 * 10 + it }, armies.map { it[0].asInt() })
         val army = armies[0]
         assertEquals(10001 * 10 + 1, army[0].asInt())
         assertEquals(42, army[1].asInt())
@@ -124,7 +125,13 @@ class UserInitTableBuilderTest {
         assertEquals(10001, army[14].asInt())
 
         val worldCity = tables.getValue("Tb_world_city")[1][0]
-        assertEquals("", worldCity[4].asText())
+        assertEquals(
+            "10,8,13,20,20,20,21,20,22,20,23,20,24,20,25,1,30,20," +
+                "31,10,32,10,33,10,34,10,35,10,36,20,37,10,40,5,42,5," +
+                "43,15,44,3,51,10,52,10,53,10,54,10,61,5,62,6,63,5," +
+                "64,5,65,5,66,10,67,3,160,10",
+            worldCity[4].asText(),
+        )
         assertEquals(0, worldCity[11].asInt())
 
         val activity = tables.getValue("Tb_activity")[1][0]
@@ -158,6 +165,51 @@ class UserInitTableBuilderTest {
     }
 
     @Test
+    fun `login snapshot clears cached npc defender armies`() {
+        val snapshot = UserInitTableBuilder.build(
+            userId = 42,
+            cityWid = 10001,
+            roleName = "主公",
+            serverOpenTime = 1_700_000_000L,
+        )
+        val tables = snapshot.drop(1).associateBy { it[0].asText() }
+
+        assertTrue(tables.containsKey("Tb_user_npc_army"))
+        assertTrue(tables.getValue("Tb_user_npc_army")[1].isEmpty)
+    }
+
+    @Test
+    fun `login snapshot clears stale dynamic land level overrides`() {
+        val snapshot = UserInitTableBuilder.build(
+            userId = 42,
+            cityWid = 10001,
+            roleName = "主公",
+            serverOpenTime = 1_700_000_000L,
+        )
+        val tables = snapshot.drop(1).associateBy { it[0].asText() }
+
+        listOf("Tb_developed_land", "Tb_land_reclamation", "Tb_store_house").forEach { name ->
+            assertTrue(tables.containsKey(name), "$name must be present")
+            assertTrue(tables.getValue(name)[1].isEmpty, "$name must be empty")
+        }
+    }
+
+    @Test
+    fun `new role snapshot sets history power high enough for chat channels`() {
+        val snapshot = UserInitTableBuilder.build(
+            userId = 42,
+            cityWid = 10001,
+            roleName = "主公",
+            serverOpenTime = 1_700_000_000L,
+        )
+        val userStuff = snapshot.drop(1)
+            .associateBy { it[0].asText() }
+            .getValue("Tb_user_stuff")[1][0]
+
+        assertEquals(10_000, userStuff[34].asInt())
+    }
+
+    @Test
     fun `snapshot restores recruited heroes and saved team from player state`() {
         val state = PlayerStateRepository.getOrCreate(userId = 43, cityWid = 10043, roleName = "主公")
         val first = state.addHero(100017, nowSec = 1_700_000_001)
@@ -175,7 +227,7 @@ class UserInitTableBuilderTest {
 
         val tables = snapshot.drop(1).associateBy { it[0].asText() }
         val heroes = tables.getValue("Tb_hero")[1]
-        assertEquals(4, heroes.size())
+        assertEquals(8, heroes.size())
         assertEquals(first.heroUid, heroes[0][0].asInt())
         assertEquals(100017, heroes[0][1].asInt())
         assertEquals(PlayerHero.MAX_STAMINA, heroes[0][7].asInt())
@@ -204,7 +256,26 @@ class UserInitTableBuilderTest {
     }
 
     @Test
-    fun `login snapshot only exposes the original primary army`() {
+    fun `login snapshot exposes the active hero feature and enabled state`() {
+        val state = PlayerStateRepository.getOrCreate(userId = 46, cityWid = 10046, roleName = "主公")
+        val hero = state.addHero(100648, nowSec = 1_700_000_001)
+        hero.activeFeatureId = 285314
+
+        val heroRow = UserInitTableBuilder.build(
+            userId = 46,
+            cityWid = 10046,
+            roleName = "主公",
+            serverOpenTime = 1_700_000_000L,
+        ).drop(1)
+            .associateBy { it[0].asText() }
+            .getValue("Tb_hero")[1]
+            .single { it[0].asInt() == hero.heroUid }
+
+        assertEquals("285314,1;", heroRow[37].asText())
+    }
+
+    @Test
+    fun `login snapshot exposes all five armies with every front position unlocked`() {
         val state = PlayerStateRepository.getOrCreate(userId = 45, cityWid = 10045, roleName = "主公")
         val primary = state.addHero(100017, nowSec = 1_700_000_001)
         val secondary = state.addHero(100021, nowSec = 1_700_000_002)
@@ -221,34 +292,56 @@ class UserInitTableBuilderTest {
         val tables = snapshot.drop(1).associateBy { it[0].asText() }
         val armies = tables.getValue("Tb_army")[1]
         val heroes = tables.getValue("Tb_hero")[1].associateBy { it[0].asInt() }
+        val buildEffect = tables.getValue("Tb_build_effect_city")[1][0]
 
-        assertEquals(1, armies.size())
-        assertEquals(100451, armies[0][0].asInt())
+        assertEquals(state.armyIds(), armies.map { it[0].asInt() })
         assertEquals(100451, heroes.getValue(primary.heroUid)[3].asInt())
-        assertEquals(0, heroes.getValue(secondary.heroUid)[3].asInt())
+        assertEquals(100452, heroes.getValue(secondary.heroUid)[3].asInt())
+        assertEquals(5, buildEffect[23].asInt())
+        assertEquals(5, buildEffect[25].asInt())
     }
 
     @Test
-    fun `snapshot owns every facade without fabricating hero achievements`() {
-        val snapshot = UserInitTableBuilder.build(
-            userId = 44,
-            cityWid = 10044,
-            roleName = "主公",
-            serverOpenTime = 1_700_000_000L,
-        )
+    fun `snapshot equips yulong and unlocks every supported hero card border`() {
+        val root = createTempDirectory("stzb-card-border-snapshot")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val state = PlayerStateRepository.getOrCreate(
+                userId = 44,
+                cityWid = 10044,
+                roleName = "主公",
+            )
+            val hero = state.addHero(100017, nowSec = 1_700_000_000)
+            PlayerStateRepository.save(state)
 
-        val tables = snapshot.drop(1).associateBy { it[0].asText() }
-        val facades = tables.getValue("Tb_user_facade_card")[1]
-        val normal = facades.first { it[3].asInt() == 100534 }
-        val achievement = facades.first { it[3].asInt() == 101300 }
+            val snapshot = UserInitTableBuilder.build(
+                userId = 44,
+                cityWid = 10044,
+                roleName = "主公",
+                serverOpenTime = 1_700_000_000L,
+            )
+            val tables = snapshot.drop(1).associateBy { it[0].asText() }
+            val heroRow = tables.getValue("Tb_hero")[1]
+                .single { it[0].asInt() == hero.heroUid }
+            val achievements = tables.getValue("Tb_hero_achieve")[1]
+            val facades = tables.getValue("Tb_user_facade_card")[1]
 
-        assertEquals(HeroFacadeCatalog.all().size, facades.size())
-        assertEquals(100067, normal[2].asInt())
-        assertEquals(0, normal[6].asInt())
-        assertEquals(0, normal[7].asInt())
-        assertEquals(1, normal[13].asInt())
-        assertEquals(0, achievement[6].asInt())
-        assertTrue("Tb_hero_achieve" !in tables)
+            assertEquals(CardBorderCatalog.DEFAULT_ID, heroRow[42].asInt())
+            assertTrue(
+                achievements.any {
+                    it[2].asInt() == hero.heroId && it[5].asInt() == 2
+                },
+            )
+            CardBorderCatalog.normalBorderIds().forEach { borderId ->
+                assertTrue(
+                    facades.any {
+                        it[2].asInt() == hero.heroId && it[3].asInt() == borderId
+                    },
+                )
+            }
+        } finally {
+            PlayerStateRepository.reset()
+        }
     }
 
     @Test
@@ -268,21 +361,48 @@ class UserInitTableBuilderTest {
             val tables = snapshot.drop(1).associateBy { it[0].asText() }
             val armyFacades = tables.getValue("Tb_user_army_facade_card")[1]
             val cityFacades = tables.getValue("Tb_user_build_facade")[1]
-            assertEquals(12, armyFacades.size())
+            val specialArmyFacades = tables.getValue("Tb_hero")[1]
+                .filter { it[1].asInt() in ArmyFacadeCatalog.specialFacadeIds() }
+            assertEquals(60, armyFacades.size())
             assertEquals(157, cityFacades.size())
-            assertTrue(armyFacades.all { it[2].asInt() > 0 && it[5].asInt() == 0 })
-            assertTrue(cityFacades.all { it[1].asInt() > 0 && it[3].asInt() == 0 && it[5].asInt() == 0 })
+            assertEquals(5, armyFacades.count { it[2].asInt() == 101138 })
+            assertTrue(armyFacades.all { it[0].asInt() > 0 && it[2].asInt() > 0 && it[5].asInt() == 0 })
+            assertEquals(4, specialArmyFacades.size)
+            val activeFacades = cityFacades.filter { it[5].asInt() == cityWid }
+            assertEquals(
+                setOf(113305, 129901),
+                activeFacades.map { it[1].asInt() }.toSet(),
+            )
+            val mansion = activeFacades.single { it[1].asInt() == 113305 }
+            assertEquals(cityWid, mansion[4].asInt())
+            assertEquals(cityWid, mansion[5].asInt())
+            assertEquals(50005, mansion[6].asInt())
+            assertEquals(1, mansion[8].asInt())
+            val wall = activeFacades.single { it[1].asInt() == 129901 }
+            assertEquals(cityWid, wall[4].asInt())
+            assertEquals(cityWid, wall[5].asInt())
+            assertEquals(0, wall[6].asInt())
 
             val worldCities = tables.getValue("Tb_world_city")[1]
             assertEquals(9, worldCities.size())
             val mainCity = worldCities.single { it[0].asInt() == cityWid }
             assertEquals(1, mainCity[1].asInt())
+            assertEquals("\"4P-e0Go[=)')(',0(*',(,-*)", mainCity[3].asText())
+            assertEquals(
+                "10,8,13,20,20,20,21,20,22,20,23,20,24,20,25,1,30,20," +
+                    "31,10,32,10,33,10,34,10,35,10,36,20,37,10,40,5,42,5," +
+                    "43,15,44,3,51,10,52,10,53,10,54,10,61,5,62,6,63,5," +
+                    "64,5,65,5,66,10,67,3,160,10",
+                mainCity[4].asText(),
+            )
             assertEquals(userId, mainCity[6].asInt())
             assertEquals(0, mainCity[11].asInt())
 
             val suburbs = worldCities.filter { it[0].asInt() != cityWid }
             assertTrue(suburbs.all {
                 it[1].asInt() == 5 &&
+                    it[3].asText().isEmpty() &&
+                    it[4].asText().isEmpty() &&
                     it[6].asInt() == userId &&
                     it[21].asInt() == cityWid
             })
@@ -291,6 +411,110 @@ class UserInitTableBuilderTest {
             assertEquals(1_506_150_610, buildings.single { it[2].asInt() == 10 }[0].asInt())
         } finally {
             PlayerStateRepository.reset()
+        }
+    }
+
+    @Test
+    fun `login snapshot preserves bound army facade cards in heroes and armies`() {
+        val root = createTempDirectory("stzb-army-facade-snapshot")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val state = PlayerStateRepository.getOrCreate(
+                userId = 47,
+                cityWid = 10047,
+                roleName = "主公",
+            )
+            val hero = state.addHero(HeroCatalog.defaultFiveStarHeroIds().first())
+            requireNotNull(state.bindArmyFacadeCards(101138, listOf(hero.heroUid)))
+            state.assignTeamHero(hero.heroUid, pos = 1)
+            PlayerStateRepository.save(state)
+
+            val tables = UserInitTableBuilder.build(
+                userId = state.userId,
+                cityWid = state.cityWid,
+                roleName = state.roleName,
+                serverOpenTime = 1_700_000_000L,
+            ).drop(1).associateBy { it[0].asText() }
+
+            val card = tables.getValue("Tb_user_army_facade_card")[1]
+                .single { it[0].asInt() == ArmyFacadeCatalog.cardId(101138, 1) }
+            val heroRow = tables.getValue("Tb_hero")[1]
+                .single { it[0].asInt() == hero.heroUid }
+            val armyRow = tables.getValue("Tb_army")[1]
+                .single { it[0].asInt() == state.primaryArmyId() }
+
+            assertEquals(hero.heroId, card[5].asInt())
+            assertEquals(101138, heroRow[72].asInt())
+            assertEquals("101138,0;", armyRow[61].asText())
+        } finally {
+            PlayerStateRepository.reset()
+        }
+    }
+
+    @Test
+    fun `login snapshot includes a building level saved before repository restart`() {
+        val root = createTempDirectory("stzb-build-persistence")
+        try {
+            val repository = FilePlayerRepository(root)
+            PlayerStateRepository.configure(repository)
+            val state = PlayerStateRepository.getOrCreate(
+                accountKey = "build-persistence",
+                cityWid = 10048,
+                roleName = "主公",
+            )
+            val upgradedLevel = state.upgradeBuild(buildId = 42, targetLevel = 4)
+            assertEquals(4, upgradedLevel)
+            PlayerStateRepository.save(state)
+
+            PlayerStateRepository.configure(repository)
+            val snapshot = UserInitTableBuilder.build(
+                userId = state.userId,
+                cityWid = state.cityWid,
+                roleName = state.roleName,
+                serverOpenTime = 1_700_000_000L,
+                accountKey = state.accountKey,
+            )
+            val rows = snapshot.drop(1)
+                .associateBy { it[0].asText() }
+                .getValue("Tb_user_build")[1]
+
+            val upgraded = rows.single { it[2].asInt() == 42 }
+            assertEquals(upgradedLevel, upgraded[4].asInt())
+        } finally {
+            PlayerStateRepository.reset()
+        }
+    }
+
+    @Test
+    fun `login snapshot identifies the union created by this player`() {
+        val root = createTempDirectory("stzb-union-snapshot")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            WorldStateRepository.configure(root)
+            val state = PlayerStateRepository.getOrCreate(
+                accountKey = "union-snapshot-owner",
+                cityWid = 10049,
+                roleName = "盟主",
+            )
+            val unionId = UnionStateRepository.create(state, "洛阳同盟", nowSec = 1_700_000_000)
+
+            val snapshot = UserInitTableBuilder.build(
+                userId = state.userId,
+                cityWid = state.cityWid,
+                roleName = state.roleName,
+                serverOpenTime = 1_700_000_000L,
+                accountKey = state.accountKey,
+            )
+            val user = snapshot.drop(1)
+                .associateBy { it[0].asText() }
+                .getValue("Tb_user")[1][0]
+
+            assertEquals(unionId, user[10].asInt())
+            assertEquals("洛阳同盟", user[11].asText())
+        } finally {
+            PlayerStateRepository.reset()
+            WorldStateRepository.reset()
+            root.toFile().deleteRecursively()
         }
     }
 

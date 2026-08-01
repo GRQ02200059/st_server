@@ -13,6 +13,7 @@ class CompleteSkillCoverageTest {
         assertEquals(112, report.effectIds)
         assertEquals(1935, report.detailRules)
         assertEquals(emptySet(), report.unsupportedEffects)
+        assertEquals(emptySet(), report.unconsumedMetaEffects)
         assertEquals(emptySet(), report.unknownSelectors)
         assertEquals(emptySet(), report.brokenDependencies)
         assertEquals(emptySet(), report.noBehaviorSkills)

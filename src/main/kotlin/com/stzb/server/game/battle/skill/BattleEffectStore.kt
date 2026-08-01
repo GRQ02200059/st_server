@@ -199,7 +199,7 @@ class BattleEffectStore {
     ): EffectApplyResult {
         val stacked = existing.stacks < existing.maxStacks
         if (stacked) {
-            existing.addLayer(incoming.strength)
+            existing.addLayer(incoming.strength, incoming.strengthExact)
         }
         refreshLifecycle(existing, incoming)
         return applyResult(
@@ -214,8 +214,9 @@ class BattleEffectStore {
         incoming: ActiveSkillEffect,
     ): EffectApplyResult =
         when {
-            incoming.effectiveStrength > existing.effectiveStrength -> replace(effects, existing, incoming)
-            incoming.effectiveStrength == existing.effectiveStrength -> {
+            incoming.effectiveStrengthExact > existing.effectiveStrengthExact ->
+                replace(effects, existing, incoming)
+            incoming.effectiveStrengthExact == existing.effectiveStrengthExact -> {
                 if (existing.sameOrigin(incoming)) {
                     refreshLifecycle(existing, incoming)
                     applyResult(EffectApplyOutcome.REFRESHED, existing)

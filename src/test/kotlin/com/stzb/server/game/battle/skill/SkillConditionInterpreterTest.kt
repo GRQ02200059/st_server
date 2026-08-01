@@ -773,6 +773,14 @@ class SkillConditionInterpreterTest {
             SkillCondition.ConfigBranch(enabled = true),
             interpreter.compile(graph.detail(21267701)).conditions.single(),
         )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = true),
+            interpreter.compile(graph.detail(20068903)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.ConfigBranch(enabled = false),
+            interpreter.compile(graph.detail(20068904)).conditions.single(),
+        )
     }
 
     @Test

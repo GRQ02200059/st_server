@@ -7,6 +7,7 @@ import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleStats
+import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.BattleStatus
 import com.stzb.server.game.battle.BattleTeam
 import com.stzb.server.game.battle.DamageOrigin
@@ -195,6 +196,36 @@ class BattleStateChangeApplierTest {
     }
 
     @Test
+    fun `flat stat output retains exact skill level interpolation`() {
+        val fixture = fixture()
+
+        val result = fixture.applier.apply(
+            listOf(
+                BattleStatChange(
+                    source,
+                    target,
+                    BattleStatChange.Kind.DEFENSE,
+                    TypedBattlePotency.flat(67, 200.0 / 3),
+                    durationRounds = 10,
+                    skillId = 200689,
+                    effectId = 102,
+                ),
+            ),
+            round = 0,
+        )
+
+        val output = result.outputs.filterIsInstance<BattleStateOutput.StatChanged>().single()
+        assertEquals(66.67, output.deltaExact, 0.001)
+        assertEquals(166.67, output.valueAfterExact, 0.001)
+        assertEquals(
+            166.67,
+            requireNotNull(fixture.state.view.state(target)).stats
+                .precise(com.stzb.server.game.battle.BattleStat.DEFENSE),
+            0.001,
+        )
+    }
+
+    @Test
     fun `percent stat modifiers use inherent stats while preserving entry bonuses`() {
         val request = BattleRequest(
             attacker = BattleTeam(
@@ -243,6 +274,78 @@ class BattleStateChangeApplierTest {
         )
 
         assertEquals(1_000, fixture.state.view.state(target)?.troops)
+    }
+
+    @Test
+    fun `recovery taken modifier scales actual recovery and expires on its round boundary`() {
+        val fixture = fixture(targetTroops = 500, targetWounded = 500)
+        fixture.applier.apply(
+            listOf(
+                ModifierEffectChange(
+                    spec = spec(
+                        effectId = 281,
+                        rounds = 2,
+                        potency = TypedBattlePotency.percent(20),
+                    ),
+                    modifier = BattleModifier.RecoveryTakenPercent(20),
+                ),
+            ),
+            round = 0,
+        )
+
+        fixture.applier.apply(
+            listOf(RecoverTroopsChange(source, target, 100, 600, 10, 401)),
+            round = 1,
+        )
+        assertEquals(620, fixture.state.view.state(target)?.troops)
+
+        fixture.applier.onRoundEnd(1)
+        fixture.applier.onRoundEnd(2)
+        fixture.applier.apply(
+            listOf(RecoverTroopsChange(source, target, 100, 720, 10, 401)),
+            round = 3,
+        )
+        assertEquals(720, fixture.state.view.state(target)?.troops)
+    }
+
+    @Test
+    fun `special damage modifier only matches its configured ongoing status`() {
+        val fixture = fixture(targetTroops = 1_000)
+        fixture.applier.apply(
+            listOf(
+                ModifierEffectChange(
+                    spec = spec(
+                        effectId = 261,
+                        rounds = 3,
+                        potency = TypedBattlePotency.percent(50),
+                    ),
+                    modifier = BattleModifier.DamageTakenPercent(
+                        tag = DamageTag.PANIC,
+                        percent = 50,
+                    ),
+                ),
+            ),
+            round = 0,
+        )
+        val liveSource = fixture.state.liveHero(source)
+        val liveTarget = fixture.state.liveHero(target)
+
+        val panic = com.stzb.server.game.battle.BattleDamageCalculator.strategy(
+            liveSource,
+            liveTarget,
+            ratePercent = 100,
+            ongoing = true,
+            tags = setOf(DamageTag.ONGOING, DamageTag.PANIC),
+        )
+        val burn = com.stzb.server.game.battle.BattleDamageCalculator.strategy(
+            liveSource,
+            liveTarget,
+            ratePercent = 100,
+            ongoing = true,
+            tags = setOf(DamageTag.ONGOING, DamageTag.FIRE),
+        )
+
+        assertTrue(panic > burn)
     }
 
     @Test
@@ -741,6 +844,60 @@ class BattleStateChangeApplierTest {
             fixture.state.liveHero(source).modifiers
                 .filterIsInstance<BattleModifier.DamageDealtPercent>()
                 .none { it.percent == 50 },
+        )
+    }
+
+    @Test
+    fun `attribute ignore only bypasses its configured defensive attribute`() {
+        val fixture = fixture()
+        val sourceHero = fixture.state.liveHero(source)
+        val targetHero = fixture.state.liveHero(target).copy(
+            stats = BattleStats(100, 300, 300, 100, 10, 3),
+        )
+        val defenseIgnore = sourceHero.copy(
+            modifiers = listOf(BattleModifier.DefenseIgnorePercent(100, BattleStat.DEFENSE)),
+        )
+        val strategyIgnore = sourceHero.copy(
+            modifiers = listOf(BattleModifier.DefenseIgnorePercent(100, BattleStat.STRATEGY)),
+        )
+
+        val physicalBaseline = com.stzb.server.game.battle.BattleDamageCalculator.physical(
+            sourceHero,
+            targetHero,
+        )
+        val strategyBaseline = com.stzb.server.game.battle.BattleDamageCalculator.strategy(
+            sourceHero,
+            targetHero,
+            ratePercent = 100,
+        )
+
+        assertTrue(
+            com.stzb.server.game.battle.BattleDamageCalculator.physical(
+                defenseIgnore,
+                targetHero,
+            ) > physicalBaseline,
+        )
+        assertEquals(
+            strategyBaseline,
+            com.stzb.server.game.battle.BattleDamageCalculator.strategy(
+                defenseIgnore,
+                targetHero,
+                ratePercent = 100,
+            ),
+        )
+        assertEquals(
+            physicalBaseline,
+            com.stzb.server.game.battle.BattleDamageCalculator.physical(
+                strategyIgnore,
+                targetHero,
+            ),
+        )
+        assertTrue(
+            com.stzb.server.game.battle.BattleDamageCalculator.strategy(
+                strategyIgnore,
+                targetHero,
+                ratePercent = 100,
+            ) > strategyBaseline,
         )
     }
 

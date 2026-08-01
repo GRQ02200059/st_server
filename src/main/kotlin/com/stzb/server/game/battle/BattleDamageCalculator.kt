@@ -25,10 +25,11 @@ object BattleDamageCalculator {
                 (attributeRandomTenths.coerceIn(30, 39) / 100.0) *
                 rate *
                 damageFactor
+        val effectiveDefense = ignoredTargetAttribute(source, target.stats.defense, BattleStat.DEFENSE)
         val mainDamage =
             (300.0 * source.troops / (3_500 + source.troops)) *
                 rate *
-                attackDefenseFactor(source.stats.attack, target.stats.defense) *
+                attackDefenseFactor(source.stats.attack, effectiveDefense) *
                 damageFactor
         return (troopDamage + attributeDamage + mainDamage)
             .roundToInt()
@@ -45,7 +46,8 @@ object BattleDamageCalculator {
     ): Int {
         val rate = ratePercent.coerceAtLeast(1) / 100.0
         val damageFactor = modifierFactor(source, target, DamageSchool.STRATEGY, origin, tags)
-        val strategyFactor = strategyDefenseFactor(target.stats.strategy)
+        val effectiveStrategy = ignoredTargetAttribute(source, target.stats.strategy, BattleStat.STRATEGY)
+        val strategyFactor = strategyDefenseFactor(effectiveStrategy)
         val troopDamage = source.troops * 178.0 / (6_459 + source.troops) * if (ongoing) 1.0 / 3 else 1.0
         val attributeDamage = source.stats.strategy * (if (ongoing) 0.25 else 0.5) * damageFactor * strategyFactor
         val mainDamage =
@@ -109,4 +111,17 @@ object BattleDamageCalculator {
         } else {
             ceil(100 - (75 - 9_375.0 / (75 + strategy))) / 100.0
         }
+
+    private fun ignoredTargetAttribute(
+        source: BattleHero,
+        targetAttribute: Int,
+        stat: BattleStat,
+    ): Int {
+        val ignoredPercent = source.modifiers
+            .filterIsInstance<BattleModifier.DefenseIgnorePercent>()
+            .filter { it.stat == stat }
+            .sumOf { it.percent }
+            .coerceIn(0, 100)
+        return (targetAttribute * (100 - ignoredPercent) / 100.0).roundToInt()
+    }
 }

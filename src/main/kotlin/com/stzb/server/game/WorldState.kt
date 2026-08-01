@@ -253,11 +253,13 @@ object WorldStateRepository {
     @Synchronized
     fun configure(root: Path) {
         service = WorldService(FileWorldRepository(root), PlayerStateRepository::save)
+        UnionStateRepository.configure(root)
     }
 
     @Synchronized
     fun reset() {
         service = defaultService()
+        UnionStateRepository.reset()
     }
 
     fun registerOrRestorePlayer(state: PlayerState): PlayerState =

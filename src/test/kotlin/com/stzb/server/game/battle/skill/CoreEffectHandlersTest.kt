@@ -230,8 +230,16 @@ class CoreEffectHandlersTest {
             assertEquals(type.second, scheduled.school)
             assertEquals(DamageOrigin.ACTIVE, scheduled.origin)
             assertEquals(
-                if (scheduled.status == BattleStatus.BURN) setOf(DamageTag.ONGOING, DamageTag.FIRE)
-                else setOf(DamageTag.ONGOING),
+                setOf(
+                    DamageTag.ONGOING,
+                    when (scheduled.status) {
+                        BattleStatus.SHAKE -> DamageTag.SHAKE
+                        BattleStatus.PANIC -> DamageTag.PANIC
+                        BattleStatus.BURN -> DamageTag.FIRE
+                        BattleStatus.HEX -> DamageTag.HEX
+                        else -> error("unexpected ongoing status=${scheduled.status}")
+                    },
+                ),
                 scheduled.tags,
             )
             assertEquals(TypedBattlePotency.rate(120), scheduled.potency)
@@ -608,6 +616,41 @@ class CoreEffectHandlersTest {
                 source(23_640),
                 skillLevel = 10,
             ),
+        )
+    }
+
+    @Test
+    fun `official flat attribute details decode hundredth encoded constants`() {
+        val config = BattleConfigRepository.loadDefault()
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200233, 200689),
+                learnableSaSkillIds = emptySet(),
+            ),
+            config,
+        )
+        val calculator = DefaultBattleValueCalculator()
+        val source = hero(id = 1, position = 2)
+
+        assertEquals(
+            TypedBattlePotency.flat(30),
+            calculator.effectValue(graph.detail(20023302), source, skillLevel = 10),
+        )
+        assertEquals(
+            TypedBattlePotency.flat(100),
+            calculator.effectValue(graph.detail(20068902), source, skillLevel = 10),
+        )
+        assertEquals(
+            TypedBattlePotency.flat(25),
+            calculator.effectValue(graph.detail(20068903), source, skillLevel = 10),
+        )
+        assertEquals(
+            TypedBattlePotency.flat(67, 200.0 / 3),
+            calculator.effectValue(graph.detail(20068902), source, skillLevel = 4),
+        )
+        assertEquals(
+            TypedBattlePotency.flat(17, 50.0 / 3),
+            calculator.effectValue(graph.detail(20068903), source, skillLevel = 4),
         )
     }
 

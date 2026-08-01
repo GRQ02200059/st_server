@@ -205,6 +205,7 @@ object BattleReportCodec {
                 "valueAfter" to (valueAfter ?: 0),
                 "deltaExact" to deltaExact,
                 "valueAfterExact" to (valueAfterExact ?: valueAfter ?: 0),
+                "unit" to unit.name,
             )
             is BattleEvent.ModifierApplied -> mapOf(
                 "type" to "ModifierApplied",
@@ -215,6 +216,16 @@ object BattleReportCodec {
                 "effectId" to effectId,
                 "amount" to amount,
                 "durationRounds" to durationRounds,
+            )
+            is BattleEvent.SkillRangeChanged -> mapOf(
+                "type" to "SkillRangeChanged",
+                "round" to round,
+                "source" to source.toReportMap(),
+                "target" to target.toReportMap(),
+                "skillId" to skillId,
+                "skillKind" to skillKind.name,
+                "delta" to delta,
+                "displayRangeAfter" to displayRangeAfter,
             )
         }
 

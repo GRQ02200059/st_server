@@ -220,6 +220,19 @@ private class ControlEffectHandler(
         val changes = mutableListOf<BattleStateChange>()
         val events = mutableListOf<BattleEvent>()
         targets.forEach { target ->
+            if (invocation.rule.skillKind == SkillKind.COMMAND &&
+                target.side != invocation.context.source.side &&
+                effectStore.effectsFor(target).any { it.effectId == COMMAND_IMMUNITY_ID }
+            ) {
+                changes += EffectBlockedChange(
+                    invocation.context.source,
+                    target,
+                    invocation.context.currentSkillId,
+                    ownedEffectId,
+                    COMMAND_IMMUNITY_ID,
+                )
+                return@forEach
+            }
             val blocker = blockingEffect(target)
             if (blocker != null) {
                 changes += EffectBlockedChange(
@@ -322,7 +335,7 @@ private class ControlEffectHandler(
             maxStacks = raw.addCountMax + 1,
             delayRound = raw.delayRound,
             delayHit = raw.delayHit,
-            availableRounds = raw.availableRounds + if (raw.availableRounds > 0) 1 else 0,
+            availableRounds = raw.availableRounds,
             availableHit = raw.availableHit,
             clearPerHit = raw.clearPerHit,
             startBoundary =
@@ -363,6 +376,7 @@ private class ControlEffectHandler(
         val CLEANSE_IDS = setOf(513, 713)
         val DISPEL_IDS = setOf(512, 712)
         const val DAMAGE_REDIRECTION_ID = 506
+        const val COMMAND_IMMUNITY_ID = 121
     }
 }
 

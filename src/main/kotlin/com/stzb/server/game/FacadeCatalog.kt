@@ -5,6 +5,33 @@ package com.stzb.server.game
  * tables. These are configuration IDs, not display or item IDs.
  */
 object FacadeCatalog {
+    /** Official main-mansion facade from a valid 9.2.2 login snapshot. */
+    const val DEFAULT_CITY_FACADE_ID = 113305
+    const val DEFAULT_CITY_FACADE_POS = 50005
+    const val DEFAULT_CITY_WALL_FACADE_ID = 129901
+    const val DEFAULT_CITY_WALL_POS = 0
+
+    /**
+     * Server-side encoded city layout. The first character is intentionally a
+     * double quote because MapCityData.ChangeIndexWithServer treats it as data.
+     */
+    const val DEFAULT_CITY_MAP_FACADE = "\"4P-e0Go[=)')(',0(*',(,-*)"
+
+    /** Official Tb_world_city.facade3d format for a fully renderable city. */
+    const val DEFAULT_CITY_BUILD_DATA =
+        "10,8,13,20,20,20,21,20,22,20,23,20,24,20,25,1,30,20," +
+            "31,10,32,10,33,10,34,10,35,10,36,20,37,10,40,5,42,5," +
+            "43,15,44,3,51,10,52,10,53,10,54,10,61,5,62,6,63,5," +
+            "64,5,65,5,66,10,67,3,160,10"
+
+    /** Official USER_WORLD_CITY custom layout consumed by the map city renderer. */
+    const val DEFAULT_CITY_CUSTOM_VIEW =
+        "1112130,20004,110005;1121120,120004,120003;1122050,100010;" +
+            "1122070,100003;1122090,100008;1122140,100009;1133050,50005;" +
+            "1212010,10008;1222040,50011;1222060,10002;1233080,50003;" +
+            "1299010,0;1322030,30004;1322110,90011;1322130,120005;" +
+            "1333070,40008;1333090,80002;1333150,20011;"
+
     val armyFacadeIds: List<Int>
         get() = ArmyFacadeCatalog.standardFacadeIds()
 

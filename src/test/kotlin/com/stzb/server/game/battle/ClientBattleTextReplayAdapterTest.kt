@@ -8,6 +8,44 @@ import kotlin.test.assertTrue
 
 class ClientBattleTextReplayAdapterTest {
     @Test
+    fun `preparation emits official initialization and source stage boundaries`() {
+        val base = twoRoundResult()
+        val attacker = base.attacker.copy(
+            preparationSources = listOf(
+                BattlePreparationSource(BattlePreparationStage.ARMY, 295020),
+                BattlePreparationSource(BattlePreparationStage.ARMY, 291005),
+                BattlePreparationSource(BattlePreparationStage.TROOP, 296104, 0),
+                BattlePreparationSource(BattlePreparationStage.EQUIPMENT, 400001, 0),
+            ),
+        )
+        val result = base.copy(
+            attacker = attacker,
+            entryAttacker = attacker,
+            defender = BattleTeam(emptyList()),
+            entryDefender = BattleTeam(emptyList()),
+            events = emptyList(),
+        )
+
+        val encoded = ClientBattleTextReplayAdapter.adapt(result).map(ClientReportAction::encode)
+        val retained = encoded.filter {
+            it in setOf(
+                "i6", "ht", "0f", "0g", "02", "5z", "i1", "i2", "hj", "hk", "hl", "hs",
+                "hn", "hm", "hr", "ho", "hq", "hp", "5s0,295020", "5s0,291005",
+                "7x1,296104", "ba1,400001",
+            )
+        }
+
+        assertEquals(
+            listOf(
+                "i6", "ht", "0f", "0g", "02", "5z", "i1", "i2", "hj", "hk",
+                "5s0,295020", "hl", "hs", "5s0,291005", "hn", "7x1,296104",
+                "hm", "ba1,400001", "hr", "ho", "hq", "hp",
+            ),
+            retained,
+        )
+    }
+
+    @Test
     fun `preparation keeps passive before 04 and wraps command heroes before 08`() {
         val first = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
         val second = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
@@ -209,6 +247,54 @@ class ClientBattleTextReplayAdapterTest {
             "5p1,45,9700,200028,10,200689,8,200233,6,3106,3104,,400114,6,400115,6,400112,1,0",
             encoded,
         )
+    }
+
+    @Test
+    fun `hero initialization declares selected surface skill with official 96 action`() {
+        val result = twoRoundResult().let { base ->
+            val entryAttacker = (base.entryAttacker ?: base.attacker).copy(
+                heroes = (base.entryAttacker ?: base.attacker).heroes.mapIndexed { index, hero ->
+                    if (index == 0) hero.copy(surfaceSkillId = 281012) else hero
+                },
+            )
+            base.copy(
+                attacker = entryAttacker,
+                entryAttacker = entryAttacker,
+            )
+        }
+
+        val surfaceSkills = ClientBattleTextReplayAdapter.adapt(result)
+            .filter { it.id == "96".toInt(36) }
+            .map(ClientReportAction::encode)
+
+        assertEquals(listOf("961,281012"), surfaceSkills)
+    }
+
+    @Test
+    fun `surface cautious attack uses official compact status action`() {
+        val team = BattleTeamBuilder(BattleConfigRepository.loadDefault()).build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100479,
+                    position = 0,
+                    troops = 1000,
+                    surfaceSkillId = 281004,
+                ),
+            ),
+        )
+        val result = twoRoundResult().copy(
+            attacker = team,
+            entryAttacker = team,
+            defender = BattleTeam(emptyList()),
+            entryDefender = BattleTeam(emptyList()),
+            events = emptyList(),
+        )
+
+        val encoded = ClientBattleTextReplayAdapter.adapt(result).map(ClientReportAction::encode)
+
+        assertTrue(encoded.contains("961,281004"))
+        assertTrue(encoded.contains("0s1,522"))
+        assertTrue(encoded.none { it.startsWith("0s1,281004,") })
     }
 
     @Test
@@ -978,6 +1064,24 @@ class ClientBattleTextReplayAdapterTest {
         assertFailsWith<UnsupportedBattleReportProjectionException> {
             ClientBattleTextReplayAdapter.adaptStrict(result)
         }
+    }
+
+    @Test
+    fun `battle unrecoverable block uses official 5u action`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val target = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
+        val result = twoRoundResult().copy(
+            events = listOf(BattleEvent.EffectBlocked(1, source, target, 200884, 401, 207)),
+        )
+        val diagnostics = mutableListOf<String>()
+
+        val actions = ClientBattleTextReplayAdapter.adapt(result, diagnostics::add)
+
+        assertEquals(
+            listOf("5u6,207"),
+            actions.filter { it.id == "5u".toInt(36) }.map(ClientReportAction::encode),
+        )
+        assertEquals(emptyList(), diagnostics)
     }
 
     @Test

@@ -9,12 +9,22 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.ThreadLocalRandom
 
+data class BattleHeroSurface(
+    val heroId: Int,
+    val position: Int,
+    val cardBorder: Int,
+    val dynamicIcon: Int,
+    val activeFeatureId: Int = 0,
+)
+
 data class ClientBattleReport(
     val battleId: Int,
     val ownerUserId: Int,
     val wid: Int,
     val timeSec: Int,
     val result: BattleResult,
+    val attackerSurfaces: List<BattleHeroSurface> = emptyList(),
+    val defenderSurfaces: List<BattleHeroSurface> = emptyList(),
 )
 
 class ClientBattleReportStore private constructor(
@@ -47,13 +57,22 @@ class ClientBattleReportStore private constructor(
     internal fun findOrDefault(battleId: Int): ClientBattleReport =
         reports[battleId] ?: getOrCreateDefault(LEGACY_TEST_USER_ID)
 
-    fun record(ownerUserId: Int, wid: Int, timeSec: Int, result: BattleResult): ClientBattleReport {
+    fun record(
+        ownerUserId: Int,
+        wid: Int,
+        timeSec: Int,
+        result: BattleResult,
+        attackerSurfaces: List<BattleHeroSurface> = emptyList(),
+        defenderSurfaces: List<BattleHeroSurface> = emptyList(),
+    ): ClientBattleReport {
         val report = ClientBattleReport(
             battleId = battleSeq.incrementAndGet(),
             ownerUserId = ownerUserId,
             wid = wid,
             timeSec = timeSec,
             result = result,
+            attackerSurfaces = attackerSurfaces,
+            defenderSurfaces = defenderSurfaces,
         )
         reports[report.battleId] = report
         return report
@@ -142,8 +161,8 @@ class ClientBattleReportStore private constructor(
             put("defend_all_hero_info", defender.toHeroInfoString())
             put("attack_all_sub_hero_info", emptyRows(rows = 3, width = 5))
             put("defend_all_sub_hero_info", emptyRows(rows = 3, width = 5))
-            put("attack_all_surface", attacker.toHeroSurfaceInfo())
-            put("defend_all_surface", defender.toHeroSurfaceInfo())
+            put("attack_all_surface", attackerSurfaces.toHeroSurfaceInfo())
+            put("defend_all_surface", defenderSurfaces.toHeroSurfaceInfo())
             put("attack_hero_type", "0,0,0,0,")
             put("defend_hero_type", "0,0,0,0,")
             put("attack_hero_type_advance", "0,0,0,0,")
@@ -156,8 +175,8 @@ class ClientBattleReportStore private constructor(
             put("defender_army_effect", "")
             put("attacker_gear_info", emptyFourRows(3))
             put("defender_gear_info", emptyFourRows(3))
-            put("attacker_surface", emptyFourRows(3))
-            put("defender_surface", emptyFourRows(3))
+            put("attacker_surface", attackerSurfaces.toBattleSurfaceInfo())
+            put("defender_surface", defenderSurfaces.toBattleSurfaceInfo())
             put("attack_idu", "0,0,0,0,0")
             put("defend_idu", "0,0,0,0,0")
             put("lose_tips", "")
@@ -186,10 +205,17 @@ class ClientBattleReportStore private constructor(
             }
         }
 
-    private fun List<BattleHero>.toHeroSurfaceInfo(): String =
+    private fun List<BattleHeroSurface>.toHeroSurfaceInfo(): String =
         (0..2).joinToString(";") { position ->
-            "${firstOrNull { it.position == position }?.id?.value ?: 0},0"
+            val surface = firstOrNull { it.position == position }
+            "${surface?.heroId ?: 0},${surface?.dynamicIcon ?: 0}"
         }
+
+    private fun List<BattleHeroSurface>.toBattleSurfaceInfo(): String =
+        (listOf("0,0,0") + (0..2).map { position ->
+            val surface = firstOrNull { it.position == position }
+            "${surface?.cardBorder ?: 0},${surface?.dynamicIcon ?: 0},${surface?.activeFeatureId ?: 0}"
+        }).joinToString(";")
 
     private fun emptyFourRows(width: Int): String =
         emptyRows(rows = 4, width = width)

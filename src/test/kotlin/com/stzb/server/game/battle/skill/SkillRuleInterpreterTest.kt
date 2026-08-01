@@ -4,9 +4,11 @@ import com.stzb.server.game.battle.ActiveSkillEffect
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroId
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleRandom
 import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleStats
+import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.BattleTeam
 import com.stzb.server.game.battle.BattleConfigRepository
 import com.stzb.server.game.battle.EffectCategory
@@ -191,6 +193,124 @@ class SkillRuleInterpreterTest {
 
         assertEquals(listOf(1), result.executedSkillIds)
         assertEquals(1, random.calls)
+    }
+
+    @Test
+    fun `detail probability modifier applies only to the referenced effect detail`() {
+        val referenced = effectRule(
+            detailId = 201,
+            effectId = 122,
+            childSkillIds = setOf(2),
+            constantParam = 2,
+            probabilityInit = 40,
+            probabilityMax = 40,
+        )
+        val other = effectRule(
+            detailId = 202,
+            effectId = 122,
+            childSkillIds = setOf(3),
+            constantParam = 3,
+            probabilityInit = 40,
+            probabilityMax = 40,
+        )
+        val childTwo = rule(2, effectRule(203, 77, constantParam = 2))
+        val childThree = rule(3, effectRule(204, 77, constantParam = 3))
+        val rules = listOf(rule(1, referenced, other), childTwo, childThree)
+        val graph = SkillRuleGraph(
+            rules = rules.associateBy(SkillRule::skillId),
+            effectIds = rules.flatMap { it.details }.mapTo(linkedSetOf()) { it.effectId },
+            rootSkillIds = setOf(1),
+        )
+
+        val result = SkillRuleInterpreter(
+            graph,
+            BattleEffectRegistry.strict(graph).registerMetaEffects(),
+        ).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context(
+                1,
+                FixedBattleRandom(50),
+                sourceModifiers = listOf(
+                    BattleModifier.EffectProbabilityPercent(
+                        detailId = referenced.detailId,
+                        percent = 20,
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(listOf(2), result.executedSkillIds.filter { it != 1 })
+    }
+
+    @Test
+    fun `detail probability interpolates from initial to maximum by root skill level`() {
+        val detail = effectRule(
+            detailId = 101,
+            effectId = 77,
+            constantParam = 1,
+            probabilityInit = 20,
+            probabilityMax = 80,
+        )
+        val graph = graph(rule(1, detail))
+        val interpreter = SkillRuleInterpreter(
+            graph,
+            BattleEffectRegistry.strict(graph).registerMetaEffects(),
+        )
+
+        val levelOne = interpreter.execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context(1, FixedBattleRandom(50), sourceSkillLevel = 1),
+        )
+        val levelTen = interpreter.execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context(1, FixedBattleRandom(50), sourceSkillLevel = 10),
+        )
+
+        assertEquals(emptyList(), levelOne.stateChanges)
+        assertEquals(1, levelTen.stateChanges.filterIsInstance<MarkerEffectChange>().size)
+    }
+
+    @Test
+    fun `command immunity emits a persistent runtime effect`() {
+        val detail = effectRule(
+            detailId = 20075601,
+            effectId = 121,
+            availableRounds = 10,
+        )
+        val graph = graph(rule(200756, detail, kind = SkillKind.PASSIVE))
+
+        val result = interpreter(graph).execute(
+            200756,
+            BattleTrigger.BATTLE_PASSIVE,
+            context(200756),
+        )
+
+        val change = result.stateChanges.filterIsInstance<ApplyBattleEffectChange>().single()
+        assertEquals(121, change.spec.effectId)
+        assertEquals(10, change.spec.availableRounds)
+    }
+
+    @Test
+    fun `meta combo contributes one extra normal attack`() {
+        val detail = effectRule(
+            detailId = 21125502,
+            effectId = 200,
+            availableRounds = 1,
+        )
+        val graph = graph(rule(211255, detail, kind = SkillKind.COMMAND))
+
+        val result = interpreter(graph).execute(
+            211255,
+            BattleTrigger.BATTLE_COMMAND,
+            context(211255),
+        )
+
+        val change = result.stateChanges.filterIsInstance<ActionEffectChange>().single()
+        assertEquals(ActionEffectKind.DOUBLE_ATTACK, change.kind)
+        assertEquals(200, change.spec.effectId)
     }
 
     @Test
@@ -771,21 +891,16 @@ class SkillRuleInterpreterTest {
             realRule.kind.toTrigger(),
             context(skillId = 210915),
         )
-        val matchingChanges = result.stateChanges.filterIsInstance<MetaEffectChange>()
-            .filter { it.detailId == detail.detailId }
+        val matchingChanges = result.stateChanges.filterIsInstance<ModifierEffectChange>()
+            .filter { it.spec.detailId == detail.detailId }
         assertEquals(2, matchingChanges.size, "attack type 23 must include the source and its ally")
         val change = matchingChanges.first()
-        assertTrue(matchingChanges.all { it.operation == change.operation && it.parameters == change.parameters })
-
-        assertEquals(MetaEffectOperation.IGNORE_ENEMY_ATTRIBUTE, change.operation)
-        assertEquals(MetaEffectParameters.from(detail), change.parameters)
-        assertEquals(2, change.parameters.effectParam)
-        assertEquals(311, change.parameters.calcPosition)
-        assertEquals(60_000, change.parameters.constant)
-        assertEquals(30, change.parameters.probabilityInitial)
-        assertEquals(30, change.parameters.probabilityMaximum)
-        assertEquals(3, change.parameters.targetLimit)
-        assertEquals(8, change.parameters.availableRounds)
+        assertTrue(matchingChanges.all { it.modifier == change.modifier })
+        assertEquals(
+            BattleModifier.DefenseIgnorePercent(percent = 30, stat = BattleStat.DEFENSE),
+            change.modifier,
+        )
+        assertEquals(8, change.spec.availableRounds)
     }
 
     @Test
@@ -884,6 +999,9 @@ class SkillRuleInterpreterTest {
         attackType: Int = 0,
         attackMax: Int = 1,
         availableHit: Int = 0,
+        probabilityInit: Int = 100,
+        probabilityMax: Int = probabilityInit,
+        availableRounds: Int = 2,
         castCondition: Int = 0,
     ): SkillEffectRule =
         SkillEffectRule(
@@ -900,11 +1018,11 @@ class SkillRuleInterpreterTest {
                 availableHit = availableHit,
                 intelParam = intelParam,
                 constantParam = constantParam,
-                probabilityInit = 100,
-                probabilityMax = 100,
+                probabilityInit = probabilityInit,
+                probabilityMax = probabilityMax,
                 castCondition = castCondition,
                 attackMax = attackMax,
-                availableRounds = 2,
+                availableRounds = availableRounds,
                 attributeType = attributeType,
                 effectName = "fixture-$effectId",
             ),
@@ -921,8 +1039,16 @@ class SkillRuleInterpreterTest {
         sourceModifiers: List<com.stzb.server.game.battle.BattleModifier> = emptyList(),
         alliedSkillIds: List<Int> = emptyList(),
         sourceStrategy: Int = 100,
+        sourceSkillLevel: Int = 1,
     ): SkillBattleContext {
-        val source = hero(1, 0, modifiers = sourceModifiers, strategy = sourceStrategy)
+        val source = hero(
+            1,
+            0,
+            skillIds = listOf(skillId),
+            skillLevels = listOf(sourceSkillLevel),
+            modifiers = sourceModifiers,
+            strategy = sourceStrategy,
+        )
         val ally = hero(2, 1, skillIds = alliedSkillIds)
         val enemy = hero(3, 0)
         return SkillBattleContext(
@@ -957,6 +1083,7 @@ class SkillRuleInterpreterTest {
         id: Int,
         position: Int,
         skillIds: List<Int> = emptyList(),
+        skillLevels: List<Int> = emptyList(),
         modifiers: List<com.stzb.server.game.battle.BattleModifier> = emptyList(),
         strategy: Int = 100,
     ): BattleHero =
@@ -967,6 +1094,7 @@ class SkillRuleInterpreterTest {
             troops = 1_000,
             maxTroops = 1_000,
             skillIds = skillIds,
+            skillLevels = skillLevels,
             modifiers = modifiers,
             morale = 100,
         )

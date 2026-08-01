@@ -1,6 +1,7 @@
 package com.stzb.server.handler
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.stzb.server.game.CardBorderCatalog
 import com.stzb.server.game.FilePlayerRepository
 import com.stzb.server.game.InventoryCatalog
 import com.stzb.server.game.PlayerStateRepository
@@ -8,6 +9,7 @@ import com.stzb.server.game.WorldStateRepository
 import com.stzb.server.game.battle.ClientBattleReportStore
 import com.stzb.server.protocol.Cmd
 import com.stzb.server.protocol.DownPacket
+import com.stzb.server.protocol.DownType
 import com.stzb.server.protocol.GameServerConfig
 import com.stzb.server.protocol.UpFlag
 import com.stzb.server.protocol.UpPacket
@@ -70,6 +72,83 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `world chat uses official 2100 shape and is returned by history`() {
+        val channel = newChannel()
+        val playerId = platformLogin(channel, "alice")
+
+        channel.writeInbound(
+            upPacket(
+                cmdId = Cmd.CHAT,
+                json = """[0,0,"你好",[[]],0,0,"","",0,"",""]""",
+                userId = playerId,
+            ),
+        )
+
+        val acknowledgement = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.CHAT, acknowledgement.cmd)
+        assertEquals("[false,0]", acknowledgement.body.toString(Charsets.UTF_8))
+
+        val notification = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.NOTIFY_CHAT_MSG, notification.cmd)
+        assertEquals(DownType.XOR, notification.dataType)
+        val message = mapper.readTree(notification.body)
+        assertEquals(46, message.size())
+        assertEquals(0, message[1].asInt())
+        assertEquals(0, message[2].asInt())
+        assertEquals(playerId, message[3].asInt())
+        assertEquals(GameServerConfig.ROLE_NAME, message[4].asText())
+        assertEquals("你好", message[5].asText())
+        assertTrue(message[19].isNull)
+        assertEquals("role_$playerId", message[45].asText())
+
+        channel.writeInbound(upPacket(711, "[]", playerId))
+
+        val history = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(711, history.cmd)
+        assertEquals(DownType.ZLIB, history.dataType)
+        val slots = mapper.readTree(history.body)
+        assertEquals(18, slots.size())
+        assertEquals(1, slots[0].size())
+        assertEquals(message[0].asInt(), slots[0][0][0].asInt())
+        assertEquals(message[1], slots[0][0][1][0])
+        assertEquals(message[45], slots[0][0][1][44])
+        assertNull(channel.readOutbound<Any>())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `world chat broadcasts the same canonical record to every online session`() {
+        val alice = newChannel()
+        val bob = newChannel()
+        val aliceId = platformLogin(alice, "alice")
+        platformLogin(bob, "bob")
+
+        alice.writeInbound(
+            upPacket(
+                Cmd.CHAT,
+                """[0,0,"全服可见",[[]],0,0,"","",0,"",""]""",
+                aliceId,
+            ),
+        )
+
+        assertIs<DownPacket>(alice.readOutbound<Any>())
+        val aliceNotification = assertIs<DownPacket>(alice.readOutbound<Any>())
+        val bobNotification = assertIs<DownPacket>(bob.readOutbound<Any>())
+
+        assertEquals(Cmd.NOTIFY_CHAT_MSG, aliceNotification.cmd)
+        assertEquals(Cmd.NOTIFY_CHAT_MSG, bobNotification.cmd)
+        assertEquals(DownType.XOR, aliceNotification.dataType)
+        assertEquals(
+            mapper.readTree(aliceNotification.body),
+            mapper.readTree(bobNotification.body),
+        )
+        assertEquals("全服可见", mapper.readTree(bobNotification.body)[5].asText())
+
+        alice.finishAndReleaseAll()
+        bob.finishAndReleaseAll()
+    }
+
+    @Test
     fun `world scene request acknowledges before full scene notification`() {
         val channel = newChannel()
         channel.writeInbound(upPacket(Cmd.GET_WORLD_SCENCE_INFO, "[50,70,641,661,0,0]"))
@@ -88,17 +167,17 @@ class GameServerHandlerProtocolTest {
     fun `land defender queries return the canonical army id list`() {
         val channel = newChannel()
 
-        channel.writeInbound(upPacket(4329, "[10012]"))
+        channel.writeInbound(upPacket(4329, "[15061504]"))
         val mapGuard = assertIs<DownPacket>(channel.readOutbound<Any>())
         assertEquals(4329, mapGuard.cmd)
         assertEquals(UpFlag.XOR, mapGuard.dataType)
-        assertEquals("""[10012,"101"]""", mapGuard.body.toString(Charsets.UTF_8))
+        assertEquals("""[15061504,"611,612"]""", mapGuard.body.toString(Charsets.UTF_8))
 
-        channel.writeInbound(upPacket(4331, "[10001]"))
+        channel.writeInbound(upPacket(4331, "[15061504]"))
         val detail = assertIs<DownPacket>(channel.readOutbound<Any>())
         assertEquals(4331, detail.cmd)
         assertEquals(UpFlag.XOR, detail.dataType)
-        assertEquals("""[10001,"203"]""", detail.body.toString(Charsets.UTF_8))
+        assertEquals("""[15061504,"611,612"]""", detail.body.toString(Charsets.UTF_8))
         assertNull(channel.readOutbound<Any>())
         channel.finishAndReleaseAll()
     }
@@ -172,6 +251,53 @@ class GameServerHandlerProtocolTest {
         assertFalse(oldChannel.isOpen)
         assertTrue(newChannel.isOpen)
         newChannel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `creating a union makes its detail and user membership immediately available`() {
+        val channel = newChannel()
+        val playerId = platformLogin(channel, "union-creator")
+        val unionName = "洛阳同盟"
+
+        channel.writeInbound(
+            upPacket(
+                cmdId = Cmd.UNION_CREATE,
+                json = """["$unionName"]""",
+                userId = playerId,
+            ),
+        )
+
+        val created = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.UNION_CREATE, created.cmd)
+        val unionId = mapper.readTree(created.body).asInt()
+        assertTrue(unionId > 0)
+
+        val userUpdate = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.SYS_NOTIFY_DB_UPDATE, userUpdate.cmd)
+        assertEquals(
+            listOf("0", playerId.toString(), "10", unionId.toString(), "11", unionName),
+            mapper.readTree(userUpdate.body)[0][2].map { it.asText() },
+        )
+
+        channel.writeInbound(
+            upPacket(
+                cmdId = Cmd.UNION_INFO,
+                json = "[$unionId,0]",
+                userId = playerId,
+            ),
+        )
+
+        val detail = mapper.readTree(assertIs<DownPacket>(channel.readOutbound<Any>()).body)
+        assertEquals(0, detail[0].asInt())
+        assertEquals(unionName, detail[1][4]["name"].asText())
+        assertEquals(playerId, detail[1][4]["leader_id"].asInt())
+
+        channel.writeInbound(upPacket(cmdId = Cmd.UNION_MEMBER, json = "[]", userId = playerId))
+        val members = mapper.readTree(assertIs<DownPacket>(channel.readOutbound<Any>()).body)
+        assertEquals(1, members.size())
+        assertEquals(playerId, members[0][0].asInt())
+        assertEquals(1, members[0][3].asInt())
+        channel.finishAndReleaseAll()
     }
 
     @Test
@@ -253,6 +379,71 @@ class GameServerHandlerProtocolTest {
         assertEquals(material.heroUid, changes[1][2].asInt())
         assertEquals(5, state.hero(target.heroUid)?.advanceNum)
         assertNull(state.hero(material.heroUid))
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `active card border persists and sends sparse hero update`() {
+        val channel = newChannel()
+        platformLogin(channel, "alice")
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = requireNotNull(session.accountKey),
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = GameServerConfig.ROLE_NAME,
+        )
+        val hero = state.addHero(100017, nowSec = 1_700_000_000)
+        PlayerStateRepository.save(state)
+
+        channel.writeInbound(
+            upPacket(
+                Cmd.HERO_ACTIVE_CARD_BORDER,
+                """[${hero.heroUid},110997]""",
+                userId = session.userId,
+            ),
+        )
+
+        val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.HERO_ACTIVE_CARD_BORDER, response.cmd)
+        assertEquals("[]", response.body.toString(Charsets.UTF_8))
+        val notify = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.SYS_NOTIFY_DB_UPDATE, notify.cmd)
+        assertEquals(
+            listOf(0, hero.heroUid, 42, 110997),
+            mapper.readTree(notify.body)[0][2].map { it.asInt() },
+        )
+        assertEquals(110997, state.hero(hero.heroUid)?.cardBorder)
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `invalid card border and rotate requests acknowledge without mutation`() {
+        val channel = newChannel()
+        platformLogin(channel, "alice")
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = requireNotNull(session.accountKey),
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = GameServerConfig.ROLE_NAME,
+        )
+        val hero = state.addHero(100017)
+
+        channel.writeInbound(
+            upPacket(Cmd.HERO_ACTIVE_CARD_BORDER, """[${hero.heroUid},777777]""", session.userId),
+        )
+        val invalid = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.HERO_ACTIVE_CARD_BORDER, invalid.cmd)
+        assertEquals(CardBorderCatalog.DEFAULT_ID, hero.cardBorder)
+        assertNull(channel.readOutbound<Any>())
+
+        listOf(Cmd.HERO_USE_CARD_BORDER, Cmd.ROTATE_CARD_BORDER_ADD, Cmd.ROTATE_CARD_BORDER_REMOVE)
+            .forEach { cmd ->
+                channel.writeInbound(upPacket(cmd, """[${hero.heroUid},110997]""", session.userId))
+                val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+                assertEquals(cmd, response.cmd)
+                assertEquals("[]", response.body.toString(Charsets.UTF_8))
+            }
+        assertEquals(CardBorderCatalog.DEFAULT_ID, hero.cardBorder)
         channel.finishAndReleaseAll()
     }
 

@@ -21,6 +21,7 @@ sealed interface TypedBattlePotency {
     data class Resolved(
         override val unit: BattleEffectValueUnit,
         val value: Int,
+        val exactValue: Double = value.toDouble(),
     ) : TypedBattlePotency
 
     data class Deferred(
@@ -30,7 +31,8 @@ sealed interface TypedBattlePotency {
     ) : TypedBattlePotency
 
     companion object {
-        fun flat(value: Int): Resolved = Resolved(BattleEffectValueUnit.FLAT, value)
+        fun flat(value: Int, exactValue: Double = value.toDouble()): Resolved =
+            Resolved(BattleEffectValueUnit.FLAT, value, exactValue)
         fun percent(value: Int): Resolved = Resolved(BattleEffectValueUnit.PERCENT, value)
         fun rate(value: Int): Resolved = Resolved(BattleEffectValueUnit.RATE, value)
     }
@@ -142,6 +144,7 @@ data class PersistentEffectSpec(
             category = category,
             conflict = conflict,
             strength = kotlin.math.abs(potency.value),
+            strengthExact = kotlin.math.abs(potency.exactValue),
             replaceType = replaceType,
             bindFlag = bindFlag,
             maxStacks = maxStacks,
@@ -398,6 +401,21 @@ class DefaultBattleValueCalculator(
                 source.stats.precise(BattleStat.STRATEGY) / 200.0
             return TypedBattlePotency.percent((ratio * raw / 100.0).roundToInt())
         }
+        if (rule.effectId in FLAT_ATTRIBUTE_EFFECT_IDS &&
+            configured.unit == BattleEffectValueUnit.PERCENT &&
+            configured.rawCalcPosition == 0 &&
+            configured.rawCoefficient == 0 &&
+            configured.rawAttributeType == 0 &&
+            kotlin.math.abs(configured.rawConstant) < PERCENT_ATTRIBUTE_SCALE_THRESHOLD
+        ) {
+            val level = skillLevel.coerceIn(1, 10)
+            val ratio = rule.raw.initEffectRatio +
+                (level - 1) * (100 - rule.raw.initEffectRatio) / 9.0
+            return TypedBattlePotency.flat(
+                (configured.rawConstant / FLAT_ATTRIBUTE_SCALE * ratio / 100.0).roundToInt(),
+                configured.rawConstant / FLAT_ATTRIBUTE_SCALE * ratio / 100.0,
+            )
+        }
         val scale = when (configured.unit) {
             BattleEffectValueUnit.FLAT -> 1.0
             BattleEffectValueUnit.RATE -> 1.0
@@ -523,7 +541,10 @@ class DefaultBattleValueCalculator(
 
     private companion object {
         const val BASE_STRATEGY = 80.0
+        const val FLAT_ATTRIBUTE_SCALE = 100.0
+        const val PERCENT_ATTRIBUTE_SCALE_THRESHOLD = 100_000
         const val FIRE_ATTACK_EFFECT_ID = 307
+        val FLAT_ATTRIBUTE_EFFECT_IDS = (101..105) + (201..205)
     }
 }
 
@@ -589,7 +610,14 @@ private class CoreEffectHandler(
             305 -> listOf(ongoingDamage(invocation, target, BattleStatus.BURN, DamageSchool.STRATEGY))
             306 -> listOf(ongoingDamage(invocation, target, BattleStatus.HEX, DamageSchool.STRATEGY))
             307 -> listOf(directDamage(invocation, target, DamageSchool.STRATEGY, setOf(DamageTag.FIRE)))
-            401 -> recoveryChanges(invocation, target)
+            401 -> if (
+                invocation.rule.raw.calcPos == EMERGENCY_RECOVERY_CALC_POSITION &&
+                invocation.context.trigger == BattleTrigger.BATTLE_COMMAND
+            ) {
+                listOf(appliedEffect(invocation, target, potency))
+            } else {
+                recoveryChanges(invocation, target)
+            }
             402 -> scheduledRecoveryChanges(invocation, target)
             in DAMAGE_MODIFIER_EFFECT_IDS -> listOf(damageModifier(invocation, target, potency))
             else -> error("Core handler missing effect=$effectId")
@@ -616,7 +644,10 @@ private class CoreEffectHandler(
             source = invocation.context.source,
             target = target,
             kind = kind,
-            potency = potency.copy(value = if (increase) potency.value else -potency.value),
+            potency = potency.copy(
+                value = if (increase) potency.value else -potency.value,
+                exactValue = if (increase) potency.exactValue else -potency.exactValue,
+            ),
             durationRounds = invocation.rule.raw.availableRounds,
             skillId = invocation.context.currentSkillId,
             effectId = invocation.rule.effectId,
@@ -628,13 +659,13 @@ private class CoreEffectHandler(
         target: BattleHeroRef,
         school: DamageSchool,
         tags: Set<DamageTag> = emptySet(),
-    ): TroopDamageChange {
+    ): BattleStateChange {
         val targetState = invocation.targetState(target)
         val damage = when (school) {
             DamageSchool.PHYSICAL -> calculator.physicalDamage(invocation, target)
             DamageSchool.STRATEGY -> calculator.strategyDamage(invocation, target, ongoing = false)
         }.coerceAtMost(targetState.troops)
-        return TroopDamageChange(
+        val damageChange = TroopDamageChange(
             source = invocation.context.source,
             target = target,
             amount = damage,
@@ -644,6 +675,20 @@ private class CoreEffectHandler(
             tags = tags,
             skillId = invocation.context.currentSkillId,
             effectId = invocation.rule.effectId,
+        )
+        val raw = invocation.rule.raw
+        if (raw.delayRound <= 0 && raw.delayHit <= 0) return damageChange
+        return ScheduledTimingChange(
+            snapshot = DelayedEffect(
+                source = invocation.context.source,
+                rootSkillId = invocation.context.rootSkillId,
+                skillId = invocation.context.currentSkillId,
+                detailId = invocation.rule.detailId,
+                dueRound = 0,
+            ),
+            delayRound = raw.delayRound,
+            delayHit = raw.delayHit,
+            change = damageChange,
         )
     }
 
@@ -664,7 +709,13 @@ private class CoreEffectHandler(
             origin = invocation.damageOrigin(),
             tags = buildSet {
                 add(DamageTag.ONGOING)
-                if (status == BattleStatus.BURN) add(DamageTag.FIRE)
+                when (status) {
+                    BattleStatus.SHAKE -> add(DamageTag.SHAKE)
+                    BattleStatus.PANIC -> add(DamageTag.PANIC)
+                    BattleStatus.BURN -> add(DamageTag.FIRE)
+                    BattleStatus.HEX -> add(DamageTag.HEX)
+                    else -> Unit
+                }
             },
             status = status,
             coefficientSource = invocation.rule.coefficientSource,
@@ -816,6 +867,7 @@ private class CoreEffectHandler(
         effectStore.effectsFor(target).any { it.effectId == UNRECOVERABLE_EFFECT_ID }
 
     private companion object {
+        const val EMERGENCY_RECOVERY_CALC_POSITION = 995
         const val UNRECOVERABLE_EFFECT_ID = 207
         val RECOVERY_EFFECT_IDS = setOf(401, 402)
         val DAMAGE_MODIFIER_EFFECT_IDS =

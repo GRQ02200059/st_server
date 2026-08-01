@@ -205,8 +205,13 @@ class SkillRuleInterpreter private constructor(
         context: SkillBattleContext,
         preselectedTargets: List<BattleHeroRef>? = null,
         valueOverride: TypedBattlePotency.Resolved? = null,
+        probabilityAlreadyAccepted: Boolean = false,
     ): SkillExecutionResult =
-        executeDetail(detail, context, preselectedTargets, valueOverride)
+        if (probabilityAlreadyAccepted || detailProbabilitySucceeds(detail, context)) {
+            executeDetail(detail, context, preselectedTargets, valueOverride)
+        } else {
+            SkillExecutionResult.EMPTY
+        }
 
     private fun executeSkill(
         skillId: Int,
@@ -243,9 +248,13 @@ class SkillRuleInterpreter private constructor(
                 parentContext.runtime.recordSuccessfulExecution(context.source, trigger, skillId)
             }
 
+            val preparationCallDepth = parentContext.runtime.currentCallPath().size
+            val exposeTriggeredEvent =
+                trigger !in setOf(BattleTrigger.BATTLE_PASSIVE, BattleTrigger.BATTLE_COMMAND) ||
+                    preparationCallDepth <= 2
             var result = SkillExecutionResult.immutable(
                 stateChanges = emptyList(),
-                events = listOf(
+                events = if (exposeTriggeredEvent) listOf(
                     SkillTriggered(
                         round = context.round,
                         source = context.source,
@@ -253,7 +262,7 @@ class SkillRuleInterpreter private constructor(
                         skillId = skillId,
                         trigger = trigger,
                     ),
-                ),
+                ) else emptyList(),
                 executedSkillIds = listOf(skillId),
                 diagnostics = emptyList(),
             )
@@ -272,7 +281,9 @@ class SkillRuleInterpreter private constructor(
         preselectedTargets: List<BattleHeroRef>? = null,
     ): SkillExecutionResult =
         try {
-            if (!conditionInterpreter.matches(detail, context.trigger, context)) {
+            if (!conditionInterpreter.matches(detail, context.trigger, context) ||
+                !detailProbabilitySucceeds(detail, context)
+            ) {
                 SkillExecutionResult.EMPTY
             } else {
                 executeDetail(detail, context, preselectedTargets)
@@ -461,12 +472,16 @@ class SkillRuleInterpreter private constructor(
                 context.runtime.currentCallPath(),
                 change.referencedDetailId,
             )
-        return executeDetail(
-            detail = detail,
-            context = context,
-            preselectedTargets = change.selectedTargets,
-            valueOverride = change.valueOverride,
-        )
+        return if (detailProbabilitySucceeds(detail, context)) {
+            executeDetail(
+                detail = detail,
+                context = context,
+                preselectedTargets = change.selectedTargets,
+                valueOverride = change.valueOverride,
+            )
+        } else {
+            SkillExecutionResult.EMPTY
+        }
     }
 
     private fun diagnosticResult(
@@ -550,12 +565,46 @@ class SkillRuleInterpreter private constructor(
             }
         val moraleAddition = (morale - 100).toDouble() / (100 + 0.5 * morale)
         val moraleAdjusted = (rule.probability * (1 + moraleAddition)).toInt()
-        val modifier = source.modifiers
+        val modifier = liveModifiers(context, source)
             .filterIsInstance<BattleModifier.SkillProbabilityPercent>()
+            .filter { it.skillId == null || it.skillId == rule.skillId }
+            .filter { it.skillKind == null || it.skillKind == rule.kind }
             .sumOf { it.percent }
         val probability = (moraleAdjusted + modifier).coerceIn(0, 100)
         return context.random.nextInt(100) < probability
     }
+
+    private fun detailProbabilitySucceeds(
+        detail: SkillEffectRule,
+        context: SkillBattleContext,
+    ): Boolean {
+        val source = requestHero(context, context.source)
+        val level = EffectInvocation(
+            rule = detail,
+            context = context,
+            callPath = context.runtime.currentCallPath(),
+        ).rootSkillLevel(source)
+        val configured = (
+            detail.raw.probabilityInit +
+                (level - 1) * (detail.raw.probabilityMax - detail.raw.probabilityInit) / 9.0
+            ).toInt().coerceIn(0, 100)
+        if (configured >= 100) return true
+        val modifier = liveModifiers(context, source)
+            .filterIsInstance<BattleModifier.EffectProbabilityPercent>()
+            .filter { it.detailId == detail.detailId }
+            .sumOf { it.percent }
+        return context.random.nextInt(100) < (configured + modifier).coerceIn(0, 100)
+    }
+
+    private fun liveModifiers(
+        context: SkillBattleContext,
+        source: BattleHero,
+    ): List<BattleModifier> =
+        if (SkillBattleViewCapability.LIVE_STATE in context.battleView.capabilities) {
+            context.battleView.state(context.source)?.modifiers ?: source.modifiers
+        } else {
+            source.modifiers
+        }
 
     private fun requestHero(
         context: SkillBattleContext,

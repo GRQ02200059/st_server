@@ -59,7 +59,7 @@ class LandMapRepository private constructor(
             return LandMapRepository(mapSize, decoded)
         }
 
-        /** Loads the map that matches the login cfgDataIndex the server advertises. */
+        /** Loads the resource map advertised to the active client. */
         fun loadDefault(): LandMapRepository = load(GameServerConfig.CFG_DB_ID)
 
         private fun decodeResourceType(encoded: Int): Int? {

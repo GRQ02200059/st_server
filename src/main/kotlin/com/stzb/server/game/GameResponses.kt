@@ -309,7 +309,7 @@ object GameResponses {
                 add(0) // 12 tech jianjun
                 add(0) // 13 tech quanxiang
                 add(0) // 14 invited user id
-                add("") // 15 facade ids
+                add(march.facadeIds()) // 15 facade ids
                 add("") // 16 army hero type
                 add("") // 17 emotion
                 add("") // 18 battle effect
@@ -393,19 +393,26 @@ object GameResponses {
         name: String,
         belongCity: Int,
     ) {
-        putObject(wid.toString()).putArray("0").apply {
+        val isMainCity = cityType == 1
+        val cityChunk = putObject(wid.toString())
+        cityChunk.putArray("0").apply {
             add(cityType)
             add(0)        // 1: city_param
             add(userId)   // 2: owner user id
             add(0)        // 3: union id
             add(0)        // 4: protect_end_time
-            add("")       // 5: facade
+            add(if (isMainCity) FacadeCatalog.DEFAULT_CITY_MAP_FACADE else "") // 5: facade
             add(name)     // 6: name
             add(belongCity) // 7: belong city
             repeat(4) { add(0) } // 8..11: state/times
             add(0)        // 12: UserForceType.NORMAL
-            add("")       // 13: city build data
+            add(if (isMainCity) FacadeCatalog.DEFAULT_CITY_BUILD_DATA else "") // 13: city build data
             repeat(7) { add(0) } // 14..20: clan/link/view metadata
+        }
+        if (isMainCity) {
+            cityChunk.putArray("4")
+                .add(FacadeCatalog.DEFAULT_CITY_CUSTOM_VIEW)
+                .add("")
         }
     }
 
@@ -548,6 +555,54 @@ object GameResponses {
             },
         )
 
+    fun armyFacadeNotify(state: PlayerState, mutation: ArmyFacadeMutation): String =
+        mapper.writeValueAsString(
+            nf.arrayNode().apply {
+                mutation.cardCfgHeroIds.toSortedMap().forEach { (cardId, cfgHeroId) ->
+                    add(
+                        nf.arrayNode()
+                            .add(2)
+                            .add("Tb_user_army_facade_card")
+                            .add(nf.arrayNode().add(0).add(cardId).add(5).add(cfgHeroId)),
+                    )
+                }
+                mutation.heroFacadeIds.toSortedMap().forEach { (heroUid, facadeId) ->
+                    add(
+                        nf.arrayNode()
+                            .add(2)
+                            .add("Tb_hero")
+                            .add(nf.arrayNode().add(0).add(heroUid).add(72).add(facadeId)),
+                    )
+                }
+                mutation.specialCardStates.toSortedMap().forEach { (cardUid, stateValue) ->
+                    add(
+                        nf.arrayNode()
+                            .add(2)
+                            .add("Tb_hero")
+                            .add(nf.arrayNode().add(0).add(cardUid).add(5).add(stateValue)),
+                    )
+                }
+                mutation.affectedArmyIds.sorted().forEach { armyId ->
+                    add(
+                        nf.arrayNode()
+                            .add(2)
+                            .add("Tb_army")
+                            .add(nf.arrayNode().add(0).add(armyId).add(61).add(state.armyFacadeIds(armyId))),
+                    )
+                }
+            },
+        )
+
+    fun heroCardBorderUpdateNotify(heroUid: Int, cardBorder: Int): String =
+        mapper.writeValueAsString(
+            nf.arrayNode().add(
+                nf.arrayNode()
+                    .add(2)
+                    .add("Tb_hero")
+                    .add(nf.arrayNode().add(0).add(heroUid).add(42).add(cardBorder)),
+            ),
+        )
+
     /**
      * cmd 83 itself is body-agnostic in the client. The visible card update is
      * driven by this 90005 packet: update advance_num, then remove each
@@ -596,6 +651,108 @@ object GameResponses {
                     .add(1)
                     .add("Tb_user_res")
                     .add(tbUserRes(userId, resources)),
+            ),
+        )
+
+    fun unionInfo(union: PlayerUnion): String {
+        val fields = nf.objectNode().apply {
+            put("union_id", union.unionId)
+            put("name", union.name)
+            put("leader_id", union.leaderUserId)
+            put("vice_leader_id", 0)
+            put("create_time", union.createdAtSec.toLong())
+            put("level", 1)
+            put("total_member", union.memberUserIds.size)
+            put("clan_lst", "")
+            put("tip", "")
+            put("notice", "")
+            put("apply_state", 1)
+            put("power", 0)
+            put("nation_strategy_count", 0)
+            put("tech_point", 0)
+            put("tech_layer", 1)
+            put("tech_point_add", 0)
+            put("region_spread", "")
+            put("region", 0)
+            put("area", 0)
+            put("npc_city_member_add", 0)
+            put("next_establish_nation_time", 0L)
+            put("next_move_capital_time", 0L)
+            put("force", 0)
+            put("nation_last_denunciation_send_time", 0L)
+            put("disintegrate_info", "")
+            put("joined_union_id", 0)
+            put("quit_nation_time", 0L)
+            put("zhaoxian_count", 0)
+            put("last_zhaoxian_count_reset_time", 0L)
+            put("merge_union_state", 0)
+            put("last_merge_union_time", 0L)
+            put("active_score", 0)
+            put("auto_join_apply", 0)
+            put("zi_li_end_time", 0L)
+            put("zhou_fu_count", 0)
+            put("auto_join_review_switch", 0)
+            put("auto_join_review_switch_power_condition", 0)
+            put("bandit_free_denunciation_send_count", 0)
+        }
+        val detail = nf.arrayNode().apply {
+            add(0)                         // applyed
+            add(union.leaderRoleName)
+            add(0)                         // area_number
+            add(0)                         // under_number
+            add(fields)
+            add(0L)                        // demise_end_time
+            add(0)                         // demise_target_uid
+            add(nf.arrayNode())            // strategy_list
+            add(0)                         // invite_enter_state
+            add(0).add(0).add(0)
+            add(0)                         // certification_channel
+            add(0).add(0).add(0).add(0)
+            add("role_${union.leaderUserId}")
+            add(0)                         // applyed_standby
+            add(0)                         // exp
+        }
+        return mapper.writeValueAsString(nf.arrayNode().add(0).add(detail))
+    }
+
+    fun userUnionUpdateNotify(userId: Int, union: PlayerUnion): String =
+        mapper.writeValueAsString(
+            nf.arrayNode().add(
+                nf.arrayNode()
+                    .add(2)
+                    .add("Tb_user")
+                    .add(
+                        nf.arrayNode()
+                            .add(0).add(userId)
+                            .add(10).add(union.unionId)
+                            .add(11).add(union.name),
+                    ),
+            ),
+        )
+
+    fun unionMembers(union: PlayerUnion): String =
+        mapper.writeValueAsString(
+            nf.arrayNode().add(
+                nf.arrayNode()
+                    .add(union.leaderUserId) // user_id
+                    .add(union.leaderRoleName)
+                    .add(0)                  // donate
+                    .add(1)                  // position = leader
+                    .add(0)                  // is_demise
+                    .add(0)                  // is_affiliated
+                    .add(0)                  // wid
+                    .add(0)                  // donate_weekly
+                    .add(0)                  // role_force
+                    .add(0)                  // official_wid
+                    .add(0)                  // val_wuxun
+                    .add(0)
+                    .add(0)                  // group_id
+                    .add("")                 // group_name
+                    .add(0)                  // own_city_id
+                    .add(0)                  // ranger_total_wuxun
+                    .add(0)                  // head_id
+                    .add("")                 // head_frame
+                    .add(0),                 // clan_position
             ),
         )
 
@@ -713,12 +870,13 @@ object GameResponses {
         )
 
     fun userBuildUpsertNotify(
-        userId: Int,
-        cityWid: Int,
+        state: PlayerState,
         buildId: Int,
         level: Int,
         resources: PlayerResources? = null,
     ): String {
+        val userId = state.userId
+        val cityWid = state.cityWid
         val root = nf.arrayNode()
         root.add(
             nf.arrayNode()
@@ -732,6 +890,14 @@ object GameResponses {
                 .add("Tb_build_effect_city")
                 .add(tbBuildEffectCity(userId, cityWid)),
         )
+        state.armyIds().forEach { armyId ->
+            root.add(
+                nf.arrayNode()
+                    .add(1)
+                    .add("Tb_army")
+                    .add(tbArmy(state, armyId)),
+            )
+        }
         if (resources != null) {
             root.add(
                 nf.arrayNode()
@@ -808,11 +974,11 @@ object GameResponses {
             add(0)           // 14 hp_balance_time
             add(0)           // 15 point_left
             add(0)           // 16 clean_point_time
-            add(0)           // 17 attack_add
-            add(0)           // 18 defence_add
-            add(0)           // 19 intel_add
-            add(0)           // 20 speed_add
-            add(0)           // 21 destroy_add
+            add(hero.attributePoints.attack)   // 17 attack_add
+            add(hero.attributePoints.defense)  // 18 defence_add
+            add(hero.attributePoints.strategy) // 19 intel_add
+            add(hero.attributePoints.speed)    // 20 speed_add
+            add(hero.attributePoints.siege)    // 21 destroy_add
             add(hero.skillString()) // 22 skill
             add(hero.gearUid) // 23 gearid_u
             add(1) // 24 awake_state
@@ -828,9 +994,15 @@ object GameResponses {
             add("") // 34 hero_type_availible
             add("") // 35 hero_type_feature
             add(0) // 36 hero_type_advance
-            add("") // 37 hero_features
-            repeat(5) { add(0) } // 38..42 feature/card-border fields
+            add(hero.heroFeaturesString()) // 37 hero_features: feature_id, enabled
+            repeat(4) { add(0) } // 38..41 feature fields
+            add(hero.cardBorder) // 42 card_border
             add(hero.dynamicIcon) // 43 dynamic_icon
+            repeat(25) { add(0) } // 44..68
+            add("") // 69 recurit_unit_res_cost
+            add(0) // 70 read_time
+            add(0) // 71 get_time
+            add(hero.armyFacadeCardId) // 72 army_facade_card_id
         }
 
     private fun tbArmy(state: PlayerState, armyId: Int): ArrayNode {
@@ -903,7 +1075,7 @@ object GameResponses {
             add(0)
             add(5)             // 23 army_max
             add(0)             // 24 army_pos_counsellor
-            add(1)             // 25 army_pos_front
+            add(5)             // 25 army_pos_front
             add(100)           // 26 army_cost_max => 10.0 cost
             repeat(4) { add(0) }
             add(1_000_000)     // 31 res_max

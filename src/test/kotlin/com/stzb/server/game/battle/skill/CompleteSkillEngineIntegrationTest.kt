@@ -78,7 +78,7 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
-    fun `actual troop recovery records a recovery event occurrence`() {
+    fun `huangyi registers emergency recovery without healing during preparation`() {
         val request = BattleRequest(
             attacker = BattleTeam(
                 listOf(
@@ -100,6 +100,9 @@ class CompleteSkillEngineIntegrationTest {
         engine.state.view.heroes()
             .filter { it.side == Side.ATTACKER }
             .forEach { engine.state.mutable(it).woundedTroops = 1_000 }
+        val troopsBefore = engine.state.view.heroes()
+            .filter { it.side == Side.ATTACKER }
+            .associateWith { requireNotNull(engine.state.view.state(it)).troops }
         val context = SkillBattleContext(
             request = request,
             runtime = engine.state.runtime,
@@ -114,11 +117,27 @@ class CompleteSkillEngineIntegrationTest {
 
         engine.prepareBattle(context)
 
-        assertTrue(engine.state.runtime.count(source, BattleTrigger.RECOVERY_AFTER) > 0)
+        assertEquals(
+            troopsBefore,
+            engine.state.view.heroes()
+                .filter { it.side == Side.ATTACKER }
+                .associateWith { requireNotNull(engine.state.view.state(it)).troops },
+        )
+        assertEquals(0, engine.state.runtime.count(source, BattleTrigger.RECOVERY_AFTER))
+        engine.state.view.heroes()
+            .filter { it.side == Side.ATTACKER }
+            .forEach { target ->
+                assertTrue(
+                    engine.state.effectStore.effectsFor(target).any {
+                        it.source == source && it.skillId == 200016 && it.effectId == 401
+                    },
+                    "missing huangyi emergency-recovery registration for $target",
+                )
+            }
     }
 
     @Test
-    fun `huangyi includes its source and listener fires twice after six recoveries`() {
+    fun `huangyi heals a registered ally after damage and counts recoveries on liubei`() {
         val request = BattleRequest(
             attacker = BattleTeam(
                 listOf(
@@ -132,9 +151,8 @@ class CompleteSkillEngineIntegrationTest {
         )
         val engine = DefaultCompleteSkillEngine.create(request, config)
         val source = engine.state.view.heroes().single { it.heroId == BattleHeroId(100016) }
-        engine.state.view.heroes()
-            .filter { it.side == Side.ATTACKER }
-            .forEach { engine.state.mutable(it).woundedTroops = 1_000 }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100017) }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
         val context = SkillBattleContext(
             request = request,
             runtime = engine.state.runtime,
@@ -146,8 +164,66 @@ class CompleteSkillEngineIntegrationTest {
             trigger = BattleTrigger.BATTLE_COMMAND,
             battleView = engine.state.view,
         )
-        val events = engine.prepareBattle(context) +
-            engine.trigger(BattleTrigger.BATTLE_COMMAND, context)
+        engine.prepareBattle(context)
+        val events = engine.applyNormalDamage(
+            round = 1,
+            source = enemy,
+            target = ally,
+            amount = 600,
+            context = context.copy(round = 1, source = enemy),
+        )
+
+        assertTrue(
+            events.filterIsInstance<BattleEvent.Recovery>().any {
+                it.source == source && it.target == ally && it.skillId == 200016 && it.amount > 0
+            },
+        )
+        assertEquals(1, engine.state.runtime.count(source, BattleTrigger.RECOVERY_AFTER))
+        assertEquals(0, engine.state.runtime.count(ally, BattleTrigger.RECOVERY_AFTER))
+    }
+
+    @Test
+    fun `huangyi increases its chance after every three actual ally recoveries`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100016, 100, listOf(200016), position = 2),
+                    hero(100017, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 8,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.heroId == BattleHeroId(100016) }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100017) }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = source,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+
+        val events = buildList {
+            repeat(6) {
+                addAll(
+                    engine.applyNormalDamage(
+                        round = it + 1,
+                        source = enemy,
+                        target = ally,
+                        amount = 100,
+                        context = context.copy(round = it + 1, source = enemy),
+                    ),
+                )
+            }
+        }
 
         assertEquals(6, engine.state.runtime.count(source, BattleTrigger.RECOVERY_AFTER))
         assertEquals(
@@ -1095,6 +1171,43 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `tongchou preparation registers its derived listener on every ally`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            defender = BattleTeam(
+                listOf(
+                    hero(100006, 100, listOf(201006), position = 0),
+                    hero(100007, 90, position = 1),
+                    hero(100008, 80, position = 2),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100006) }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_PASSIVE,
+            battleView = engine.state.view,
+        )
+
+        val listeners = engine.prepareBattle(context)
+            .filterIsInstance<BattleEvent.SkillTriggered>()
+            .filter { it.rootSkillId == 201006 && it.skillId == 221006 }
+
+        assertEquals(
+            listOf(0, 1, 2),
+            listeners.map { it.source.position },
+        )
+    }
+
+    @Test
     fun `tongchou does not react to damage before the first combat round`() {
         val request = BattleRequest(
             attacker = BattleTeam(
@@ -1783,6 +1896,10 @@ class CompleteSkillEngineIntegrationTest {
                 it.skillId == 200023 &&
                 it.trigger == BattleTrigger.BATTLE_COMMAND
         })
+        val rangeChanges = result.events.filterIsInstance<BattleEvent.SkillRangeChanged>()
+        assertEquals(3, rangeChanges.size)
+        assertTrue(rangeChanges.all { it.skillId == 200023 && it.skillKind == SkillKind.ACTIVE })
+        assertTrue(rangeChanges.all { it.delta == 1 })
         assertEquals(
             setOf(
                 Side.ATTACKER to 0,
@@ -1796,6 +1913,132 @@ class CompleteSkillEngineIntegrationTest {
                 .mapTo(linkedSetOf()) { it.source.side to it.source.position },
         )
     }
+
+    @Test
+    fun `all living heroes enter the action scheduler in every one of eight rounds`() {
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(
+                    listOf(
+                        hero(100001, 60, position = 0),
+                        hero(100002, 50, position = 1),
+                        hero(100003, 40, position = 2),
+                    ),
+                ),
+                defender = BattleTeam(
+                    listOf(
+                        hero(200001, 30, position = 0),
+                        hero(200002, 20, position = 1),
+                        hero(200003, 10, position = 2),
+                    ),
+                ),
+                maxRounds = 8,
+            ),
+            config,
+            FixedBattleRandom(0),
+        )
+
+        val starts = result.events.filterIsInstance<BattleEvent.HeroActionStart>()
+        val ends = result.events.filterIsInstance<BattleEvent.HeroActionEnd>()
+        assertEquals(starts.map { it.round to it.source }, ends.map { it.round to it.source })
+        val entryRefs = (requestHeroRefs(result.entryAttacker.orEmpty(), Side.ATTACKER) +
+            requestHeroRefs(result.entryDefender.orEmpty(), Side.DEFENDER)).toSet()
+        entryRefs.forEach { ref ->
+            val survived = result.events.none {
+                it is BattleEvent.NormalAttack && it.target == ref && it.targetTroopsAfter == 0 ||
+                    it is BattleEvent.SkillDamage && it.target == ref && it.targetTroopsAfter == 0
+            }
+            if (survived) {
+                assertEquals((1..8).toList(), starts.filter { it.source == ref }.map { it.round })
+            }
+        }
+    }
+
+    @Test
+    fun `yibingbizhan only suppresses attacks for its configured first two rounds`() {
+        val owner = hero(100701, 60, listOf(200761), position = 2).copy(
+            stats = BattleStats(attack = 1, defense = 10_000, strategy = 100, speed = 60, siege = 0, hitRange = 5),
+        )
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(listOf(owner)),
+                defender = BattleTeam(
+                    listOf(
+                        hero(200001, 10, position = 2).copy(
+                            stats = BattleStats(attack = 1, defense = 10_000, strategy = 100, speed = 10, siege = 0, hitRange = 5),
+                        ),
+                    ),
+                ),
+                maxRounds = 8,
+            ),
+            config,
+            FixedBattleRandom(0),
+        )
+        val ownerRef = BattleHeroRef(Side.ATTACKER, owner.position, owner.id)
+        val actionRounds = result.events.filterIsInstance<BattleEvent.HeroActionStart>()
+            .filter { it.source == ownerRef }
+            .map { it.round }
+        val normalRounds = result.events.filterIsInstance<BattleEvent.NormalAttack>()
+            .filter { it.source == ownerRef }
+            .map { it.round }
+
+        assertEquals((1..8).toList(), actionRounds)
+        assertEquals((3..8).toList(), normalRounds)
+    }
+
+    @Test
+    fun `xingbingzhiji preparation probability increase changes later active rolls`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100003, 60, listOf(200813), position = 2),
+                    hero(100006, 50, position = 1),
+                    hero(100001, 40, listOf(200001), position = 0),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 2
+        }
+        val actor = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 0
+        }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(35),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        engine.prepareBattle(context)
+        val events = engine.trigger(
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context.copy(
+                round = 1,
+                source = actor,
+                trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            ),
+        )
+
+        assertTrue(engine.liveHero(actor).modifiers.any {
+            it is com.stzb.server.game.battle.BattleModifier.SkillProbabilityPercent &&
+                it.percent == 10
+        })
+        assertTrue(events.any { it is BattleEvent.SkillTriggered && it.skillId == 200001 })
+    }
+
+    private fun requestHeroRefs(team: BattleTeam, side: Side): List<BattleHeroRef> =
+        team.heroes.map { BattleHeroRef(side, it.position, it.id) }
+
+    private fun BattleTeam?.orEmpty(): BattleTeam = this ?: BattleTeam(emptyList())
 
     private fun assertOrdered(actual: List<Any>, vararg expected: Any) {
         var previous = -1

@@ -104,6 +104,31 @@ class BattleTeamBuilderTest {
     }
 
     @Test
+    fun `surface cautious attack declares and applies physical damage reduction`() {
+        val team = builder.build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100479,
+                    position = 0,
+                    troops = 1000,
+                    surfaceSkillId = 281004,
+                ),
+            ),
+        )
+
+        assertEquals(
+            BattleModifier.DamageTakenPercent(
+                school = DamageSchool.PHYSICAL,
+                percent = -5,
+            ),
+            team.heroes.single().modifiers.single(),
+        )
+        assertEquals(1, team.preparationActions.size)
+        assertEquals("0s".toInt(36), team.preparationActions.single().actionId)
+        assertEquals(522, team.preparationActions.single().actionParameter)
+    }
+
+    @Test
     fun `troop feature damage bonus retains both official modifier effects`() {
         val teams = listOf(
             builder.build(
@@ -112,6 +137,7 @@ class BattleTeamBuilderTest {
                     heroId = 100479,
                     position = 0,
                     troops = 1000,
+                    heroType = 21,
                     troopFeatureIds = listOf(3106),
                 ),
                 ),
@@ -122,6 +148,7 @@ class BattleTeamBuilderTest {
                     heroId = 100017,
                     position = 0,
                     troops = 1000,
+                    heroType = 22,
                     troopFeatureIds = listOf(3206),
                 ),
                 ),
@@ -143,6 +170,61 @@ class BattleTeamBuilderTest {
         assertTrue(teams.flatMap { it.heroes }.all { hero ->
             hero.modifiers.contains(BattleModifier.DamageDealtPercent(percent = 8))
         })
+    }
+
+    @Test
+    fun `troop type contributes its configured inherent preparation sources`() {
+        val team = builder.build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100479,
+                    position = 0,
+                    troops = 1000,
+                    heroType = 21,
+                    troopFeatureIds = listOf(3106, 3104),
+                ),
+                BattleHeroSpec(
+                    heroId = 100035,
+                    position = 1,
+                    troops = 1000,
+                    heroType = 31,
+                    troopFeatureIds = listOf(3106, 3104),
+                ),
+                BattleHeroSpec(
+                    heroId = 100023,
+                    position = 2,
+                    troops = 1000,
+                    heroType = 13,
+                    troopFeatureIds = listOf(3301, 3302),
+                ),
+            ),
+        )
+
+        assertEquals(
+            setOf(
+                296104, 296106, 296132,
+                296104, 296106, 296133, 296143,
+                296301, 296302, 296332,
+            ),
+            team.preparationSources.mapTo(mutableSetOf()) { it.sourceId },
+        )
+        assertEquals(
+            setOf(BattleStat.ATTACK, BattleStat.DEFENSE, BattleStat.STRATEGY),
+            team.preparationEffects
+                .filter { it.sourceId == 296143 }
+                .mapTo(mutableSetOf()) { it.stat },
+        )
+        assertTrue(team.preparationEffects.filter { it.sourceId == 296143 }.all {
+            !it.percent && it.deltaExact == 18.0
+        })
+        assertEquals(
+            -1.0,
+            team.preparationEffects.single { it.sourceId == 296133 }.deltaExact,
+        )
+        assertEquals(
+            "2e".toInt(36),
+            team.preparationActions.single { it.sourceId == 296332 }.actionId,
+        )
     }
 
     @Test

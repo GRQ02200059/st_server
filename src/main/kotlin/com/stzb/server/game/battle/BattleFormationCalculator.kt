@@ -2,6 +2,7 @@ package com.stzb.server.game.battle
 
 import com.stzb.server.game.ClientTroopFeatureRepository
 import com.stzb.server.game.ClientEquipmentSkillRepository
+import com.stzb.server.game.ClientTroopTypeRepository
 
 /**
  * Computes the immutable battle-entry snapshot. Runtime buffs never mutate
@@ -14,6 +15,8 @@ class BattleFormationCalculator(
         ClientTroopFeatureRepository.loadDefault(),
     private val equipmentSkillRepository: ClientEquipmentSkillRepository =
         ClientEquipmentSkillRepository.loadDefault(),
+    private val troopTypeRepository: ClientTroopTypeRepository =
+        ClientTroopTypeRepository.loadDefault(),
 ) {
     fun calculate(specs: List<BattleHeroSpec>): BattleTeam {
         require(specs.map { it.position }.distinct().size == specs.size) { "同一部队内站位不能重复" }
@@ -30,7 +33,8 @@ class BattleFormationCalculator(
             countryEffects(resolvedSpecs) +
                 troopTypeEffects(resolvedSpecs) +
                 troopFeatureEffects(troopFeatureSources) +
-                equipmentEffects(resolvedSpecs)
+                equipmentEffects(resolvedSpecs) +
+                surfaceEffects(resolvedSpecs)
         val heroes = resolvedSpecs.map { spec ->
             val heroConfig = config.hero(spec.heroId) ?: error("未知武将配置: ${spec.heroId}")
             val equipmentModifiers = equipmentModifiers(spec)
@@ -69,11 +73,13 @@ class BattleFormationCalculator(
                 equipmentIds = spec.equipmentIds,
                 modifiers =
                     equipmentRuntimeModifiers(spec) +
-                        troopRuntimeModifiers(troopFeatureSources, spec.position),
+                        troopRuntimeModifiers(troopFeatureSources, spec.position) +
+                        surfaceRuntimeModifiers(spec),
                 level = level,
                 advanceLevel = advance,
                 morale = spec.morale.coerceAtLeast(0),
                 inherentStats = inherentStats,
+                surfaceSkillId = spec.surfaceSkillId,
             )
         }
         return BattleTeam(
@@ -95,12 +101,23 @@ class BattleFormationCalculator(
                             sourcePosition = spec.position,
                         )
                     }
+                } +
+                specs.mapNotNull { spec ->
+                    spec.surfaceSkillId.takeIf { it > 0 }?.let { surfaceSkillId ->
+                        BattlePreparationSource(
+                            stage = BattlePreparationStage.SURFACE,
+                            sourceId = surfaceSkillId,
+                            sourcePosition = spec.position,
+                        )
+                    }
                 },
             preparationEffects = materializeEffects(staticEffects, resolvedSpecs),
             preparationModifiers = preparationModifiers,
             preparationActions =
+                troopPreparationActions(troopFeatureSources) +
                 equipmentPreparationActions(resolvedSpecs) +
-                    equipmentFeaturePreparationActions(resolvedSpecs),
+                    equipmentFeaturePreparationActions(resolvedSpecs) +
+                    surfacePreparationActions(resolvedSpecs),
         )
     }
 
@@ -115,31 +132,31 @@ class BattleFormationCalculator(
 
     private fun troopFeatureSources(specs: List<BattleHeroSpec>): List<TroopFeatureSource> =
         specs.flatMap { spec ->
-            spec.troopFeatureIds.take(2).flatMap { featureId ->
-                troopFeatureRepository.skillIds(featureId).flatMap { skillId ->
-                    val sourceIds = when (skillId) {
-                        296_106 -> listOf(296_106) +
-                            listOfNotNull(296_132.takeIf { spec.position == 0 })
-                        296_206 -> listOf(296_206) +
-                            listOfNotNull(296_232.takeIf { spec.position == 0 })
-                        else -> listOf(skillId)
-                    }
-                    sourceIds.map { sourceId ->
-                        TroopFeatureSource(spec.position, sourceId)
-                    }
-                }
+            val learnedSkills = spec.troopFeatureIds.take(2).flatMap(troopFeatureRepository::skillIds)
+            val heroType = spec.heroType ?: config.hero(spec.heroId)?.heroType
+            val inherentSkills = heroType?.let(troopTypeRepository::skillIds).orEmpty()
+            (learnedSkills + inherentSkills).distinct().flatMap { skillId ->
+                listOf(TroopFeatureSource(spec.position, skillId))
             }
         }
 
     private fun troopFeatureEffects(sources: List<TroopFeatureSource>): List<StaticEffect> =
         sources.flatMap { source ->
-            if (source.skillId != 296_104) return@flatMap emptyList()
-            when (source.position) {
-                0 -> listOf(BattleStat.ATTACK, BattleStat.DEFENSE, BattleStat.STRATEGY)
-                    .map { stat -> fixedTroopEffect(source, stat, 6) }
-                1 -> listOf(BattleStat.DEFENSE, BattleStat.STRATEGY)
-                    .map { stat -> fixedTroopEffect(source, stat, 10) }
-                2 -> listOf(fixedTroopEffect(source, BattleStat.DEFENSE, 24))
+            when (source.skillId) {
+                296_104 -> when (source.position) {
+                    0 -> listOf(BattleStat.ATTACK, BattleStat.DEFENSE, BattleStat.STRATEGY)
+                        .map { stat -> fixedTroopEffect(source, stat, 6) }
+                    1 -> listOf(BattleStat.DEFENSE, BattleStat.STRATEGY)
+                        .map { stat -> fixedTroopEffect(source, stat, 10) }
+                    2 -> listOf(fixedTroopEffect(source, BattleStat.DEFENSE, 24))
+                    else -> emptyList()
+                }
+                296_133 -> listOf(fixedTroopEffect(source, BattleStat.HIT_RANGE, -1))
+                296_141 -> listOf(fixedTroopEffect(source, BattleStat.HIT_RANGE, 1))
+                296_143 -> listOf(BattleStat.ATTACK, BattleStat.DEFENSE, BattleStat.STRATEGY)
+                    .map { stat -> fixedTroopEffect(source, stat, 18) }
+                296_241 -> listOf(fixedTroopEffect(source, BattleStat.SPEED, -15))
+                296_341 -> listOf(fixedTroopEffect(source, BattleStat.SPEED, 15))
                 else -> emptyList()
             }
         }
@@ -169,6 +186,16 @@ class BattleFormationCalculator(
                         amount = 8,
                     )
                 }
+                296_243 -> listOf(522, 524).map { effectId ->
+                    BattlePreparationModifier(
+                        stage = BattlePreparationStage.TROOP,
+                        sourceId = source.skillId,
+                        sourcePosition = source.position,
+                        targetPosition = source.position,
+                        effectId = effectId,
+                        amount = 6,
+                    )
+                }
                 else -> emptyList()
             }
         }
@@ -183,9 +210,121 @@ class BattleFormationCalculator(
                 when (source.skillId) {
                     296_105 -> BattleModifier.DamageTakenPercent(percent = -8)
                     296_132, 296_232 -> BattleModifier.DamageDealtPercent(percent = 8)
+                    296_233 -> BattleModifier.DamageTakenPercent(
+                        origin = DamageOrigin.PURSUIT,
+                        percent = -20,
+                    )
+                    296_243 -> BattleModifier.DamageTakenPercent(percent = -6)
                     else -> null
                 }
             }
+
+    private fun troopPreparationActions(
+        sources: List<TroopFeatureSource>,
+    ): List<BattlePreparationAction> =
+        sources.mapNotNull { source ->
+            val actionId = when (source.skillId) {
+                296_231 -> "78".toInt(36)
+                296_233 -> "7c".toInt(36)
+                296_203 -> "79".toInt(36)
+                296_332 -> "2e".toInt(36)
+                296_333 -> "a5".toInt(36)
+                else -> return@mapNotNull null
+            }
+            BattlePreparationAction(
+                stage = BattlePreparationStage.TROOP,
+                sourceId = source.skillId,
+                sourcePosition = source.position,
+                targetPosition = source.position,
+                actionId = actionId,
+                amountExact = when (source.skillId) {
+                    296_203 -> 10.0
+                    296_231 -> 12.0
+                    296_233 -> 20.0
+                    296_333 -> 1.0
+                    else -> null
+                },
+            )
+        }
+
+    private fun surfaceRuntimeModifiers(spec: BattleHeroSpec): List<BattleModifier> {
+        val skillId = spec.surfaceSkillId.takeIf { it > 0 } ?: return emptyList()
+        return config.skillDetails(skillId).mapNotNull { detail ->
+            if (detail.calcPos != 31) return@mapNotNull null
+            val amount = detail.constantParam * detail.initEffectRatio / 100
+            when (detail.effectId) {
+                531 -> BattleModifier.DamageDealtPercent(
+                    school = DamageSchool.PHYSICAL,
+                    percent = amount,
+                )
+                533 -> BattleModifier.DamageDealtPercent(
+                    school = DamageSchool.STRATEGY,
+                    percent = amount,
+                )
+                522 -> BattleModifier.DamageTakenPercent(
+                    school = DamageSchool.PHYSICAL,
+                    percent = -amount,
+                )
+                524 -> BattleModifier.DamageTakenPercent(
+                    school = DamageSchool.STRATEGY,
+                    percent = -amount,
+                )
+                else -> null
+            }
+        }
+    }
+
+    /**
+     * The active entry in Tb_hero.hero_features is itself a battle skill. The
+     * client resolves its property additions through the ordinary skill-detail
+     * table at level 1, so retain the configured detail order and scaling here.
+     */
+    private fun surfaceEffects(specs: List<BattleHeroSpec>): List<StaticEffect> =
+        specs.flatMap { spec ->
+            val skillId = spec.surfaceSkillId.takeIf { it > 0 } ?: return@flatMap emptyList()
+            config.skillDetails(skillId).mapNotNull { detail ->
+                val stat = detail.effectId.toBattleStat() ?: return@mapNotNull null
+                if (detail.effectId !in 101..105 || detail.calcPos != 0) return@mapNotNull null
+                val scaledConstant = detail.constantParam.toDouble() * detail.initEffectRatio / 100.0
+                val percent = kotlin.math.abs(scaledConstant) > 500_000.0
+                val strength = if (percent) {
+                    scaledConstant / PERCENT_ATTRIBUTE_SCALE
+                } else {
+                    scaledConstant / FLAT_ATTRIBUTE_SCALE
+                }
+                StaticEffect(
+                    stage = BattlePreparationStage.SURFACE,
+                    sourceId = skillId,
+                    sourcePosition = spec.position,
+                    targetPosition = spec.position,
+                    stat = stat,
+                    strength = strength.toInt(),
+                    strengthExact = strength,
+                    percent = percent,
+                )
+            }
+        }
+
+    private fun surfacePreparationActions(
+        specs: List<BattleHeroSpec>,
+    ): List<BattlePreparationAction> =
+        specs.flatMap { spec ->
+            val skillId = spec.surfaceSkillId.takeIf { it > 0 } ?: return@flatMap emptyList()
+            config.skillDetails(skillId).mapNotNull { detail ->
+                if (detail.calcPos != 31 || detail.effectId !in SURFACE_MODIFIER_EFFECTS) {
+                    return@mapNotNull null
+                }
+                BattlePreparationAction(
+                    stage = BattlePreparationStage.SURFACE,
+                    sourceId = skillId,
+                    sourcePosition = spec.position,
+                    targetPosition = spec.position,
+                    actionId = "0s".toInt(36),
+                    actionParameter = detail.effectId,
+                    compactStatusAction = true,
+                )
+            }
+        }
 
     private fun fixedTroopEffect(
         source: TroopFeatureSource,
@@ -335,6 +474,11 @@ class BattleFormationCalculator(
                         251 -> "99".toInt(36)
                         533 -> if (detail.effectParam == 3) "dr".toInt(36) else return@mapNotNull null
                         504 -> "1w".toInt(36)
+                        122 -> if (detail.calcPos in EQUIPMENT_PREPARATION_CHILD_CALC_POSITIONS) {
+                            "8c".toInt(36)
+                        } else {
+                            return@mapNotNull null
+                        }
                         else -> return@mapNotNull null
                     }
                     val scale = if (detail.effectId == 161) 1_000.0 else 1.0
@@ -345,12 +489,15 @@ class BattleFormationCalculator(
                         targetPosition = if (detail.effectId == 504) 0 else spec.position,
                         actionId = actionId,
                         amountExact = (detail.constantParam * level / scale).takeUnless {
-                            detail.effectId == 504
+                            detail.effectId in setOf(122, 504)
                         },
-                        actionParameter = detail.effectParam.takeIf {
-                            detail.effectId in setOf(251, 533)
+                        actionParameter = when (detail.effectId) {
+                            122 -> detail.constantParam
+                            251, 533 -> detail.effectParam
+                            else -> null
                         },
                         appendSourcePosition = detail.effectId == 504,
+                        compactStatusAction = detail.effectId == 122,
                         containerSourceId = equipmentId,
                     )
                 }
@@ -362,23 +509,49 @@ class BattleFormationCalculator(
     ): List<BattlePreparationAction> =
         specs.flatMap { spec ->
             val equipmentId = spec.equipmentIds.singleOrNull() ?: return@flatMap emptyList()
-            val initialSkillId = config.hero(spec.heroId)?.initialSkillId
-                ?.takeIf { it > 0 }
-                ?: return@flatMap emptyList()
-            spec.equipmentFeatureSkillIds.mapIndexedNotNull { index, featureSkillId ->
+            val initialSkillId = config.hero(spec.heroId)?.initialSkillId?.takeIf { it > 0 }
+            spec.equipmentFeatureSkillIds.flatMapIndexed { index, featureSkillId ->
                 val level = spec.equipmentFeatureSkillLevels.getOrNull(index)
                     ?.takeIf { it > 0 }
-                    ?: return@mapIndexedNotNull null
-                BattlePreparationAction(
-                    stage = BattlePreparationStage.EQUIPMENT,
-                    sourceId = featureSkillId,
-                    sourcePosition = spec.position,
-                    targetPosition = spec.position,
-                    actionId = "8x".toInt(36),
-                    amountExact = level.toDouble(),
-                    actionParameter = initialSkillId,
-                    containerSourceId = equipmentId,
-                )
+                    ?: return@flatMapIndexed emptyList()
+                config.skillDetails(featureSkillId).mapNotNull { detail ->
+                    when (detail.effectId) {
+                        122 -> BattlePreparationAction(
+                            stage = BattlePreparationStage.EQUIPMENT,
+                            sourceId = featureSkillId,
+                            sourcePosition = spec.position,
+                            targetPosition = spec.position,
+                            actionId = "8c".toInt(36),
+                            actionParameter = detail.constantParam,
+                            compactStatusAction = true,
+                            containerSourceId = equipmentId,
+                        )
+                        131 -> initialSkillId?.let { skillId ->
+                            BattlePreparationAction(
+                                stage = BattlePreparationStage.EQUIPMENT,
+                                sourceId = featureSkillId,
+                                sourcePosition = spec.position,
+                                targetPosition = spec.position,
+                                actionId = "8x".toInt(36),
+                                amountExact = level.toDouble(),
+                                actionParameter = skillId,
+                                containerSourceId = equipmentId,
+                            )
+                        }
+                        271 -> BattlePreparationAction(
+                            stage = BattlePreparationStage.EQUIPMENT,
+                            sourceId = featureSkillId,
+                            sourcePosition = spec.position,
+                            targetPosition = spec.position,
+                            actionId = "9c".toInt(36),
+                            amountExact = level.toDouble(),
+                            containerSourceId = equipmentId,
+                        )
+                        else -> null
+                    }
+                }.distinctBy { action ->
+                    listOf(action.actionId, action.sourceId, action.actionParameter, action.amountExact)
+                }
             }
         }
 
@@ -486,12 +659,15 @@ class BattleFormationCalculator(
         }
 
     private companion object {
+        val EQUIPMENT_PREPARATION_CHILD_CALC_POSITIONS =
+            setOf(31, 311, 981, 991, 992, 995, 3_116, 999_999)
         const val DEFAULT_SKILL_LEVEL = 1
         const val DEFAULT_EQUIPMENT_LEVEL = 1
         const val COUNTRY_BONUS_PERCENT = 10
         const val FLAT_ATTRIBUTE_SCALE = 100.0
         const val PERCENT_ATTRIBUTE_SCALE = 1_000_000.0
         val PREPARATION_MODIFIER_EFFECTS = setOf(522, 524, 531, 533)
+        val SURFACE_MODIFIER_EFFECTS = setOf(522, 524, 531, 533)
         val PRIMARY_STATS = listOf(
             BattleStat.ATTACK,
             BattleStat.DEFENSE,
@@ -534,6 +710,7 @@ private fun Int.toBattleStat(): BattleStat? = when (this) {
     102 -> BattleStat.DEFENSE
     103 -> BattleStat.STRATEGY
     104 -> BattleStat.SPEED
+    105 -> BattleStat.SIEGE
     106 -> BattleStat.HIT_RANGE
     else -> null
 }

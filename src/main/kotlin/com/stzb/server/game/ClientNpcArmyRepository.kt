@@ -13,6 +13,8 @@ data class ClientNpcHero(
     val heroId: Int,
     val level: Int,
     val troops: Int,
+    val heroType: Int,
+    val heroFeatureSkillId: Int,
     val skillIds: List<Int>,
     val skillLevels: List<Int>,
     val troopFeatureIds: List<Int>,
@@ -103,6 +105,38 @@ class ClientTroopFeatureRepository private constructor(
             value.split(',', ';')
                 .mapNotNull(String::toIntOrNull)
                 .filter { it > 0 }
+    }
+}
+
+class ClientTroopTypeRepository private constructor(
+    private val featureRepository: ClientTroopFeatureRepository,
+) {
+    private val skillIdsByHeroType: Map<Int, List<Int>> =
+        (1..999).associateWith(::configuredSkillIds).filterValues(List<Int>::isNotEmpty)
+
+    fun skillIds(heroType: Int): List<Int> = skillIdsByHeroType[heroType].orEmpty()
+
+    fun heroTypeForSkillIds(skillIds: Collection<Int>): Int? {
+        val candidates = skillIds.toSet()
+        return skillIdsByHeroType.entries
+            .map { (heroType, inherentSkills) ->
+                heroType to inherentSkills.count(candidates::contains)
+            }
+            .filter { (_, matchingSkills) -> matchingSkills > 0 }
+            .maxWithOrNull(compareBy<Pair<Int, Int>> { it.second }.thenBy { it.first })
+            ?.first
+    }
+
+    companion object {
+        fun loadDefault(): ClientTroopTypeRepository =
+            ClientTroopTypeRepository(ClientTroopFeatureRepository.loadDefault())
+    }
+
+    private fun configuredSkillIds(heroType: Int): List<Int> {
+        val baseType = heroType % 10
+        if (baseType !in 1..3) return emptyList()
+        val featureId = 1_000 + baseType * 100 + heroType
+        return featureRepository.skillIds(featureId)
     }
 }
 
@@ -327,8 +361,8 @@ class ClientNpcArmyRepository private constructor(
                     val heroId = table.reader.int()
                     val level = table.reader.int()
                     val troops = table.reader.int()
-                    table.reader.int() // hero_type
-                    table.reader.int() // hero_feature
+                    val heroType = table.reader.int()
+                    val heroFeatureSkillId = table.reader.int()
                     val equipmentUid = table.reader.int()
                     val skill = table.string(table.reader.int()).orEmpty()
                     val troopFeatures = table.string(table.reader.int()).orEmpty()
@@ -341,6 +375,8 @@ class ClientNpcArmyRepository private constructor(
                             heroId = heroId,
                             level = level,
                             troops = troops,
+                            heroType = heroType,
+                            heroFeatureSkillId = heroFeatureSkillId,
                             skillIds = skills.map(IdLevel::id),
                             skillLevels = skills.map(IdLevel::level),
                             troopFeatureIds = parseIds(troopFeatures),

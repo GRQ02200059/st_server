@@ -99,6 +99,34 @@ class ControlEffectHandlersTest {
     }
 
     @Test
+    fun `command immunity blocks hostile command effects but not active or allied command effects`() {
+        val store = BattleEffectStore()
+        store.apply(active(121, target = target, category = EffectCategory.BENEFICIAL))
+
+        val hostileCommand = execute(
+            501,
+            store,
+            rule = rule(501).copy(skillKind = SkillKind.COMMAND, rawSkillType = 2),
+        )
+        assertEquals(121, hostileCommand.stateChanges.filterIsInstance<EffectBlockedChange>()
+            .single().blockingEffectId)
+
+        val hostileActive = execute(501, store)
+        assertTrue(hostileActive.stateChanges.none { it is EffectBlockedChange })
+
+        val alliedCommand = execute(
+            511,
+            store,
+            rule = rule(511).copy(
+                raw = rule(511).raw.copy(attackType = 21),
+                skillKind = SkillKind.COMMAND,
+                rawSkillType = 2,
+            ),
+        )
+        assertTrue(alliedCommand.stateChanges.none { it is EffectBlockedChange })
+    }
+
+    @Test
     fun `only controls preventing action or active casting cancel target preparation`() {
         val cancellationFamilies = setOf(501, 701, 901, 502, 702, 902)
         val nonCancellationFamilies = setOf(503, 703, 903, 505, 552, 752, 952)
@@ -371,10 +399,10 @@ class ControlEffectHandlersTest {
         effectId: Int,
         store: BattleEffectStore,
         selectedTarget: BattleHeroRef = target,
+        rule: SkillEffectRule = rule(effectId),
     ): EffectExecution {
-        val effectRule = rule(effectId)
-        return registry(listOf(effectRule), store).execute(
-            effectRule,
+        return registry(listOf(rule), store).execute(
+            rule,
             context(selectedTarget),
         )
     }
@@ -383,7 +411,7 @@ class ControlEffectHandlersTest {
         @Suppress("UNUSED_PARAMETER") rules: List<SkillEffectRule>,
         store: BattleEffectStore = BattleEffectStore(),
     ): BattleEffectRegistry =
-        BattleEffectRegistry.strict(graph(controlIds.map(::rule))).registerControlEffects(store)
+        BattleEffectRegistry.strict(graph(rules)).registerControlEffects(store)
 
     private fun graph(rules: List<SkillEffectRule>) = SkillRuleGraph(
         rules = mapOf(

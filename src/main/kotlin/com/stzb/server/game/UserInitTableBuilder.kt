@@ -85,17 +85,23 @@ object UserInitTableBuilder {
         val playerId = state.userId
         val playerCityWid = state.cityWid
         val worldProjection = world.withPlayer(state)
+        val union = UnionStateRepository.forUser(playerId)
         val root = nf.arrayNode()
         root.add(schema)                                   // [0] schema
-        root.add(table("Tb_user", tbUser(state)))
+        root.add(table("Tb_user", tbUser(state, union)))
         root.add(table("Tb_user_res", tbUserRes(state)))
         root.add(table("Tb_user_city", tbUserCity(playerId, playerCityWid, serverOpenTime)))
         root.add(table("Tb_world_city", *tbWorldCities(worldProjection).toTypedArray()))
+        val buildLevels = state.allBuildLevels().toMutableMap().apply {
+            putIfAbsent(10, 1)
+            putIfAbsent(30, PlayerState.maxBuildLevel(30))
+        }
         root.add(
             table(
                 "Tb_user_build",
-                tbUserBuild(playerId, playerCityWid, 10, 1),
-                tbUserBuild(playerId, playerCityWid, 30, PlayerState.maxBuildLevel(30)),
+                *buildLevels.toSortedMap().map { (buildId, level) ->
+                    tbUserBuild(playerId, playerCityWid, buildId, level)
+                }.toTypedArray(),
             ),
         )
         root.add(table("Tb_build_effect_city", tbBuildEffectCity(playerId, playerCityWid)))
@@ -103,7 +109,7 @@ object UserInitTableBuilder {
         // 客户端会用内城配置补齐缺省建筑，暂不伪造不存在的 wid。
         root.add(table("Tb_user_inner_city_building"))
         root.add(table("Tb_user_inner_city_task"))
-        root.add(table("Tb_army", tbArmy(state)))
+        root.add(table("Tb_army", *state.armyIds().map { armyId -> tbArmy(state, armyId) }.toTypedArray()))
         root.add(table("Tb_activity", tbActivity(playerId)))
         root.add(
             table(
@@ -126,7 +132,23 @@ object UserInitTableBuilder {
                 }.toTypedArray(),
             ),
         )
-        root.add(table("Tb_hero", *state.allHeroes().map { tbHero(it, playerId, state.primaryArmyId()) }.toTypedArray()))
+        val specialFacadeHeroes = state.specialArmyFacadeCards()
+            .map { card -> tbSpecialArmyFacade(playerId, card) }
+        root.add(
+            table(
+                "Tb_hero",
+                *(state.allHeroes().map { tbHero(it, playerId) } + specialFacadeHeroes).toTypedArray(),
+            ),
+        )
+        val playableHeroes = state.allHeroes()
+            .filterNot(PlayerHero::isAdvanceMaterial)
+            .distinctBy(PlayerHero::heroId)
+        root.add(
+            table(
+                "Tb_hero_achieve",
+                *playableHeroes.map { hero -> tbHeroAchieve(playerId, hero) }.toTypedArray(),
+            ),
+        )
         root.add(
             table(
                 "Tb_user_skill",
@@ -135,27 +157,39 @@ object UserInitTableBuilder {
                 }.toTypedArray(),
             ),
         )
+        val normalFacades = HeroFacadeCatalog.all().mapIndexed { index, facade ->
+            tbUserFacadeCard(playerId, index, facade)
+        }
+        val borderFacades = playableHeroes.flatMapIndexed { heroIndex, hero ->
+            CardBorderCatalog.normalBorderIds().mapIndexed { borderIndex, borderId ->
+                tbUserCardBorderFacade(
+                    userId = playerId,
+                    rowIndex = normalFacades.size +
+                        heroIndex * CardBorderCatalog.normalBorderIds().size + borderIndex,
+                    baseHeroId = hero.heroId,
+                    borderId = borderId,
+                )
+            }
+        }
         root.add(
             table(
                 "Tb_user_facade_card",
-                *HeroFacadeCatalog.all().mapIndexed { index, facade ->
-                    tbUserFacadeCard(playerId, index, facade)
-                }.toTypedArray(),
+                *(normalFacades + borderFacades).toTypedArray(),
             ),
         )
         root.add(
             table(
                 "Tb_user_army_facade_card",
-                *FacadeCatalog.armyFacadeIds.map { facadeId ->
-                    tbUserArmyFacadeCard(playerId, facadeId)
-                }.toTypedArray(),
+                *state.armyFacadeCards()
+                    .map { card -> tbUserArmyFacadeCard(playerId, card) }
+                    .toTypedArray(),
             ),
         )
         root.add(
             table(
                 "Tb_user_build_facade",
                 *FacadeCatalog.cityFacadeIds.map { facadeId ->
-                    tbUserBuildFacade(playerId, facadeId)
+                    tbUserBuildFacade(playerId, playerCityWid, facadeId)
                 }.toTypedArray(),
             ),
         )
@@ -207,6 +241,10 @@ object UserInitTableBuilder {
             "Tb_user_temp_policy",
             "Tb_user_policy_mark",
             "Tb_world_mark",
+            "Tb_user_npc_army",
+            "Tb_developed_land",
+            "Tb_land_reclamation",
+            "Tb_store_house",
         )
         return root
     }
@@ -235,8 +273,9 @@ object UserInitTableBuilder {
         Row(nf, fieldTypes[tableName] ?: error("未知表字段类型: $tableName"))
 
     /** Tb_user: 0=userid,1=passport,2=aid,3=login_server_userid,4=help_id,5=role_id,6=name,
-     *  7=role_name,8=state,17=city_wid,38=power,39=newbie_guide,55=force,60=country,61=time_zone。 */
-    private fun tbUser(state: PlayerState): ArrayNode =
+     *  7=role_name,8=state,10=union_id,11=union_name,17=city_wid,38=power,39=newbie_guide,
+     *  55=force,60=country,61=time_zone。 */
+    private fun tbUser(state: PlayerState, union: PlayerUnion?): ArrayNode =
         row("Tb_user")
             .i(0, state.userId)
             .s(1, "passport_${state.userId}")
@@ -247,6 +286,8 @@ object UserInitTableBuilder {
             .s(6, state.roleName)               // name
             .s(7, state.roleName)               // role_name
             .i(8, 1)                      // state = 正常
+            .i(10, union?.unionId ?: 0)
+            .s(11, union?.name ?: "")
             .i(17, state.cityWid)         // city_wid (== MainPos)
             .i(19, state.resources.yuanBao) // yuan_bao_cur
             .i(20, state.resources.hufu)  // hufu_cur
@@ -398,8 +439,9 @@ object UserInitTableBuilder {
             }
         }.values.toList()
 
-    /** Tb_world_city: 0=wid,1=city_type,5=name(string),6=userid,11=force_type,
-     *  12=durability_cur,13=durability_max,19=end_time,21=belong_city,22=state。 */
+    /** Tb_world_city: 0=wid,1=city_type,3=facade,4=facade3d,5=name(string),
+     *  6=userid,11=force_type,12=durability_cur,13=durability_max,19=end_time,
+     *  21=belong_city,22=state。 */
     private fun tbWorldCity(
         userId: Int,
         wid: Int,
@@ -410,6 +452,9 @@ object UserInitTableBuilder {
         row("Tb_world_city")
             .i(0, wid)
             .i(1, cityType)
+            .i(2, 0)
+            .s(3, if (cityType == 1) FacadeCatalog.DEFAULT_CITY_MAP_FACADE else "")
+            .s(4, if (cityType == 1) FacadeCatalog.DEFAULT_CITY_BUILD_DATA else "")
             .s(5, roleName)               // name
             .i(6, userId)                 // userid
             .i(11, 0)                     // force_type = UserForceType.NORMAL
@@ -466,18 +511,18 @@ object UserInitTableBuilder {
             .i(22, 0)
             .i(23, 5)                     // army_max
             .i(24, 0)                     // army_pos_counsellor
-            .i(25, 1)                     // army_pos_front
+            .i(25, 5)                     // army_pos_front
             .i(26, 100)                   // army_cost_max => 10.0 cost
             .i(27, 0).i(28, 0).i(29, 0).i(30, 0)
             .i(31, 1_000_000)             // res_max
             .arr
 
     /** Tb_army: 主城空队伍容器，队伍/武将相关 UI 会枚举本表。 */
-    private fun tbArmy(state: PlayerState): ArrayNode {
-        val team = state.teamHeroes()
-        val march = state.activeMarch()
+    private fun tbArmy(state: PlayerState, armyId: Int): ArrayNode {
+        val team = state.teamHeroes(armyId)
+        val march = state.activeMarch(armyId)
         return row("Tb_army")
-            .i(0, state.primaryArmyId())
+            .i(0, armyId)
             .i(1, state.userId)
             .i(2, march?.fromWid ?: state.cityWid) // reside_wid
             .i(3, 0)
@@ -496,15 +541,16 @@ object UserInitTableBuilder {
             .i(16, march?.beginSec ?: 0)        // begin_time
             .i(17, march?.endSec ?: 0)          // end_time
             .i(18, 100)
+            .s(61, state.armyFacadeIds(armyId)) // facade_ids
             .arr
     }
 
-    private fun tbHero(hero: PlayerHero, userId: Int, primaryArmyId: Int): ArrayNode =
+    private fun tbHero(hero: PlayerHero, userId: Int): ArrayNode =
         row("Tb_hero")
             .i(0, hero.heroUid)
             .i(1, hero.heroId)
             .i(2, userId)
-            .i(3, hero.armyId.takeIf { it == primaryArmyId } ?: 0) // legacy login exposes one army
+            .i(3, hero.armyId)
             .i(4, 0)                      // hurt_end_time
             .i(5, 0)                      // state
             .i(6, hero.level)             // level
@@ -518,11 +564,11 @@ object UserInitTableBuilder {
             .i(14, 0)
             .i(15, 0)
             .i(16, 0)
-            .i(17, 0)
-            .i(18, 0)
-            .i(19, 0)
-            .i(20, 0)
-            .i(21, 0)
+            .i(17, hero.attributePoints.attack)
+            .i(18, hero.attributePoints.defense)
+            .i(19, hero.attributePoints.strategy)
+            .i(20, hero.attributePoints.speed)
+            .i(21, hero.attributePoints.siege)
             .s(22, hero.skillString())       // skill: persistent three-slot state
             .i(23, hero.gearUid)              // gearid_u
             .i(24, 1)                        // awake_state: default awakened
@@ -532,8 +578,31 @@ object UserInitTableBuilder {
             .s(34, "")
             .s(35, "")
             .i(36, 0)
-            .s(37, "")
+            .s(37, hero.heroFeaturesString()) // hero_features: feature_id, enabled
+            .i(42, hero.cardBorder)         // card_border
             .i(43, hero.dynamicIcon)        // dynamic_icon
+            .i(72, hero.armyFacadeCardId)   // army_facade_card_id
+            .arr
+
+    private fun tbSpecialArmyFacade(
+        userId: Int,
+        card: PlayerSpecialArmyFacadeCard,
+    ): ArrayNode =
+        row("Tb_hero")
+            .i(0, card.heroUid)
+            .i(1, card.facadeId)
+            .i(2, userId)
+            .i(3, 0)
+            .i(4, 0)
+            .i(5, card.state)
+            .i(6, 1)
+            .i(7, PlayerHero.MAX_STAMINA)
+            .i(9, 1)
+            .i(11, 0)
+            .s(22, "0,0;0,0;0,0;")
+            .i(24, 1)
+            .i(32, 1)
+            .i(72, 0)
             .arr
 
     /**
@@ -579,34 +648,83 @@ object UserInitTableBuilder {
             .i(13, 1) // already read
             .arr
 
-    /** 行军外观: facade_heroid>0 且 cfg_hero_id=0 表示永久通用持有。 */
-    private fun tbUserArmyFacadeCard(userId: Int, facadeId: Int): ArrayNode =
-        row("Tb_user_army_facade_card")
-            .i(0, facadeId)
+    private fun tbUserCardBorderFacade(
+        userId: Int,
+        rowIndex: Int,
+        baseHeroId: Int,
+        borderId: Int,
+    ): ArrayNode =
+        row("Tb_user_facade_card")
+            .i(0, userId * 10_000 + rowIndex + 1)
             .i(1, userId)
-            .i(2, facadeId)
-            .i(3, 0)
+            .i(2, baseHeroId)
+            .i(3, borderId)
             .i(4, 0)
             .i(5, 0)
+            .i(6, 0)
+            .i(7, 0)
+            .s(8, "").s(9, "")
+            .i(10, 0)
+            .s(11, "").s(12, "")
+            .i(13, 1)
+            .arr
+
+    private fun tbHeroAchieve(userId: Int, hero: PlayerHero): ArrayNode =
+        row("Tb_hero_achieve")
+            .i(0, hero.heroUid)
+            .i(1, userId)
+            .i(2, hero.heroId)
+            .s(3, "")
+            .s(4, "")
+            .i(5, 2)
+            .i(6, hero.createdAtSec)
+            .i(7, 0)
+            .s(8, "")
+            .i(9, 0)
+            .s(10, "")
+            .s(11, "")
+            .s(12, "")
+            .s(13, "")
+            .s(14, "")
+            .arr
+
+    /** 行军外观: facade_heroid>0 且 cfg_hero_id=0 表示永久通用持有。 */
+    private fun tbUserArmyFacadeCard(
+        userId: Int,
+        card: PlayerArmyFacadeCard,
+    ): ArrayNode =
+        row("Tb_user_army_facade_card")
+            .i(0, card.cardId)
+            .i(1, userId)
+            .i(2, card.facadeId)
+            .i(3, 0)
+            .i(4, 0)
+            .i(5, card.cfgHeroId)
             .i(6, 0)
             .i(7, 0)
             .arr
 
-    /** 主城外观: end_time=0 为永久，active_wid=0 表示已拥有但尚未装备。 */
-    private fun tbUserBuildFacade(userId: Int, facadeId: Int): ArrayNode =
-        row("Tb_user_build_facade")
+    /** 主城外观：所有已解锁记录绑定至主城，仅城主府与城墙处于使用状态。 */
+    private fun tbUserBuildFacade(userId: Int, cityWid: Int, facadeId: Int): ArrayNode {
+        val activePos = when (facadeId) {
+            FacadeCatalog.DEFAULT_CITY_FACADE_ID -> FacadeCatalog.DEFAULT_CITY_FACADE_POS
+            FacadeCatalog.DEFAULT_CITY_WALL_FACADE_ID -> FacadeCatalog.DEFAULT_CITY_WALL_POS
+            else -> null
+        }
+        return row("Tb_user_build_facade")
             .i(0, facadeId)
             .i(1, facadeId)
             .i(2, userId)
             .i(3, 0)
-            .i(4, 0)
-            .i(5, 0)
-            .i(6, 0)
+            .i(4, cityWid)
+            .i(5, if (activePos != null) cityWid else 0)
+            .i(6, activePos ?: 0)
             .i(7, 0)
-            .i(8, 0)
+            .i(8, 1)
             .i(9, 0)
             .i(10, 0)
             .arr
+    }
 
     /** Tb_gear: 服务端赠送的库藏武器，满级且状态为持有。 */
     private fun tbGear(
@@ -654,12 +772,13 @@ object UserInitTableBuilder {
             .i(8, 0)
             .arr
 
-    /** Tb_user_stuff: 0=userid,3=protected_popup,62=occupy_land_level(string)。
+    /** Tb_user_stuff: 0=userid,3=protected_popup,34=power_history,62=occupy_land_level(string)。
      *  occupy_land_level 无 ?. 保护 (JustEnterFlowManager:1063), 必须为非 null 字符串。 */
     private fun tbUserStuff(userId: Int): ArrayNode =
         row("Tb_user_stuff")
             .i(0, userId)
             .i(3, 0)                      // protected_popup
+            .i(34, 10_000)                // power_history: unlock client-side chat checks
             .s(62, "1,1,1,1,1,1,1,1,1,") // occupy_land_level: levels 1-9 already occupied
             .i(63, PlayerResources.UNLIMITED_AMOUNT) // hero_card_max
             .arr

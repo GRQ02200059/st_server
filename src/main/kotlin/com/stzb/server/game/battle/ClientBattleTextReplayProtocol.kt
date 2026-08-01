@@ -63,8 +63,10 @@ internal object ClientBattleTextReplayProtocol {
     const val SPEED_DECREASED = 55
     const val FLAT_ATTACK = 31
     const val FLAT_DEFENSE = 32
+    const val SKILL_RANGE_CHANGED = 36
     const val FLAT_STRATEGY = 33
     const val FLAT_SPEED = 34
+    const val FLAT_SIEGE = 35
     const val FLAT_ATTACK_RANGE = 36
     const val MODIFIER_APPLIED = 694
     const val TROOP_EFFECT_SOURCE = 285
@@ -72,6 +74,27 @@ internal object ClientBattleTextReplayProtocol {
     const val COMMAND_STAGE_BEGIN = 651
     const val COMMAND_HERO_BEGIN = 644
     const val COMMAND_HERO_END = 645
+    const val SURFACE_STAGE_READY = 639
+    const val SURFACE_STAGE_BEGIN = 636
+    const val SURFACE_EFFECT_SOURCE = 330
+    const val SURFACE_STAGE_END = 638
+    const val PASSIVE_STAGE_BEGIN = 637
+    const val ACTIVE_SKILL_DAMAGE_REDUCTION = 262
+    const val EFFECT_BLOCKED = 210
+    const val INITIALIZATION_READY = 654
+    const val INITIALIZATION_BEGIN = 641
+    const val ATTACKER_INFO_BEGIN = 15
+    const val DEFENDER_INFO_BEGIN = 16
+    const val HERO_INFO_END = 2
+    const val PREPARATION_READY = 215
+    const val PREPARATION_BEGIN = 649
+    const val PREPARATION_RULES_BEGIN = 650
+    const val SYSTEM_STAGE_BEGIN = 631
+    const val COUNTRY_STAGE_BEGIN = 632
+    const val COUNTRY_STAGE_END = 633
+    const val ARMY_STAGE_READY = 640
+    const val TROOP_STAGE_BEGIN = 635
+    const val EQUIPMENT_STAGE_BEGIN = 634
 
     fun position(side: Side, formationPosition: Int): Int {
         require(formationPosition in 0..2) { "battle formation position must be 0..2: $formationPosition" }
@@ -169,7 +192,7 @@ internal object ClientBattleTextReplayProtocol {
             BattleStat.DEFENSE -> FLAT_DEFENSE
             BattleStat.STRATEGY -> FLAT_STRATEGY
             BattleStat.SPEED -> FLAT_SPEED
-            BattleStat.SIEGE -> initialAttributeAction(stat)
+            BattleStat.SIEGE -> FLAT_SIEGE
             BattleStat.HIT_RANGE -> FLAT_ATTACK_RANGE
         }
 
@@ -179,11 +202,12 @@ internal object ClientBattleTextReplayProtocol {
             BattlePreparationStage.ARMY -> ARMY_EFFECT_SOURCE
             BattlePreparationStage.TROOP -> TROOP_EFFECT_SOURCE
             BattlePreparationStage.EQUIPMENT -> EQUIPMENT_EFFECT_SOURCE
+            BattlePreparationStage.SURFACE -> SURFACE_EFFECT_SOURCE
         }
 
     fun supportsPreparationModifier(effectId: Int): Boolean =
         effectId in setOf(521, 522, 523, 524, 531, 532, 533, 534)
 
     fun supportsDerivedPreparationSkill(skillId: Int): Boolean =
-        skillId in 210_000..213_999 || skillId in 450_000..459_999
+        skillId in 210_000..213_999 || skillId == 221_006 || skillId in 450_000..459_999
 }

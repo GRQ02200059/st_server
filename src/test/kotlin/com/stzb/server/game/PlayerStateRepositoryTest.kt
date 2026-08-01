@@ -110,7 +110,7 @@ class PlayerStateRepositoryTest {
     }
 
     @Test
-    fun `default player state has resources main build and empty team`() {
+    fun `default player state has resources level one main build and empty team`() {
         val state = PlayerStateRepository.getOrCreate(userId = 77, cityWid = 10077, roleName = "测试")
 
         assertEquals(77, state.userId)
@@ -118,7 +118,7 @@ class PlayerStateRepositoryTest {
         assertEquals("测试", state.roleName)
         assertEquals(PlayerResources.UNLIMITED_AMOUNT, state.resources.wood)
         assertEquals(PlayerResources.UNLIMITED_AMOUNT, state.resources.yuanBao)
-        assertEquals(PlayerState.MAX_BUILD_LEVEL, state.buildLevel(10))
+        assertEquals(1, state.buildLevel(10))
         assertEquals(listOf(0, 0, 0), state.teamHeroes())
     }
 
@@ -126,9 +126,9 @@ class PlayerStateRepositoryTest {
     fun `building upgrade is stored in player state`() {
         val state = PlayerStateRepository.getOrCreate(userId = 78, cityWid = 10078, roleName = "测试")
 
-        assertEquals(PlayerState.MAX_BUILD_LEVEL, state.upgradeBuild(10, 0))
+        assertEquals(4, state.upgradeBuild(10, 4))
         assertEquals(
-            PlayerState.MAX_BUILD_LEVEL,
+            4,
             PlayerStateRepository.getOrCreate(78, 10078, "测试").buildLevel(10),
         )
     }
@@ -137,7 +137,7 @@ class PlayerStateRepositoryTest {
     fun `building upgrade does not spend unlimited resources`() {
         val state = PlayerStateRepository.getOrCreate(userId = 81, cityWid = 10081, roleName = "测试")
 
-        assertEquals(PlayerState.MAX_BUILD_LEVEL, state.upgradeBuild(10, 0))
+        assertEquals(4, state.upgradeBuild(10, 4))
 
         assertEquals(PlayerResources.UNLIMITED_AMOUNT, state.resources.wood)
         assertEquals(PlayerResources.UNLIMITED_AMOUNT, state.resources.stone)
@@ -150,9 +150,9 @@ class PlayerStateRepositoryTest {
         val state = PlayerStateRepository.getOrCreate(userId = 82, cityWid = 10082, roleName = "测试")
         state.resources.wood = 0
 
-        assertEquals(PlayerState.MAX_BUILD_LEVEL, state.upgradeBuild(10, 0))
+        assertEquals(2, state.upgradeBuild(10, 0))
 
-        assertEquals(PlayerState.MAX_BUILD_LEVEL, state.buildLevel(10))
+        assertEquals(2, state.buildLevel(10))
         assertEquals(0, state.resources.wood)
     }
 

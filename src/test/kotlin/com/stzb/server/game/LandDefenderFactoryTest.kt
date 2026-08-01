@@ -1,5 +1,6 @@
 package com.stzb.server.game
 
+import com.stzb.server.protocol.GameServerConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -29,6 +30,24 @@ class LandDefenderFactoryTest {
         // configured resource levels are 3 and 1 respectively.
         assertEquals(3, factory.levelForWid(10_001))
         assertEquals(1, factory.levelForWid(10_011))
+    }
+
+    @Test
+    fun `default resource map is the map advertised to the client`() {
+        val advertised = LandMapRepository.load(GameServerConfig.CFG_DB_ID)
+        val default = LandMapRepository.loadDefault()
+
+        listOf(15_061_504, 15_071_503, 15_081_505, 15_031_503, 15_031_501).forEach { wid ->
+            assertEquals(advertised.tile(wid), default.tile(wid), "wid=$wid")
+        }
+    }
+
+    @Test
+    fun `default defender map follows the resource map selected by the client config`() {
+        val factory = LandDefenderFactory()
+
+        assertEquals(6, factory.levelForWid(15_061_504))
+        assertEquals(listOf(611, 612), factory.armyIdsForWid(15_061_504))
     }
 
     @Test
@@ -63,6 +82,13 @@ class LandDefenderFactoryTest {
         assertEquals(
             listOf(listOf(3201), listOf(3104), listOf(3104)),
             levelSixFirst.map { it.troopFeatureIds },
+        )
+        assertEquals(listOf(12, 21, 11), levelSixFirst.map { it.heroType })
+        assertEquals(
+            ClientNpcArmyRepository.loadDefault().armiesForPool(6).first().heroes
+                .map { it.heroFeatureSkillId },
+            levelSixFirst.map { it.surfaceSkillId },
+            "NPC hero_feature must survive the client-table to battle-spec boundary",
         )
     }
 

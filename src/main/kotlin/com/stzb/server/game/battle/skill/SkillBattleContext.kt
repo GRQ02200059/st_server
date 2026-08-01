@@ -7,6 +7,7 @@ import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleStats
 import com.stzb.server.game.battle.BattleStatus
 import com.stzb.server.game.battle.Side
+import com.stzb.server.game.battle.SkillKind
 
 enum class SkillHeroGender {
     MALE,
@@ -94,6 +95,8 @@ interface SkillBattleView {
     fun currentMorale(ref: BattleHeroRef): Int?
 
     fun currentAttackRange(ref: BattleHeroRef): Int?
+
+    fun skillRangeBonus(ref: BattleHeroRef, kind: SkillKind): Int = 0
 
     fun linkedTarget(source: BattleHeroRef): BattleHeroRef?
 
