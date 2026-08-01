@@ -57,6 +57,17 @@ class UserHeadIconResponsesTest {
     }
 
     @Test
+    fun `trailing tokens return an empty array`() {
+        val invalidRequests = listOf("[5] trailing", "[5] [6]")
+
+        invalidRequests.forEach { request ->
+            val response = response(request)
+            assertTrue(response.isArray, "request=$request")
+            assertEquals(0, response.size(), "request=$request")
+        }
+    }
+
+    @Test
     fun `invalid entries are ignored without reordering valid ids`() {
         val response = response(
             """[5,null,"6",6.0,{},[],true,2147483648,-2147483649,-2147483648,2147483647,5]""",

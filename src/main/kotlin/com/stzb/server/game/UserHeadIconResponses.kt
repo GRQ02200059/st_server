@@ -1,11 +1,13 @@
 package com.stzb.server.game
 
+import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 
 object UserHeadIconResponses {
     private val mapper = jacksonObjectMapper()
+        .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
 
     fun response(requestBody: String?): String {
         val request = runCatching { mapper.readTree(requestBody ?: "") }
