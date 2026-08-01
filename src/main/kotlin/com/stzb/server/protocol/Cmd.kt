@@ -67,6 +67,7 @@ object Cmd {
     const val NOTIFY_CHAT_MSG = 2100
     const val USER_CHANGE_NAME = 507
     const val RANDOM_ROLE_NAME = 511
+    const val USER_GET_USERS_HEADICON = 514
     const val SYNC_SERVER_TIME = 694
     const val ROTATE_CARD_BORDER_ADD = 1673
     const val ROTATE_CARD_BORDER_REMOVE = 1674

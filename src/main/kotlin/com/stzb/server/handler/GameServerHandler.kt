@@ -20,6 +20,7 @@ import com.stzb.server.game.RecruitResultParser
 import com.stzb.server.game.SkillOperationRequestParser
 import com.stzb.server.game.TeamRequestParser
 import com.stzb.server.game.UnionStateRepository
+import com.stzb.server.game.UserHeadIconResponses
 import com.stzb.server.game.WorldChatRecord
 import com.stzb.server.game.WorldChatStore
 import com.stzb.server.game.WorldProjection
@@ -172,6 +173,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.RANK_LIST -> {
                 logIn(msg)
                 sendRankList(ctx, session, msg)
+            }
+
+            Cmd.USER_GET_USERS_HEADICON -> {
+                logIn(msg)
+                sendUserHeadIcons(ctx, msg)
             }
 
             Cmd.GET_HOMEPAGE_INFO -> {
@@ -1127,6 +1133,14 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         )
         ctx.writeAndFlush(DownPacket.json(Cmd.RANK_LIST, json, dataType = DownType.PLAIN))
         log.info(">> cmd=700 排行榜已下发 (uid=$userId)")
+    }
+
+    private fun sendUserHeadIcons(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val json = UserHeadIconResponses.response(msg.bodyText)
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.USER_GET_USERS_HEADICON, json, dataType = DownType.PLAIN),
+        )
+        log.info(">> cmd=514 用户头像已下发")
     }
 
     private fun sendHomepageInfo(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {

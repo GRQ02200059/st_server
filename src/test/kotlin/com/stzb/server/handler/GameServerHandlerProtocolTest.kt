@@ -200,6 +200,52 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `user head icons preserve requested order and duplicates without mutating repositories`() {
+        val channel = newChannel()
+        val accountKey = "head-icon-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Local Snapshot User",
+        )
+        UnionStateRepository.create(state, "Local Snapshot Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_002, nowSec = 1))
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+
+        channel.writeInbound(
+            upPacket(
+                Cmd.USER_GET_USERS_HEADICON,
+                "[42,7,42,-3]",
+                userId = state.userId + 10_000,
+            ),
+        )
+
+        val packet = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.USER_GET_USERS_HEADICON, packet.cmd)
+        assertEquals(DownType.PLAIN, packet.dataType)
+        val response = mapper.readTree(packet.body)
+        assertEquals(8, response.size())
+        assertEquals(listOf(42, 7, 42, -3), response.filterIndexed { index, _ ->
+            index % 2 == 0
+        }.map { it.intValue() })
+        response.filterIndexed { index, _ -> index % 2 == 1 }.forEach { tuple ->
+            assertEquals(mapper.readTree("""[301,"0,0",0,""]"""), tuple)
+        }
+        assertNull(channel.readOutbound<Any>())
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `world chat uses official 2100 shape and is returned by history`() {
         val channel = newChannel()
         val playerId = platformLogin(channel, "alice")

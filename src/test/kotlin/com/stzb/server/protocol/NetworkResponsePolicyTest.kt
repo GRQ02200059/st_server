@@ -30,6 +30,11 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `user head icon lookup requires the explicit handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.USER_GET_USERS_HEADICON))
+    }
+
+    @Test
     fun `unregistered command has no shape response`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(45_678))
         assertTrue(!CommandContractCatalog.registry.isShapeResponseAllowed(45_678))

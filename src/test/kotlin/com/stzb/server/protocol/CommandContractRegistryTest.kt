@@ -22,6 +22,14 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `user head icon lookup exposes a readable handler owned contract`() {
+        assertEquals(514, Cmd.USER_GET_USERS_HEADICON)
+        val contract = CommandContractCatalog.registry.contract(Cmd.USER_GET_USERS_HEADICON)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `production registry contains every generated 9 2 2 inventory command`() {
         val registry = CommandContractCatalog.registry
         val all = registry.all()
