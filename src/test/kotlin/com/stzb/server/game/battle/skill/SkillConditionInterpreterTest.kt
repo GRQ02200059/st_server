@@ -31,8 +31,8 @@ class SkillConditionInterpreterTest {
         val conditionRows = graph.details.filter { it.raw.condition != 0 }
 
         assertEquals(308, SkillScopeCatalog.loadDefault().mainSkillIds.size)
-        assertEquals(668, graph.executionNodeIds.size)
-        assertEquals(1935, graph.details.size)
+        assertEquals(666, graph.executionNodeIds.size)
+        assertEquals(1933, graph.details.size)
         assertEquals(298, castRows.size)
         assertEquals(110, preconditionRows.size)
         assertEquals(63, conditionRows.size)
@@ -952,6 +952,40 @@ class SkillConditionInterpreterTest {
             SkillCondition.ConfigBranch(enabled = false),
             interpreter.compile(graph.detail(20068904)).conditions.single(),
         )
+    }
+
+    @Test
+    fun `terrain branches stay disabled while battles use ordinary terrain`() {
+        val config = BattleConfigRepository.loadDefault()
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = config.allSkillIds(),
+                learnableSaSkillIds = emptySet(),
+            ),
+            config,
+        )
+        val interpreter = SkillConditionInterpreter(graph)
+
+        listOf(
+            30013101,
+            30013203,
+            30013311,
+            30013424,
+            30013501,
+            30014712,
+            30013734,
+        ).forEach { detailId ->
+            val detail = graph.detail(detailId)
+            assertEquals(
+                SkillCondition.ConfigBranch(enabled = false),
+                interpreter.compile(detail).conditions.single(),
+                "detail=$detailId",
+            )
+            assertFalse(
+                interpreter.matches(detail, trigger(), context()),
+                "detail=$detailId",
+            )
+        }
     }
 
     @Test

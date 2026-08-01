@@ -604,6 +604,9 @@ class SkillConditionInterpreter(
         builtInClientBranchConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInOrdinaryTerrainConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         builtInTreasureTypeConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -870,6 +873,33 @@ private fun builtInClientBranchConditionPlugins(
     } else {
         listOf(BuiltInClientBranchConditionPlugin("builtin.client-balance-branch", codes))
     }
+}
+
+private fun builtInOrdinaryTerrainConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter {
+            it.field == SkillConditionField.CAST_CONDITION &&
+                it.value in TERRAIN_CAST_CONDITIONS
+        }
+        .filterNot(overridden::contains)
+        .toSet()
+    if (codes.isEmpty()) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.ordinary-battlefield"
+            override val ownedConditions: Set<SkillConditionCode> = codes
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.ConfigBranch(enabled = false))
+        },
+    )
 }
 
 private class BuiltInCountryConditionPlugin(
@@ -2234,6 +2264,16 @@ private val CURRENT_PARAMETER_BRANCHES =
     setOf(230001912, 230005101, 130005205, 230005301)
 private val LEGACY_PARAMETER_BRANCHES =
     setOf(130001912, 130005101, 130005301)
+private val TERRAIN_CAST_CONDITIONS =
+    setOf(
+        130013901,
+        130014001,
+        130014101,
+        130014201,
+        130014301,
+        130014401,
+        130014501,
+    )
 
 private fun defaultPendingPlugins(
     graph: SkillRuleGraph,

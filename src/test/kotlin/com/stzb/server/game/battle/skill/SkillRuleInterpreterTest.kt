@@ -790,7 +790,7 @@ class SkillRuleInterpreterTest {
             detailId = 100,
             effectId = 77,
             constantParam = 7,
-            rawBuffType = 900001,
+            rawLockFlag = 900001,
         )
         val unlockDeclaration = effectRule(
             detailId = 200,
@@ -860,8 +860,13 @@ class SkillRuleInterpreterTest {
         lockedDetails.forEach { detail ->
             val skillId = detail.detailId / 100
             val requiredUnlockId = detail.raw.lockFlag
+            val conditionNeutralDetail = if (detail.detailId == 31113413) {
+                detail.copy(raw = detail.raw.copy(castCondition = 0))
+            } else {
+                detail
+            }
             val isolatedRule = requireNotNull(catalog.rule(skillId)).copy(
-                details = listOf(detail),
+                details = listOf(conditionNeutralDetail),
             )
             val unlockDetail = unlockDetails.single {
                 it.raw.effectParam == requiredUnlockId
@@ -874,7 +879,7 @@ class SkillRuleInterpreterTest {
             val isolatedGraph = SkillRuleGraph(
                 rules = listOf(isolatedRule, isolatedUnlockRule)
                     .associateBy(SkillRule::skillId),
-                effectIds = setOf(detail.effectId, 132),
+                effectIds = setOf(conditionNeutralDetail.effectId, 132),
                 rootSkillIds = setOf(skillId),
             )
             val isolatedInterpreter = SkillRuleInterpreter(
@@ -2351,6 +2356,7 @@ class SkillRuleInterpreterTest {
         calcParam: Int = 0,
         delayRound: Int = 0,
         addCountMax: Int = 0,
+        rawLockFlag: Int = 0,
         rawBuffType: Int = 0,
     ): SkillEffectRule =
         SkillEffectRule(
@@ -2377,6 +2383,7 @@ class SkillRuleInterpreterTest {
                 delayRound = delayRound,
                 availableRounds = availableRounds,
                 addCountMax = addCountMax,
+                lockFlag = rawLockFlag,
                 buffType = rawBuffType,
                 attributeType = attributeType,
                 effectName = "fixture-$effectId",

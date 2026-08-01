@@ -1,5 +1,8 @@
 package com.stzb.server.game.battle
 
+import com.stzb.server.game.battle.skill.BattleTrigger
+import com.stzb.server.game.battle.skill.DefaultCompleteSkillEngine
+import com.stzb.server.game.battle.skill.SkillBattleContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -210,6 +213,98 @@ class OfficialFullBattleReportDiffTest {
                 "simulated=${simulatedBaseTroops.min()}..${simulatedBaseTroops.max()} " +
                 "closestSeed=${closest.first} source6Initial=${source.stats}\n" +
                 closest.second.firstRoundDamageTrace() + "\n" + seedSummaries,
+        )
+    }
+
+    @Test
+    fun `official first round target stream reproduces the attacker base defeat`() {
+        val report = java.nio.file.Path.of(
+            "assent/cfg/paper/6231/cap_20260311223648438_00001857_zlib.json",
+        )
+        val config = BattleConfigRepository.loadDefault()
+        val actions = OfficialReportFixture.read(report)
+        val official = OfficialReportFixture.fullBattleSummary(actions)
+        val request = OfficialReportFixture.reconstructBattleRequest(actions, config)
+        val attackerBase = request.attacker.heroes.single { hero ->
+            ClientBattleTextReplayProtocol.position(Side.ATTACKER, hero.position) == 1
+        }
+
+        val result = BattleEngine.resolve(
+            request,
+            config,
+            SeededBattleRandom(0),
+            OfficialReportFixture.targetDecisions(actions),
+        )
+
+        assertEquals(
+            official.finalTroopsByPosition.getValue(1),
+            result.troopsAfterFirstRound(1, attackerBase.troops),
+            result.firstRoundDamageTrace() +
+                "\nactions=" + result.events.filterIsInstance<BattleEvent.HeroActionStart>()
+                .filter { it.round == 1 }
+                .map { ClientBattleTextReplayProtocol.position(it.source) } +
+                "\nsource6Statuses=" + result.events.filterIsInstance<BattleEvent.StatusApplied>()
+                .filter { it.round <= 1 && ClientBattleTextReplayProtocol.position(it.target) == 6 }
+                .map { "${it.round}/${it.skillId}/${it.effectId}/${it.status}" },
+        )
+    }
+
+    @Test
+    fun `paper first action effects keep defender source six first across round start`() {
+        val report = java.nio.file.Path.of(
+            "assent/cfg/paper/6231/cap_20260311223648438_00001857_zlib.json",
+        )
+        val config = BattleConfigRepository.loadDefault()
+        val request = OfficialReportFixture.reconstructBattleRequest(
+            OfficialReportFixture.read(report),
+            config,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val initialFirst = engine.livingHeroesInSpeedOrder().first()
+        val baseContext = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = SeededBattleRandom(0),
+            round = 0,
+            source = initialFirst,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_PASSIVE,
+            battleView = engine.state.view,
+        )
+
+        engine.prepareBattle(baseContext)
+
+        val sourceSix = engine.state.view.heroes().single {
+            ClientBattleTextReplayProtocol.position(it) == 6
+        }
+        fun diagnostic(): String =
+            "effects=${engine.state.effectStore.effectsFor(sourceSix).map {
+                "${it.skillId}/${it.detailId}/${it.effectId}/${it.remainingRounds}"
+            }} order=${engine.livingHeroesInSpeedOrder().map {
+                ClientBattleTextReplayProtocol.position(it)
+            }}"
+        assertEquals(
+            6,
+            ClientBattleTextReplayProtocol.position(engine.livingHeroesInSpeedOrder().first()),
+            diagnostic(),
+        )
+
+        engine.livingHeroesInSpeedOrder().forEach { source ->
+            engine.trigger(
+                BattleTrigger.ROUND_START,
+                baseContext.copy(
+                    round = 1,
+                    source = source,
+                    trigger = BattleTrigger.ROUND_START,
+                ),
+            )
+        }
+
+        assertEquals(
+            6,
+            ClientBattleTextReplayProtocol.position(engine.livingHeroesInSpeedOrder().first()),
+            diagnostic(),
         )
     }
 

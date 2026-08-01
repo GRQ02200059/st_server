@@ -450,6 +450,8 @@ class DefaultBattleValueCalculator(
             configured.unit == BattleEffectValueUnit.PERCENT &&
             configured.rawCalcPosition == 0 &&
             configured.rawAttributeType == 0 &&
+            rule.detailId != 20000101 &&
+            rule.detailId !in 21227003..21227006 &&
             kotlin.math.abs(configured.rawConstant) < PERCENT_ATTRIBUTE_SCALE_THRESHOLD &&
             kotlin.math.abs(configured.rawCoefficient) < PERCENT_ATTRIBUTE_SCALE_THRESHOLD
         ) {
