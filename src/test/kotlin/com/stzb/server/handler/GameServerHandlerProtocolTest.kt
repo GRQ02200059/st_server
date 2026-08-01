@@ -72,6 +72,30 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `first captured response batch uses the default observed shape route`() {
+        val channel = newChannel()
+        val cases = listOf(
+            Triple(202, "[]", "[]"),
+            Triple(203, "[]", "[]"),
+            Triple(727, "[]", "[]"),
+            Triple(3758, "[]", "[]"),
+            Triple(6030, "[]", "[]"),
+            Triple(6078, "[321,7]", "[7,[]]"),
+        )
+
+        cases.forEach { (cmd, request, expectedBody) ->
+            channel.writeInbound(upPacket(cmd, request))
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "cmd=$cmd")
+            assertEquals(cmd, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "cmd=$cmd emitted an extra packet")
+        }
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `world chat uses official 2100 shape and is returned by history`() {
         val channel = newChannel()
         val playerId = platformLogin(channel, "alice")

@@ -1,10 +1,14 @@
 package com.stzb.server.protocol
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 
 class CapturedShapeTest {
+    private val mapper = jacksonObjectMapper()
+
     @Test
     fun `top level kind detects array object scalar`() {
         assertEquals("array", ShapeAssert.topLevelKind("[1,2]"))
@@ -121,6 +125,45 @@ class CapturedShapeTest {
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(0, ShapeAssert.tupleSize(body), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `captured mail chat notification and gift lists stay non null empty arrays`() {
+        listOf(202, 203, 727, 3758, 6030).forEach { cmd ->
+            val body = assertNotNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
+            assertEquals(0, ShapeAssert.tupleSize(body), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `captured transfer season response echoes recommendation type with an empty list`() {
+        val response = mapper.readTree(
+            NetworkResponsePolicy.observedShapeBody(6078, "[321,7]"),
+        )
+
+        assertEquals(2, response.size())
+        assertEquals(7, response[0].asInt())
+        assertEquals(true, response[1].isArray)
+        assertEquals(0, response[1].size())
+    }
+
+    @Test
+    fun `malformed transfer season request defaults to zero and an empty list`() {
+        listOf(null, "", "not-json", "{}", "[321]", """[321,"bad"]""").forEach { request ->
+            assertEquals("[0,[]]", NetworkResponsePolicy.observedShapeBody(6078, request), "request=$request")
+        }
+    }
+
+    @Test
+    fun `first captured response batch is registered as observed shape`() {
+        listOf(202, 203, 727, 3758, 6030, 6078).forEach { cmd ->
+            assertEquals(
+                CommandStatus.OBSERVED_SHAPE,
+                CommandContractCatalog.registry.contract(cmd)?.status,
+                "cmd=$cmd",
+            )
         }
     }
 }

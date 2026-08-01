@@ -13,8 +13,9 @@ object NetworkResponsePolicy {
     private val mapper = jacksonObjectMapper()
 
     private val noOpArrayCommands = setOf(
-        22, 92, 103, 111, 143, 171, 220, 509, 700, 701, 711, 714, 780, 871, 959, 963, 974,
-        3846, 4080, 4331, 4967, 5043, 5044, 5045, 5049, 5070, 5082, 6067, 6256, 9099,
+        22, 92, 103, 111, 143, 171, 202, 203, 220, 509, 700, 701, 711, 714, 727, 780, 871,
+        959, 963, 974, 3758, 3846, 4080, 4331, 4967, 5043, 5044, 5045, 5049, 5070, 5082,
+        6030, 6067, 6256, 9099,
     )
 
     fun observedShapeCommandIds(): Set<Int> =
@@ -38,6 +39,7 @@ object NetworkResponsePolicy {
                 3877,
                 4968,
                 5091,
+                6078,
                 6092,
             )
 
@@ -58,6 +60,7 @@ object NetworkResponsePolicy {
             cmdId == 3877 -> "[${GameServerConfig.SERVER_ID}]"
             cmdId == 4968 -> "[false,[]]"
             cmdId == 5091 -> "200"
+            cmdId == 6078 -> transferSeasonRecommendations(requestBody)
             cmdId == 6092 -> "[[],0]"
             cmdId in dictionaryCommands -> GenericGameResponses.emptyObject()
             cmdId in pagedListCommands -> GenericGameResponses.emptyPagedList()
@@ -158,5 +161,16 @@ object NetworkResponsePolicy {
         val request = runCatching { mapper.readTree(requestBody ?: "[]") }.getOrNull()
         val name = request?.get(0)?.asText() ?: ""
         return mapper.writeValueAsString(listOf(name, emptyList<Any>(), emptyList<Any>()))
+    }
+
+    private fun transferSeasonRecommendations(requestBody: String?): String {
+        val request = runCatching { mapper.readTree(requestBody ?: "[]") }.getOrNull()
+        val recType = request
+            ?.takeIf { it.isArray && it.size() > 1 }
+            ?.get(1)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: 0
+        return mapper.writeValueAsString(listOf(recType, emptyList<Any>()))
     }
 }
