@@ -353,6 +353,72 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `applying a city facade layout persists and republishes the world scene`() {
+        val channel = newChannel()
+        val playerId = platformLogin(channel, "city-facade-owner")
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = requireNotNull(session.accountKey),
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = GameServerConfig.ROLE_NAME,
+        )
+        val customView = com.stzb.server.game.FacadeCatalog.DEFAULT_CITY_CUSTOM_VIEW
+            .replace("1122050,100010", "3433080,100010")
+
+        channel.writeInbound(
+            upPacket(
+                cmdId = 3945,
+                json = """[${state.cityWid},"$customView",0,""]""",
+                userId = playerId,
+            ),
+        )
+
+        assertEquals(3945, assertIs<DownPacket>(channel.readOutbound<Any>()).cmd)
+        val scene = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.SEND_WORLD_SCENCE_FULL_INFO, scene.cmd)
+        assertEquals(
+            customView,
+            mapper.readTree(scene.body)[14][state.cityWid.toString()]["4"][0].asText(),
+        )
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `invalid city facade scheme acknowledges without changing or broadcasting`() {
+        val channel = newChannel()
+        val playerId = platformLogin(channel, "city-facade-invalid")
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = requireNotNull(session.accountKey),
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = GameServerConfig.ROLE_NAME,
+        )
+        val previousView = WorldStateRepository.projection()
+            .cities
+            .single { it.userId == state.userId }
+            .customView
+
+        channel.writeInbound(
+            upPacket(
+                cmdId = 3945,
+                json = """[${state.cityWid},"9999990,100010;",0,""]""",
+                userId = playerId,
+            ),
+        )
+
+        assertEquals(3945, assertIs<DownPacket>(channel.readOutbound<Any>()).cmd)
+        assertNull(channel.readOutbound<Any>())
+        assertEquals(
+            previousView,
+            WorldStateRepository.projection()
+                .cities
+                .single { it.userId == state.userId }
+                .customView,
+        )
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `hero advance consumes same name material and notifies advance count`() {
         val channel = newChannel()
         val playerId = platformLogin(channel, "alice")

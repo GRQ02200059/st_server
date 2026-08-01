@@ -81,6 +81,7 @@ object CommandContractCatalog {
             Cmd.GET_WORLD_SCENCE_INFO,
             Cmd.SYS_PING,
             Cmd.QUERY_ARMY_RELATED_FORT,
+            Cmd.BUILD_FACADE_APPLY_BUILD_SCHEME,
             Cmd.SET_CLIENT_RED_DOT_DATA,
             Cmd.SET_FRONT_UNLOCK_ANIM,
             Cmd.USER_CHANGE_NAME,

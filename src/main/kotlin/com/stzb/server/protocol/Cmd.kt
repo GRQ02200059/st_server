@@ -69,6 +69,7 @@ object Cmd {
     const val ROTATE_CARD_BORDER_REMOVE = 1674
     const val SET_CLIENT_RED_DOT_DATA = 3400
     const val GET_HOMEPAGE_INFO = 3686
+    const val BUILD_FACADE_APPLY_BUILD_SCHEME = 3945
     const val GET_USER_NPC_ARMY = 4329
     const val GET_LAND_NPC_ARMY = 4330
     const val GET_LAND_DEFEND_ARMY = 4331
