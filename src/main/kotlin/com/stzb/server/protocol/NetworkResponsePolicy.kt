@@ -28,9 +28,9 @@ object NetworkResponsePolicy {
             objectResultCommands +
             noOpArrayCommands +
             setOf(
-                Cmd.UNION_INFO,
-                Cmd.UNION_CREATE,
-                Cmd.GET_HOMEPAGE_INFO,
+                100,
+                102,
+                3686,
                 212,
                 502,
                 5013,
@@ -43,8 +43,8 @@ object NetworkResponsePolicy {
 
     fun observedShapeBody(cmdId: Int, requestBody: String? = null): String? =
         when {
-            cmdId == Cmd.UNION_INFO -> GenericGameResponses.unionInfoUnavailable()
-            cmdId == Cmd.UNION_CREATE -> "0"
+            cmdId == 100 -> GenericGameResponses.unionInfoUnavailable()
+            cmdId == 102 -> "0"
             cmdId == 212 -> GenericGameResponses.userLookup()
             cmdId == 502 -> "[1,\"\"]"  // GET_USER_PROFILE(他人)：num=1(非0非2) => 客户端提示"无结果"并关闭，不崩
             cmdId == 3686 -> ProfileResponses.homepageInfo() // GET_HOMEPAGE_INFO(自己主页)：完整字典，空 {} 会崩

@@ -34,12 +34,12 @@ object CommandContractCatalog {
             Cmd.BATTLE_REPORT_PROFILE,
             Cmd.BATTLE_REPORT_DETAIL,
             Cmd.BATTLE_REPORT_SHORT_DETAIL,
-            Cmd.UNION_CREATE,
-            Cmd.UNION_INFO,
-            Cmd.UNION_MEMBER,
-            Cmd.GET_HOMEPAGE_INFO,
-            Cmd.CHAT,
-            Cmd.CHAT_HISTORY,
+            CurrentClientCommand.UNION_CREATE,
+            CurrentClientCommand.UNION_INFO,
+            CurrentClientCommand.UNION_MEMBER,
+            CurrentClientCommand.GET_HOMEPAGE_INFO,
+            CurrentClientCommand.CHAT,
+            CurrentClientCommand.CHAT_HISTORY,
             Cmd.ARMY_BATTLE,
             Cmd.BUILD_BUILDING,
             Cmd.UPGRADE_BUILDING,
@@ -60,14 +60,14 @@ object CommandContractCatalog {
             Cmd.CARD_QUICK_RECRUIT,
             Cmd.CARD_SET_ALL_NOT_NEW,
             Cmd.HERO_SELECT_FACADE,
-            Cmd.HERO_USE_CARD_BORDER,
-            Cmd.ROTATE_CARD_BORDER_ADD,
-            Cmd.ROTATE_CARD_BORDER_REMOVE,
-            Cmd.HERO_ACTIVE_CARD_BORDER,
-            Cmd.BATCH_ACTIVE_ARMY_FACADE_CARD,
-            Cmd.UNLOCK_TROOP_FACADE_CARD,
-            Cmd.USE_TROOP_FACADE_CARD,
-            Cmd.HERO_ACTIVE_FACADE,
+            CurrentClientCommand.HERO_USE_CARD_BORDER,
+            CurrentClientCommand.ROTATE_CARD_BORDER_ADD,
+            CurrentClientCommand.ROTATE_CARD_BORDER_REMOVE,
+            CurrentClientCommand.HERO_ACTIVE_CARD_BORDER,
+            CurrentClientCommand.BATCH_ACTIVE_ARMY_FACADE_CARD,
+            CurrentClientCommand.UNLOCK_TROOP_FACADE_CARD,
+            CurrentClientCommand.USE_TROOP_FACADE_CARD,
+            CurrentClientCommand.HERO_ACTIVE_FACADE,
             Cmd.HERO_ADVANCE,
             Cmd.GEAR_EQUIP,
             Cmd.GEAR_FORGET,
@@ -95,7 +95,7 @@ object CommandContractCatalog {
             Cmd.SYS_NOTIFY_SID,
             Cmd.SYS_NOTIFY_DB_UPDATE,
             Cmd.SEND_WORLD_SCENCE_FULL_INFO,
-            Cmd.NOTIFY_CHAT_MSG,
+            CurrentClientCommand.NOTIFY_CHAT_MSG,
         ).map { id ->
             CommandContract(
                 id = id,
@@ -140,4 +140,22 @@ object CommandContractCatalog {
             status = CommandStatus.PROVISIONAL,
             owner = "GameServerHandler",
         )
+}
+
+private object CurrentClientCommand {
+    const val UNION_INFO = 100
+    const val UNION_CREATE = 102
+    const val UNION_MEMBER = 103
+    const val GET_HOMEPAGE_INFO = 3686
+    const val HERO_USE_CARD_BORDER = 673
+    const val HERO_ACTIVE_CARD_BORDER = 675
+    const val USE_TROOP_FACADE_CARD = 677
+    const val UNLOCK_TROOP_FACADE_CARD = 678
+    const val BATCH_ACTIVE_ARMY_FACADE_CARD = 682
+    const val CHAT = 710
+    const val CHAT_HISTORY = 711
+    const val ROTATE_CARD_BORDER_ADD = 1673
+    const val ROTATE_CARD_BORDER_REMOVE = 1674
+    const val NOTIFY_CHAT_MSG = 2100
+    const val HERO_ACTIVE_FACADE = 2520
 }

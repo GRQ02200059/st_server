@@ -17,6 +17,7 @@ class CommandContractRegistryTest {
         assertNotNull(registry.contract(Cmd.GET_WORLD_SCENCE_INFO))
         assertNotNull(registry.contract(Cmd.SEND_WORLD_SCENCE_FULL_INFO))
         assertNotNull(registry.contract(Cmd.SYS_NOTIFY_DB_UPDATE))
+        assertNotNull(registry.contract(2_100))
     }
 
     @Test
@@ -25,10 +26,10 @@ class CommandContractRegistryTest {
 
         assertEquals(CommandStatus.PROVISIONAL, registry.contract(Cmd.CARD_RECRUIT)?.status)
         assertEquals(CommandStatus.PROVISIONAL, registry.contract(Cmd.GET_WORLD_SCENCE_INFO)?.status)
-        assertEquals(CommandStatus.PROVISIONAL, registry.contract(Cmd.CHAT)?.status)
+        assertEquals(CommandStatus.PROVISIONAL, registry.contract(710)?.status)
         assertEquals(CommandStatus.PROVISIONAL, registry.contract(Cmd.SYS_NOTIFY_DB_UPDATE)?.status)
         assertEquals(CommandStatus.PROVISIONAL, registry.contract(Cmd.SEND_WORLD_SCENCE_FULL_INFO)?.status)
-        assertEquals(CommandStatus.PROVISIONAL, registry.contract(Cmd.NOTIFY_CHAT_MSG)?.status)
+        assertEquals(CommandStatus.PROVISIONAL, registry.contract(2_100)?.status)
     }
 
     @Test
