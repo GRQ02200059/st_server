@@ -642,14 +642,16 @@ class SkillConditionInterpreter(
                     missing.joinToString { "${it.field.configName}=${it.value}" },
             )
         }
-        val conditions = codes.flatMap { code ->
+        val conditions = (
+            codes.flatMap { code ->
             val plugin = pluginByCode.getValue(code)
             val compiled = plugin.compile(code, rule)
             require(compiled.isNotEmpty()) {
                 "Plugin ${plugin.id} returned no condition for $code detail=${rule.detailId}"
             }
             compiled
-        }.distinct()
+            } + implicitDetailConditions(rule)
+            ).distinct()
         return CompiledSkillCondition(rule.detailId, conditions)
     }
 
@@ -660,6 +662,15 @@ class SkillConditionInterpreter(
         val condition: Int,
     )
 }
+
+private fun implicitDetailConditions(rule: SkillEffectRule): List<SkillCondition> =
+    when (rule.detailId) {
+        20029311 -> listOf(
+            SkillCondition.RoundRange(4, 4),
+            SkillCondition.EventTrigger(BattleTrigger.ACTION_BEFORE),
+        )
+        else -> emptyList()
+    }
 
 private class BuiltInClientBranchConditionPlugin(
     override val id: String,

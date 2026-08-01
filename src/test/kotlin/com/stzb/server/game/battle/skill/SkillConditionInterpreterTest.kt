@@ -697,13 +697,18 @@ class SkillConditionInterpreterTest {
     fun `dingjun fourth round branch binds to owner action before`() {
         val graph = realGraph()
         val interpreter = SkillConditionInterpreter(graph)
+        val expected = listOf(
+            SkillCondition.RoundRange(4, 4),
+            SkillCondition.EventTrigger(BattleTrigger.ACTION_BEFORE),
+        )
 
         assertEquals(
-            listOf(
-                SkillCondition.RoundRange(4, 4),
-                SkillCondition.EventTrigger(BattleTrigger.ACTION_BEFORE),
-            ),
+            expected,
             interpreter.compile(graph.detail(20029307)).conditions,
+        )
+        assertEquals(
+            expected,
+            interpreter.compile(graph.detail(20029311)).conditions,
         )
     }
 

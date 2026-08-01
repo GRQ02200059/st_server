@@ -206,9 +206,10 @@ class SkillRuleInterpreter private constructor(
         preselectedTargets: List<BattleHeroRef>? = null,
         valueOverride: TypedBattlePotency.Resolved? = null,
         probabilityAlreadyAccepted: Boolean = false,
+        executionOverride: ReferencedDetailExecutionOverride? = null,
     ): SkillExecutionResult =
         if (probabilityAlreadyAccepted || detailProbabilitySucceeds(detail, context)) {
-            executeDetail(detail, context, preselectedTargets, valueOverride)
+            executeDetail(detail, context, preselectedTargets, valueOverride, executionOverride)
         } else {
             SkillExecutionResult.EMPTY
         }
@@ -298,6 +299,7 @@ class SkillRuleInterpreter private constructor(
         context: SkillBattleContext,
         preselectedTargets: List<BattleHeroRef>? = null,
         valueOverride: TypedBattlePotency.Resolved? = null,
+        executionOverride: ReferencedDetailExecutionOverride? = null,
     ): SkillExecutionResult {
         val ownerSkillId = detail.detailId / 100
         val frame = SkillExecutionFrame(ownerSkillId, detail.detailId)
@@ -317,6 +319,7 @@ class SkillRuleInterpreter private constructor(
                 context = executionContext,
                 preselectedTargets = preselectedTargets,
                 valueOverride = valueOverride,
+                executionOverride = executionOverride,
             )
             execution.stateChanges.forEach { change ->
                 when (change) {
@@ -476,12 +479,13 @@ class SkillRuleInterpreter private constructor(
                 context.runtime.currentCallPath(),
                 change.referencedDetailId,
             )
-        return if (detailProbabilitySucceeds(detail, context)) {
+        return if (change.probabilityAlreadyAccepted || detailProbabilitySucceeds(detail, context)) {
             executeDetail(
                 detail = detail,
                 context = context,
                 preselectedTargets = change.selectedTargets,
                 valueOverride = change.valueOverride,
+                executionOverride = change.executionOverride,
             )
         } else {
             SkillExecutionResult.EMPTY

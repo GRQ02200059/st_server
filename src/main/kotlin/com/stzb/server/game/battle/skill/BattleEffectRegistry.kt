@@ -59,6 +59,23 @@ class EffectHandlerRegistration private constructor(
 
 interface BattleStateChange
 
+data class EffectLifecycleOverride(
+    val delayRound: Int,
+    val delayHit: Int,
+    val availableRounds: Int,
+    val availableHit: Int,
+    val clearPerHit: Boolean,
+)
+
+data class ReferencedDetailExecutionOverride(
+    val referencedDetailId: Int,
+    val valueDelta: Int? = null,
+    val valueReplacement: TypedBattlePotency.Resolved? = null,
+    val extraParameters: Map<Int, Int> = emptyMap(),
+    val targetOverride: List<com.stzb.server.game.battle.BattleHeroRef>? = null,
+    val lifecycleOverride: EffectLifecycleOverride? = null,
+)
+
 data class EffectInvocation(
     val rule: SkillEffectRule,
     val context: SkillBattleContext,
@@ -66,12 +83,22 @@ data class EffectInvocation(
     val detailCallPath: List<SkillExecutionFrame> = emptyList(),
     val preselectedTargets: List<com.stzb.server.game.battle.BattleHeroRef>? = null,
     val valueOverride: TypedBattlePotency.Resolved? = null,
+    val executionOverride: ReferencedDetailExecutionOverride? = null,
 )
 
 internal fun EffectInvocation.rootSkillLevel(source: BattleHero): Int {
     val index = source.skillIds.indexOf(context.rootSkillId)
     return source.skillLevels.getOrElse(index) { 1 }.coerceIn(1, 10)
 }
+
+internal fun EffectInvocation.lifecycle(): EffectLifecycleOverride =
+    executionOverride?.lifecycleOverride ?: EffectLifecycleOverride(
+        delayRound = rule.raw.delayRound,
+        delayHit = rule.raw.delayHit,
+        availableRounds = rule.raw.availableRounds,
+        availableHit = rule.raw.availableHit,
+        clearPerHit = rule.raw.clearPerHit,
+    )
 
 data class EffectExecution(
     val stateChanges: List<BattleStateChange>,
@@ -198,15 +225,23 @@ class BattleEffectRegistry private constructor(
         context: SkillBattleContext,
         preselectedTargets: List<com.stzb.server.game.battle.BattleHeroRef>? = null,
         valueOverride: TypedBattlePotency.Resolved? = null,
+        executionOverride: ReferencedDetailExecutionOverride? = null,
     ): EffectExecution {
+        require(executionOverride == null || executionOverride.referencedDetailId == rule.detailId) {
+            "Execution override detail=${executionOverride?.referencedDetailId} " +
+                "does not match rule detail=${rule.detailId}"
+        }
         val callPath = invocationCallPath(context)
         val invocation = EffectInvocation(
             rule = rule,
             context = context,
             callPath = immutableList(callPath),
             detailCallPath = immutableList(context.runtime.currentDetailPath()),
-            preselectedTargets = preselectedTargets?.let(::immutableList),
-            valueOverride = valueOverride,
+            preselectedTargets = (
+                executionOverride?.targetOverride ?: preselectedTargets
+                )?.let(::immutableList),
+            valueOverride = executionOverride?.valueReplacement ?: valueOverride,
+            executionOverride = executionOverride,
         )
         val handler = registrations[rule.effectId]?.handler
         if (handler != null) {

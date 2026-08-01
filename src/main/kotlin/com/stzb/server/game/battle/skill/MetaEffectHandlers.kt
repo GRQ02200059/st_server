@@ -271,6 +271,8 @@ data class TriggerReferencedEffectChange(
     val mode: ReferenceEffectMode,
     val valueOverride: TypedBattlePotency.Resolved?,
     val parameters: MetaEffectParameters,
+    val executionOverride: ReferencedDetailExecutionOverride? = null,
+    val probabilityAlreadyAccepted: Boolean = false,
 ) : BattleStateChange {
     val attributeScaled: Boolean
         get() = mode == ReferenceEffectMode.ATTRIBUTE_SCALED
@@ -432,6 +434,40 @@ private class MetaEffectHandler(
                     parameters = parameters,
                 ),
             )
+            125 -> {
+                val referenced = referencedDetail(invocation)
+                val inherited = invocation.executionOverride
+                val override = ReferencedDetailExecutionOverride(
+                    referencedDetailId = referenced.detailId,
+                    valueDelta = inherited?.valueDelta,
+                    valueReplacement = invocation.valueOverride ?: configuredPotency(invocation),
+                    extraParameters = inherited?.extraParameters.orEmpty(),
+                    targetOverride = targets,
+                    lifecycleOverride = inherited?.lifecycleOverride ?: EffectLifecycleOverride(
+                        delayRound = raw.delayRound,
+                        delayHit = raw.delayHit,
+                        availableRounds = raw.availableRounds,
+                        availableHit = raw.availableHit,
+                        clearPerHit = raw.clearPerHit,
+                    ),
+                )
+                listOf(
+                    TriggerReferencedEffectChange(
+                        source = context.source,
+                        rootSkillId = context.rootSkillId,
+                        skillId = context.currentSkillId,
+                        detailId = invocation.rule.detailId,
+                        referencedDetailId = referenced.detailId,
+                        referencedEffectId = referenced.effectId,
+                        selectedTargets = targets,
+                        mode = ReferenceEffectMode.NORMAL,
+                        valueOverride = override.valueReplacement,
+                        parameters = parameters,
+                        executionOverride = override,
+                        probabilityAlreadyAccepted = true,
+                    ),
+                )
+            }
             129, 130 -> listOf(
                 RetriggerSkillChange(
                     source = context.source,
@@ -769,6 +805,7 @@ private class MetaEffectHandler(
         potency: TypedBattlePotency.Resolved,
     ): PersistentEffectSpec {
         val raw = invocation.rule.raw
+        val lifecycle = invocation.lifecycle()
         return PersistentEffectSpec(
             source = invocation.context.source,
             target = target,
@@ -785,12 +822,12 @@ private class MetaEffectHandler(
             replaceType = invocation.rule.effectReplaceType,
             bindFlag = raw.bindFlag,
             maxStacks = raw.addCountMax + 1,
-            delayRound = raw.delayRound,
-            delayHit = raw.delayHit,
-            availableRounds = raw.availableRounds,
-            availableHit = raw.availableHit,
-            clearPerHit = raw.clearPerHit,
-            startBoundary = if (raw.delayRound > 0 || raw.delayHit > 0) {
+            delayRound = lifecycle.delayRound,
+            delayHit = lifecycle.delayHit,
+            availableRounds = lifecycle.availableRounds,
+            availableHit = lifecycle.availableHit,
+            clearPerHit = lifecycle.clearPerHit,
+            startBoundary = if (lifecycle.delayRound > 0 || lifecycle.delayHit > 0) {
                 EffectStartBoundary.AFTER_DELAY
             } else {
                 EffectStartBoundary.IMMEDIATE

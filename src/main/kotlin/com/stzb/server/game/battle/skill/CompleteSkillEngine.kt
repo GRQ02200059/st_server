@@ -388,14 +388,17 @@ class DefaultCompleteSkillEngine private constructor(
         if (context.round != 4 || 200293 !in state.liveHero(context.source).skillIds) {
             return SkillExecutionResult.EMPTY
         }
-        return interpreter.executeDetailForEngine(
-            graph.details.single { it.detailId == 20029307 },
-            context.copy(
-                rootSkillId = 200293,
-                currentSkillId = 200293,
-                trigger = BattleTrigger.ACTION_BEFORE,
-            ),
+        val actionContext = context.copy(
+            rootSkillId = 200293,
+            currentSkillId = 200293,
+            trigger = BattleTrigger.ACTION_BEFORE,
         )
+        return listOf(20029307, 20029311).fold(SkillExecutionResult.EMPTY) { result, detailId ->
+            result + interpreter.executeDetailForEngine(
+                graph.details.single { it.detailId == detailId },
+                actionContext,
+            )
+        }
     }
 
     private fun fenjiActionResult(context: SkillBattleContext): SkillExecutionResult {

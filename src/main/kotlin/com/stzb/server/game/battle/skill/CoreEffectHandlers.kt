@@ -664,7 +664,7 @@ private class CoreEffectHandler(
                 value = if (increase) potency.value else -potency.value,
                 exactValue = if (increase) potency.exactValue else -potency.exactValue,
             ),
-            durationRounds = invocation.rule.raw.availableRounds,
+            durationRounds = invocation.lifecycle().availableRounds,
             skillId = invocation.context.currentSkillId,
             effectId = invocation.rule.effectId,
         )
@@ -692,8 +692,8 @@ private class CoreEffectHandler(
             skillId = invocation.context.currentSkillId,
             effectId = invocation.rule.effectId,
         )
-        val raw = invocation.rule.raw
-        if (raw.delayRound <= 0 && raw.delayHit <= 0) return damageChange
+        val lifecycle = invocation.lifecycle()
+        if (lifecycle.delayRound <= 0 && lifecycle.delayHit <= 0) return damageChange
         return ScheduledTimingChange(
             snapshot = DelayedEffect(
                 source = invocation.context.source,
@@ -702,8 +702,8 @@ private class CoreEffectHandler(
                 detailId = invocation.rule.detailId,
                 dueRound = 0,
             ),
-            delayRound = raw.delayRound,
-            delayHit = raw.delayHit,
+            delayRound = lifecycle.delayRound,
+            delayHit = lifecycle.delayHit,
             change = damageChange,
         )
     }
@@ -817,7 +817,7 @@ private class CoreEffectHandler(
             origin = origin,
             tag = null,
             percent = sign * potency.value,
-            durationRounds = invocation.rule.raw.availableRounds,
+            durationRounds = invocation.lifecycle().availableRounds,
             skillId = invocation.context.currentSkillId,
             effectId = effectId,
         )
@@ -837,6 +837,7 @@ private class CoreEffectHandler(
         potency: TypedBattlePotency.Resolved,
     ): PersistentEffectSpec {
         val raw = invocation.rule.raw
+        val lifecycle = invocation.lifecycle()
         return PersistentEffectSpec(
             source = invocation.context.source,
             target = target,
@@ -851,12 +852,12 @@ private class CoreEffectHandler(
             replaceType = invocation.rule.effectReplaceType,
             bindFlag = raw.bindFlag,
             maxStacks = raw.addCountMax + 1,
-            delayRound = raw.delayRound,
-            delayHit = raw.delayHit,
-            availableRounds = raw.availableRounds,
-            availableHit = raw.availableHit,
-            clearPerHit = raw.clearPerHit,
-            startBoundary = if (raw.delayRound > 0 || raw.delayHit > 0) {
+            delayRound = lifecycle.delayRound,
+            delayHit = lifecycle.delayHit,
+            availableRounds = lifecycle.availableRounds,
+            availableHit = lifecycle.availableHit,
+            clearPerHit = lifecycle.clearPerHit,
+            startBoundary = if (lifecycle.delayRound > 0 || lifecycle.delayHit > 0) {
                 EffectStartBoundary.AFTER_DELAY
             } else {
                 EffectStartBoundary.IMMEDIATE

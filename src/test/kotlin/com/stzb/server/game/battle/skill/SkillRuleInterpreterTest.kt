@@ -791,6 +791,73 @@ class SkillRuleInterpreterTest {
     }
 
     @Test
+    fun `puppet detail owns target value probability and lifecycle through nested template`() {
+        val graph = graph(
+            rule(
+                200282,
+                effectRule(
+                    detailId = 20028212,
+                    effectId = 125,
+                    effectParam = 21028202,
+                    constantParam = 9,
+                    attackType = 21,
+                    attackMax = 2,
+                    availableRounds = 10,
+                ),
+            ),
+            rule(
+                210282,
+                effectRule(
+                    detailId = 21028202,
+                    effectId = 125,
+                    effectParam = 21028211,
+                    constantParam = 100,
+                    attackType = 43,
+                    attackMax = 1,
+                    probabilityInit = 0,
+                    availableRounds = 1,
+                ),
+                effectRule(
+                    detailId = 21028211,
+                    effectId = 101,
+                    constantParam = 999,
+                    attackType = 43,
+                    attackMax = 1,
+                    probabilityInit = 0,
+                    availableRounds = 1,
+                ),
+            ),
+        )
+        val entryContext = context(skillId = 200282)
+        val context = entryContext.copy(
+            battleView = SkillBattleState(
+                entryContext.request,
+                entryContext.runtime,
+            ).view,
+        )
+
+        val changes = interpreter(graph).execute(
+            200282,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context,
+        ).stateChanges.filterIsInstance<BattleStatChange>()
+
+        assertEquals(
+            listOf(
+                ref(Side.ATTACKER, 0, 1),
+                ref(Side.ATTACKER, 1, 2),
+            ),
+            changes.map { it.target },
+        )
+        assertTrue(changes.all {
+            it.effectId == 101 &&
+                it.detailId == 21028211 &&
+                it.potency == TypedBattlePotency.flat(9) &&
+                it.durationRounds == 10
+        })
+    }
+
+    @Test
     fun `clear effect change removes only matching referenced detail on selected target`() {
         val store = BattleEffectStore()
         val source = ref(Side.ATTACKER, 0, 1)
@@ -1132,7 +1199,9 @@ class SkillRuleInterpreterTest {
     private fun interpreter(graph: SkillRuleGraph): SkillRuleInterpreter =
         SkillRuleInterpreter(
             graph = graph,
-            registry = BattleEffectRegistry.strict(graph).registerMetaEffects(),
+            registry = BattleEffectRegistry.strict(graph)
+                .registerCoreEffects(BattleEffectStore())
+                .registerMetaEffects(),
         )
 
     private fun graph(vararg rules: SkillRule): SkillRuleGraph =
