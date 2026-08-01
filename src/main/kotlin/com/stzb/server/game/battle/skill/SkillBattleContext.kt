@@ -228,6 +228,7 @@ data class SkillBattleContext(
     val targetDecisions: BattleTargetDecisionSource = BattleTargetDecisionSource.NONE,
     val forcedTargets: BattleForcedTargetSource = BattleForcedTargetSource.NONE,
     val skillProbabilityUses: SkillProbabilityUseSink = SkillProbabilityUseSink.NONE,
+    val effectValueScalePercent: Int = 100,
 )
 
 fun interface SkillProbabilityUseSink {

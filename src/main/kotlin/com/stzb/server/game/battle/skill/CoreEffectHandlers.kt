@@ -331,6 +331,7 @@ data class DamageModifierChange(
     val effectId: Int,
     val detailId: Int = skillId * 10_000 + effectId,
     val availableHits: Int = 0,
+    val extraParameters: Map<Int, Int> = emptyMap(),
 ) : BattleStateChange {
     enum class Direction {
         DEALT,
@@ -521,7 +522,9 @@ class DefaultBattleValueCalculator(
             ?: error("No live target for detail=${invocation.rule.detailId}")
 
     private fun damageRate(invocation: EffectInvocation, source: BattleHero): Int {
-        invocation.valueOverride?.let { return it.value.coerceAtLeast(1) }
+        invocation.valueOverride?.let {
+            return invocation.withValueDelta(it).value.coerceAtLeast(1)
+        }
         val rule = invocation.rule
         val raw = rule.raw
         val base = raw.constantParam.toDouble()
@@ -537,8 +540,12 @@ class DefaultBattleValueCalculator(
         } else {
             raw.calculationTypes[source.advanceLevel.coerceIn(0, raw.calculationTypes.lastIndex)]
         }
-        val configuredRate = (rate * multiplier).roundToInt().coerceAtLeast(1)
-        if (invocation.rule.effectId !in STRATEGY_DAMAGE_EFFECT_IDS) return configuredRate
+        val configuredRate = invocation.withValueDelta(
+            TypedBattlePotency.rate((rate * multiplier).roundToInt()),
+        ).value.coerceAtLeast(1)
+        if (invocation.rule.effectId !in STRATEGY_DAMAGE_EFFECT_IDS) {
+            return scaleEffectValue(configuredRate, invocation)
+        }
         val minimum = source.modifiers
             .filterIsInstance<BattleModifier.DamageRateMinimumPercent>()
             .lastOrNull()
@@ -547,12 +554,25 @@ class DefaultBattleValueCalculator(
             .filterIsInstance<BattleModifier.DamageRateMaximumPercent>()
             .lastOrNull()
             ?.percent
-        if (minimum == null && maximum == null) return configuredRate
-        val low = (minimum ?: maximum ?: 100).coerceAtLeast(0)
-        val high = (maximum ?: minimum ?: 100).coerceAtLeast(low)
-        val factor = if (low == high) low else low + invocation.context.random.nextInt(high - low + 1)
-        return (configuredRate * factor / 100.0).roundToInt().coerceAtLeast(1)
+        val modifierAdjusted = if (minimum == null && maximum == null) {
+            configuredRate
+        } else {
+            val low = (minimum ?: maximum ?: 100).coerceAtLeast(0)
+            val high = (maximum ?: minimum ?: 100).coerceAtLeast(low)
+            val factor = if (low == high) {
+                low
+            } else {
+                low + invocation.context.random.nextInt(high - low + 1)
+            }
+            (configuredRate * factor / 100.0).roundToInt().coerceAtLeast(1)
+        }
+        return scaleEffectValue(modifierAdjusted, invocation)
     }
+
+    private fun scaleEffectValue(value: Int, invocation: EffectInvocation): Int =
+        (
+            value * invocation.context.effectValueScalePercent / 100.0
+            ).roundToInt().coerceAtLeast(1)
 
     private companion object {
         const val BASE_STRATEGY = 80.0
@@ -609,12 +629,14 @@ private class CoreEffectHandler(
     ): List<BattleStateChange> {
         val effectId = invocation.rule.effectId
         val sourceHero = invocation.liveHero(invocation.context.source)
-        val potency = invocation.valueOverride
-            ?: calculator.effectValue(
+        val potency = invocation.withValueDelta(
+            invocation.valueOverride
+                ?: calculator.effectValue(
                 invocation.rule,
                 sourceHero,
                 invocation.rootSkillLevel(sourceHero),
-            ).requireResolved(invocation)
+            ).requireResolved(invocation),
+        )
         return when (effectId) {
             in 101..106 -> listOf(statChange(invocation, target, potency, increase = true))
             in 201..206 -> listOf(statChange(invocation, target, potency, increase = false))
@@ -667,6 +689,7 @@ private class CoreEffectHandler(
             durationRounds = invocation.lifecycle().availableRounds,
             skillId = invocation.context.currentSkillId,
             effectId = invocation.rule.effectId,
+            detailId = invocation.rule.detailId,
         )
     }
 
@@ -715,9 +738,11 @@ private class CoreEffectHandler(
         school: DamageSchool,
     ): ScheduledDamageEffectChange {
         val raw = invocation.rule.raw
-        val potency = TypedBattlePotency.Resolved(
-            unit = invocation.rule.configuredValue?.unit ?: BattleEffectValueUnit.RATE,
-            value = invocation.rule.configuredValue?.rawConstant ?: raw.constantParam,
+        val potency = invocation.withValueDelta(
+            TypedBattlePotency.Resolved(
+                unit = invocation.rule.configuredValue?.unit ?: BattleEffectValueUnit.RATE,
+                value = invocation.rule.configuredValue?.rawConstant ?: raw.constantParam,
+            ),
         )
         return ScheduledDamageEffectChange(
             spec = persistentSpec(invocation, target, potency),
@@ -820,6 +845,8 @@ private class CoreEffectHandler(
             durationRounds = invocation.lifecycle().availableRounds,
             skillId = invocation.context.currentSkillId,
             effectId = effectId,
+            detailId = invocation.rule.detailId,
+            extraParameters = invocation.executionOverride?.extraParameters.orEmpty(),
         )
     }
 

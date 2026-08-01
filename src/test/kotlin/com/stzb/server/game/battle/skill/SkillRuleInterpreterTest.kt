@@ -4,6 +4,7 @@ import com.stzb.server.game.battle.ActiveSkillEffect
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroId
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleDamageCalculator
 import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleRandom
 import com.stzb.server.game.battle.BattleRequest
@@ -11,6 +12,7 @@ import com.stzb.server.game.battle.BattleStats
 import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.BattleTeam
 import com.stzb.server.game.battle.BattleConfigRepository
+import com.stzb.server.game.battle.DamageOrigin
 import com.stzb.server.game.battle.DamageSchool
 import com.stzb.server.game.battle.EffectCategory
 import com.stzb.server.game.battle.FixedBattleRandom
@@ -858,6 +860,398 @@ class SkillRuleInterpreterTest {
     }
 
     @Test
+    fun `extra parameters scale only their referenced active and pursuit retriggers`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 111,
+                    effectParam = 102,
+                    constantParam = 50,
+                    calcPos = 953,
+                    attackType = 11,
+                ),
+                effectRule(
+                    detailId = 102,
+                    effectId = 129,
+                    calcPos = 953,
+                    attackType = 11,
+                ),
+                effectRule(
+                    detailId = 103,
+                    effectId = 111,
+                    effectParam = 104,
+                    constantParam = 80,
+                    calcPos = 954,
+                    attackType = 11,
+                ),
+                effectRule(
+                    detailId = 104,
+                    effectId = 130,
+                    calcPos = 954,
+                    attackType = 11,
+                ),
+                effectRule(
+                    detailId = 105,
+                    effectId = 129,
+                    calcPos = 953,
+                    attackType = 11,
+                ),
+            ),
+            rule(2, effectRule(201, 0), kind = SkillKind.ACTIVE),
+        )
+
+        val retriggers = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context(skillId = 1, alliedSkillIds = listOf(2)),
+        ).stateChanges.filterIsInstance<RetriggerSkillChange>()
+
+        assertEquals(
+            listOf(
+                SkillKind.ACTIVE to 50,
+                SkillKind.PURSUIT to 80,
+                SkillKind.ACTIVE to 100,
+            ),
+            retriggers.map { it.skillKind to it.effectValueScalePercent },
+        )
+    }
+
+    @Test
+    fun `active retrigger extra parameter scales actual strategy damage only once`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 111,
+                    effectParam = 102,
+                    constantParam = 50,
+                    calcPos = 953,
+                    attackType = 11,
+                ),
+                effectRule(
+                    detailId = 102,
+                    effectId = 129,
+                    calcPos = 953,
+                    attackType = 11,
+                ),
+                effectRule(
+                    detailId = 103,
+                    effectId = 129,
+                    calcPos = 953,
+                    attackType = 11,
+                ),
+            ),
+            rule(
+                2,
+                effectRule(
+                    detailId = 201,
+                    effectId = 302,
+                    constantParam = 100,
+                    attackType = 43,
+                ),
+                kind = SkillKind.ACTIVE,
+            ),
+        )
+        val entryContext = context(skillId = 1, alliedSkillIds = listOf(2))
+        val context = entryContext.copy(
+            battleView = SkillBattleState(
+                entryContext.request,
+                entryContext.runtime,
+            ).view,
+        )
+        val ally = entryContext.request.attacker.heroes.single { 2 in it.skillIds }
+        val enemy = entryContext.request.defender.heroes.single()
+
+        val damages = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context,
+        ).stateChanges.filterIsInstance<TroopDamageChange>()
+
+        assertEquals(
+            listOf(
+                BattleDamageCalculator.strategy(
+                    ally,
+                    enemy,
+                    ratePercent = 50,
+                    origin = DamageOrigin.ACTIVE,
+                ),
+                BattleDamageCalculator.strategy(
+                    ally,
+                    enemy,
+                    ratePercent = 100,
+                    origin = DamageOrigin.ACTIVE,
+                ),
+            ),
+            damages.map { it.amount },
+        )
+    }
+
+    @Test
+    fun `distance extra parameter is normalized and scoped to its referenced modifier`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 111,
+                    effectParam = 102,
+                    constantParam = 2_000_000,
+                    calcPos = 991,
+                    calcParam = 1,
+                    attackType = 0,
+                    availableRounds = 10,
+                ),
+                effectRule(
+                    detailId = 102,
+                    effectId = 531,
+                    constantParam = 10,
+                    calcPos = 991,
+                    calcParam = 1,
+                    attackType = 0,
+                    availableRounds = 10,
+                ),
+                effectRule(
+                    detailId = 103,
+                    effectId = 531,
+                    constantParam = 20,
+                    calcPos = 991,
+                    calcParam = 1,
+                    attackType = 0,
+                    availableRounds = 10,
+                ),
+            ),
+        )
+        val entryContext = context(skillId = 1)
+        val context = entryContext.copy(
+            battleView = SkillBattleState(
+                entryContext.request,
+                entryContext.runtime,
+            ).view,
+        )
+
+        val modifiers = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context,
+        ).stateChanges.filterIsInstance<DamageModifierChange>()
+
+        assertEquals(
+            listOf(mapOf(991 to 2), emptyMap()),
+            modifiers.map { it.extraParameters },
+        )
+    }
+
+    @Test
+    fun `referenced value change affects the next invocation without mutating the graph`() {
+        val puppet = effectRule(
+            detailId = 101,
+            effectId = 125,
+            effectParam = 201,
+            constantParam = 10,
+            attackType = 21,
+            attackMax = 1,
+            availableRounds = 2,
+        )
+        val graph = graph(
+            rule(
+                1,
+                puppet,
+                effectRule(
+                    detailId = 102,
+                    effectId = 112,
+                    effectParam = 101,
+                    constantParam = 5,
+                    attackType = 0,
+                ),
+            ),
+            rule(
+                2,
+                effectRule(
+                    detailId = 201,
+                    effectId = 101,
+                    constantParam = 999,
+                    attackType = 43,
+                    probabilityInit = 0,
+                    availableRounds = 1,
+                ),
+            ),
+        )
+        val entryContext = context(skillId = 1)
+        val context = entryContext.copy(
+            battleView = SkillBattleState(
+                entryContext.request,
+                entryContext.runtime,
+            ).view,
+        )
+        val interpreter = interpreter(graph)
+
+        val first = interpreter.execute(1, BattleTrigger.ACTIVE_SKILL_ATTEMPT, context)
+        val second = interpreter.execute(1, BattleTrigger.ACTIVE_SKILL_ATTEMPT, context)
+
+        assertEquals(
+            listOf(10, 15),
+            listOf(first, second).map { result ->
+                result.stateChanges.filterIsInstance<BattleStatChange>().single().potency.value
+            },
+        )
+        assertEquals(10, graph.details.single { it.detailId == 101 }.raw.constantParam)
+    }
+
+    @Test
+    fun `round value change starts at round end and uses configured round count exactly`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 112,
+                    effectParam = 102,
+                    constantParam = 5,
+                    calcPos = 32,
+                    availableRounds = 2,
+                ),
+                effectRule(
+                    detailId = 102,
+                    effectId = 77,
+                    constantParam = 10,
+                ),
+                kind = SkillKind.COMMAND,
+            ),
+        )
+        val context = context(skillId = 1).copy(
+            round = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+        )
+
+        interpreter(graph).execute(1, BattleTrigger.BATTLE_COMMAND, context)
+
+        assertEquals(0, context.runtime.referencedValueDelta(context.source, 1, 102))
+        context.runtime.advanceReferencedValueChanges(1)
+        assertEquals(5, context.runtime.referencedValueDelta(context.source, 1, 102))
+        context.runtime.advanceReferencedValueChanges(1)
+        assertEquals(5, context.runtime.referencedValueDelta(context.source, 1, 102))
+        context.runtime.advanceReferencedValueChanges(2)
+        assertEquals(10, context.runtime.referencedValueDelta(context.source, 1, 102))
+        context.runtime.advanceReferencedValueChanges(3)
+        assertEquals(10, context.runtime.referencedValueDelta(context.source, 1, 102))
+    }
+
+    @Test
+    fun `round value change honors its configured delay`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 112,
+                    effectParam = 102,
+                    constantParam = 10,
+                    calcPos = 32,
+                    delayRound = 2,
+                    availableRounds = 2,
+                ),
+                effectRule(detailId = 102, effectId = 77),
+                kind = SkillKind.COMMAND,
+            ),
+        )
+        val context = context(skillId = 1).copy(
+            round = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+        )
+
+        interpreter(graph).execute(1, BattleTrigger.BATTLE_COMMAND, context)
+
+        context.runtime.advanceReferencedValueChanges(1)
+        assertEquals(0, context.runtime.referencedValueDelta(context.source, 1, 102))
+        context.runtime.advanceReferencedValueChanges(2)
+        assertEquals(10, context.runtime.referencedValueDelta(context.source, 1, 102))
+        context.runtime.advanceReferencedValueChanges(3)
+        assertEquals(20, context.runtime.referencedValueDelta(context.source, 1, 102))
+        context.runtime.advanceReferencedValueChanges(4)
+        assertEquals(20, context.runtime.referencedValueDelta(context.source, 1, 102))
+    }
+
+    @Test
+    fun `negative referenced value change retains the referenced value unit`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 125,
+                    effectParam = 201,
+                    constantParam = 10,
+                    attackType = 21,
+                ),
+                effectRule(
+                    detailId = 102,
+                    effectId = 112,
+                    effectParam = 101,
+                    constantParam = -4,
+                ),
+            ),
+            rule(2, effectRule(detailId = 201, effectId = 101)),
+        )
+        val entryContext = context(skillId = 1)
+        val context = entryContext.copy(
+            battleView = SkillBattleState(
+                entryContext.request,
+                entryContext.runtime,
+            ).view,
+        )
+        val interpreter = interpreter(graph)
+
+        val first = interpreter.execute(1, BattleTrigger.ACTIVE_SKILL_ATTEMPT, context)
+        val second = interpreter.execute(1, BattleTrigger.ACTIVE_SKILL_ATTEMPT, context)
+
+        assertEquals(
+            listOf(10, 6),
+            listOf(first, second).map { result ->
+                result.stateChanges.filterIsInstance<BattleStatChange>().single().potency.value
+            },
+        )
+    }
+
+    @Test
+    fun `large referenced value change selects the shifted child skill id`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 112,
+                    effectParam = 102,
+                    constantParam = 1_000,
+                ),
+                effectRule(
+                    detailId = 102,
+                    effectId = 122,
+                    childSkillIds = setOf(212_965),
+                    constantParam = 212_965,
+                ),
+            ),
+            rule(212_965, effectRule(212_965_01, 77)),
+            rule(213_965, effectRule(213_965_01, 77)),
+        )
+
+        val result = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context(skillId = 1),
+        )
+
+        assertEquals(listOf(1, 213_965), result.executedSkillIds)
+        assertEquals(
+            listOf(213_965_01),
+            result.stateChanges.filterIsInstance<MarkerEffectChange>().map { it.detailId },
+        )
+    }
+
+    @Test
     fun `clear effect change removes only matching referenced detail on selected target`() {
         val store = BattleEffectStore()
         val source = ref(Side.ATTACKER, 0, 1)
@@ -1256,6 +1650,9 @@ class SkillRuleInterpreterTest {
         availableRounds: Int = 2,
         castCondition: Int = 0,
         customSelectFlag: Int = 0,
+        calcPos: Int = 0,
+        calcParam: Int = 0,
+        delayRound: Int = 0,
     ): SkillEffectRule =
         SkillEffectRule(
             detailId = detailId,
@@ -1265,6 +1662,8 @@ class SkillRuleInterpreterTest {
                 detailId = detailId,
                 effectId = effectId,
                 effectParam = effectParam,
+                calcPos = calcPos,
+                calcParam = calcParam,
                 attackType = attackType,
                 targetType = 0,
                 selectType = 0,
@@ -1276,6 +1675,7 @@ class SkillRuleInterpreterTest {
                 castCondition = castCondition,
                 customSelectFlag = customSelectFlag,
                 attackMax = attackMax,
+                delayRound = delayRound,
                 availableRounds = availableRounds,
                 attributeType = attributeType,
                 effectName = "fixture-$effectId",

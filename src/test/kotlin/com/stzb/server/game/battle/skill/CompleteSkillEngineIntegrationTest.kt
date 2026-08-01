@@ -802,6 +802,127 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `qixurulin value progression advances once at each round end`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100282, 100, listOf(200282), position = 2),
+                    hero(100017, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single {
+            it.heroId == BattleHeroId(100282)
+        }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        engine.prepareBattle(context)
+
+        assertEquals(
+            0,
+            engine.state.runtime.referencedValueDelta(owner, 200282, 20028212),
+        )
+        engine.finishRound(1)
+        val firstIncrease =
+            engine.state.runtime.referencedValueDelta(owner, 200282, 20028212)
+        assertTrue(firstIncrease > 0)
+        engine.finishRound(1)
+        assertEquals(
+            firstIncrease,
+            engine.state.runtime.referencedValueDelta(owner, 200282, 20028212),
+        )
+        engine.finishRound(2)
+        assertEquals(
+            firstIncrease * 2,
+            engine.state.runtime.referencedValueDelta(owner, 200282, 20028212),
+        )
+    }
+
+    @Test
+    fun `qixurulin splash consumes its current referenced value`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100282, 100, listOf(200282), position = 2),
+                    hero(100017, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 30, position = 1),
+                    hero(200002, 20, position = 0),
+                ),
+            ),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single {
+            it.heroId == BattleHeroId(100282)
+        }
+        val source = engine.state.view.heroes().single {
+            it.heroId == BattleHeroId(100017)
+        }
+        val original = engine.state.view.heroes().single {
+            it.side == Side.DEFENDER && it.position == 1
+        }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+
+        fun splashDamage(round: Int): Int {
+            val troops = requireNotNull(engine.state.view.state(original)).troops
+            return engine.applyChanges(
+                listOf(
+                    TroopDamageChange(
+                        source = source,
+                        target = original,
+                        amount = 1_000,
+                        troopsAfter = troops - 1_000,
+                        school = DamageSchool.STRATEGY,
+                        origin = DamageOrigin.ACTIVE,
+                        tags = emptySet(),
+                        skillId = 900000,
+                        effectId = 302,
+                    ),
+                ),
+                context.copy(round = round, source = source),
+            ).filterIsInstance<BattleEvent.SkillDamage>()
+                .single { it.skillId == 210282 }
+                .damage
+        }
+
+        val roundOne = splashDamage(1)
+        engine.finishRound(1)
+        val increase =
+            engine.state.runtime.referencedValueDelta(owner, 200282, 20028212)
+        val roundTwo = splashDamage(2)
+
+        assertEquals(roundOne + 1_000 * increase / 100, roundTwo)
+    }
+
+    @Test
     fun `juxian reacts before successful ally increases and enemy decreases from round one`() {
         val request = BattleRequest(
             attacker = BattleTeam(
@@ -1245,7 +1366,7 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
-    fun `fenji attacks at forty percent and clears its accumulated damage buff`() {
+    fun `fenji attacks at forty percent then starts a new damage stack`() {
         val request = BattleRequest(
             attacker = BattleTeam(
                 listOf(
@@ -1280,7 +1401,10 @@ class CompleteSkillEngineIntegrationTest {
         val events = engine.trigger(BattleTrigger.ACTION_BEFORE, context)
 
         assertTrue(events.any { it is BattleEvent.SkillTriggered && it.skillId == 211961 })
-        assertTrue(engine.state.effectStore.effectsFor(owner).none { it.detailId == 21396101 })
+        val remaining = engine.state.effectStore.effectsFor(owner)
+            .filter { it.detailId == 21396101 }
+        assertEquals(1, remaining.size)
+        assertEquals(8, remaining.single().effectiveStrength)
     }
 
     @Test

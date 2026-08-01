@@ -123,8 +123,9 @@ data class SkillCoverageReport(
          */
         private val RUNTIME_CONSUMED_META_EFFECT_IDS = setOf(
             77, 81, 82, 83, 88,
+            111, 112,
             113, 114, 118, 121,
-            122, 123,
+            122, 123, 125,
             127, 129, 130, 131, 141, 149,
             151, 152, 153, 161,
             171, 181, 199, 200,

@@ -21,6 +21,9 @@ class SkillRuntimeState {
     private val roundHurtCounts = mutableMapOf<RoundHurtKey, Int>()
     private val pendingSignals = mutableMapOf<SignalKey, Int>()
     private val markers = mutableMapOf<MarkerKey, MarkerValue>()
+    private val referencedValueDeltas = mutableMapOf<ReferencedValueKey, Int>()
+    private val referencedValueProgressions =
+        mutableListOf<ReferencedValueProgression>()
     private val preparations = mutableListOf<PreparedSkill>()
     private val delayedEffects = mutableListOf<DelayedEffect>()
     private val callStack = ArrayDeque<Int>()
@@ -315,6 +318,76 @@ class SkillRuntimeState {
 
     fun currentDetailPath(): List<SkillExecutionFrame> = detailCallStack.toList()
 
+    fun referencedValueDelta(
+        source: BattleHeroRef,
+        rootSkillId: Int,
+        detailId: Int,
+    ): Int = referencedValueDeltas[ReferencedValueKey(source, rootSkillId, detailId)] ?: 0
+
+    fun addReferencedValueDelta(
+        source: BattleHeroRef,
+        rootSkillId: Int,
+        detailId: Int,
+        delta: Int,
+    ): Int {
+        require(detailId > 0) { "Referenced detail ID must be positive: $detailId" }
+        val key = ReferencedValueKey(source, rootSkillId, detailId)
+        val updated = referencedValueDelta(source, rootSkillId, detailId) + delta
+        referencedValueDeltas[key] = updated
+        return updated
+    }
+
+    fun scheduleReferencedValueProgression(
+        source: BattleHeroRef,
+        rootSkillId: Int,
+        detailId: Int,
+        delta: Int,
+        appliedRound: Int,
+        delayRound: Int,
+        availableRounds: Int,
+    ) {
+        require(detailId > 0) { "Referenced detail ID must be positive: $detailId" }
+        require(appliedRound >= 0) {
+            "Referenced value applied round must be non-negative: $appliedRound"
+        }
+        require(delayRound >= 0) {
+            "Referenced value delay must be non-negative: $delayRound"
+        }
+        require(availableRounds > 0) {
+            "Referenced value available rounds must be positive: $availableRounds"
+        }
+        referencedValueProgressions += ReferencedValueProgression(
+            source = source,
+            rootSkillId = rootSkillId,
+            detailId = detailId,
+            delta = delta,
+            firstRound = (appliedRound + delayRound).coerceAtLeast(1),
+            availableRounds = availableRounds,
+        )
+    }
+
+    fun advanceReferencedValueChanges(round: Int) {
+        require(round > 0) { "Referenced value round must be positive: $round" }
+        referencedValueProgressions.forEach { progression ->
+            val finalRound = progression.firstRound + progression.availableRounds - 1
+            val eligibleRound = minOf(round, finalRound)
+            val expectedApplications =
+                (eligibleRound - progression.firstRound + 1).coerceAtLeast(0)
+            repeat((expectedApplications - progression.appliedRounds).coerceAtLeast(0)) {
+                addReferencedValueDelta(
+                    source = progression.source,
+                    rootSkillId = progression.rootSkillId,
+                    detailId = progression.detailId,
+                    delta = progression.delta,
+                )
+                progression.appliedRounds += 1
+            }
+        }
+        referencedValueProgressions.removeAll {
+            it.appliedRounds >= it.availableRounds
+        }
+    }
+
     private data class RuntimeKey(
         val source: BattleHeroRef,
         val trigger: BattleTrigger,
@@ -355,6 +428,22 @@ class SkillRuntimeState {
     private data class MarkerKey(
         val target: BattleHeroRef,
         val detailId: Int,
+    )
+
+    private data class ReferencedValueKey(
+        val source: BattleHeroRef,
+        val rootSkillId: Int,
+        val detailId: Int,
+    )
+
+    private data class ReferencedValueProgression(
+        val source: BattleHeroRef,
+        val rootSkillId: Int,
+        val detailId: Int,
+        val delta: Int,
+        val firstRound: Int,
+        val availableRounds: Int,
+        var appliedRounds: Int = 0,
     )
 
     private data class MarkerValue(

@@ -267,8 +267,16 @@ class SkillRuleInterpreter private constructor(
                 executedSkillIds = listOf(skillId),
                 diagnostics = emptyList(),
             )
+            val detailOverrides = mutableMapOf<Int, ReferencedDetailExecutionOverride>()
             rule.details.forEach { detail ->
-                result += executeBranch(detail, context, rootPreselectedTargets)
+                val branch = executeBranch(
+                    detail,
+                    context,
+                    rootPreselectedTargets,
+                    detailOverrides.remove(detail.detailId),
+                )
+                result += branch
+                captureExtraParameters(branch, detailOverrides)
             }
             return result
         } finally {
@@ -280,6 +288,7 @@ class SkillRuleInterpreter private constructor(
         detail: SkillEffectRule,
         context: SkillBattleContext,
         preselectedTargets: List<BattleHeroRef>? = null,
+        executionOverride: ReferencedDetailExecutionOverride? = null,
     ): SkillExecutionResult =
         try {
             if (!conditionInterpreter.matches(detail, context.trigger, context) ||
@@ -287,7 +296,12 @@ class SkillRuleInterpreter private constructor(
             ) {
                 SkillExecutionResult.EMPTY
             } else {
-                executeDetail(detail, context, preselectedTargets)
+                executeDetail(
+                    detail,
+                    context,
+                    preselectedTargets,
+                    executionOverride = executionOverride,
+                )
             }
         } catch (error: Exception) {
             if (failureMode == InterpreterFailureMode.STRICT || !isRecoverable(error)) throw error
@@ -314,12 +328,27 @@ class SkillRuleInterpreter private constructor(
         }
         try {
             val executionContext = context.copy(currentSkillId = ownerSkillId)
+            val runtimeDelta = context.runtime.referencedValueDelta(
+                context.source,
+                context.rootSkillId,
+                detail.detailId,
+            )
+            val effectiveOverride = when {
+                runtimeDelta == 0 -> executionOverride
+                executionOverride == null -> ReferencedDetailExecutionOverride(
+                    referencedDetailId = detail.detailId,
+                    valueDelta = runtimeDelta,
+                )
+                else -> executionOverride.copy(
+                    valueDelta = (executionOverride.valueDelta ?: 0) + runtimeDelta,
+                )
+            }
             val execution = registry.execute(
                 rule = detail,
                 context = executionContext,
                 preselectedTargets = preselectedTargets,
                 valueOverride = valueOverride,
-                executionOverride = executionOverride,
+                executionOverride = effectiveOverride,
             )
             execution.stateChanges.forEach { change ->
                 when (change) {
@@ -337,6 +366,25 @@ class SkillRuleInterpreter private constructor(
                             context.runtime.removeMarker(
                                 change.target,
                                 change.referencedDetailId,
+                            )
+                        }
+                    is ReferencedValueChange ->
+                        if (change.parameters.calcPosition == 32) {
+                            context.runtime.scheduleReferencedValueProgression(
+                                source = change.source,
+                                rootSkillId = change.rootSkillId,
+                                detailId = change.referencedDetailId,
+                                delta = change.delta,
+                                appliedRound = context.round,
+                                delayRound = change.parameters.delayRound,
+                                availableRounds = change.parameters.availableRounds,
+                            )
+                        } else {
+                            context.runtime.addReferencedValueDelta(
+                                source = change.source,
+                                rootSkillId = change.rootSkillId,
+                                detailId = change.referencedDetailId,
+                                delta = change.delta,
                             )
                         }
                     else -> Unit
@@ -421,14 +469,16 @@ class SkillRuleInterpreter private constructor(
                 executedSkillIds = listOf(child.skillId),
                 diagnostics = emptyList(),
             )
+            val detailOverrides = mutableMapOf<Int, ReferencedDetailExecutionOverride>()
             child.details.forEach { detail ->
-                result += try {
+                val branch = try {
                     if (conditionInterpreter.matches(detail, trigger, context)) {
                         executeDetail(
                             detail = detail,
                             context = context,
                             preselectedTargets = change.inheritedPreselectedTargets,
                             valueOverride = change.valueOverride,
+                            executionOverride = detailOverrides.remove(detail.detailId),
                         )
                     } else {
                         SkillExecutionResult.EMPTY
@@ -437,6 +487,8 @@ class SkillRuleInterpreter private constructor(
                     if (failureMode == InterpreterFailureMode.STRICT || !isRecoverable(error)) throw error
                     diagnosticResult(detail, context, error)
                 }
+                result += branch
+                captureExtraParameters(branch, detailOverrides)
             }
             return result
         } finally {
@@ -461,13 +513,34 @@ class SkillRuleInterpreter private constructor(
                         result += executeSkill(
                             skillId = skillId,
                             trigger = trigger,
-                            parentContext = context.copy(source = target),
+                            parentContext = context.copy(
+                                source = target,
+                                effectValueScalePercent = change.effectValueScalePercent,
+                            ),
                             probabilityOwnership = change.probabilityOwnership,
                         )
                     }
                 }
         }
         return result
+    }
+
+    private fun captureExtraParameters(
+        result: SkillExecutionResult,
+        overrides: MutableMap<Int, ReferencedDetailExecutionOverride>,
+    ) {
+        result.stateChanges.filterIsInstance<ReferencedExtraParameterChange>().forEach { change ->
+            val previous = overrides[change.referencedDetailId]
+            overrides[change.referencedDetailId] = ReferencedDetailExecutionOverride(
+                referencedDetailId = change.referencedDetailId,
+                valueDelta = previous?.valueDelta,
+                valueReplacement = previous?.valueReplacement,
+                extraParameters = previous?.extraParameters.orEmpty() +
+                    (change.calcPosition to change.value),
+                targetOverride = previous?.targetOverride,
+                lifecycleOverride = previous?.lifecycleOverride,
+            )
+        }
     }
 
     private fun triggerReferencedEffect(

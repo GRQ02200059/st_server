@@ -164,6 +164,16 @@ data class MarkerEffectChange(
     val parameters: MetaEffectParameters,
 ) : BattleStateChange
 
+data class ReferencedValueChange(
+    val source: BattleHeroRef,
+    val rootSkillId: Int,
+    val skillId: Int,
+    val detailId: Int,
+    val referencedDetailId: Int,
+    val delta: Int,
+    val parameters: MetaEffectParameters,
+) : BattleStateChange
+
 data class MetaEffectChange(
     val source: BattleHeroRef,
     val target: BattleHeroRef,
@@ -201,6 +211,18 @@ data class ForcedTargetEffectChange(
 data class SharedEffectUseGroupChange(
     val spec: PersistentEffectSpec,
     val memberDetailId: Int,
+) : BattleStateChange
+
+data class ReferencedExtraParameterChange(
+    val source: BattleHeroRef,
+    val rootSkillId: Int,
+    val skillId: Int,
+    val detailId: Int,
+    val referencedDetailId: Int,
+    val calcPosition: Int,
+    val calcParameter: Int,
+    val value: Int,
+    val parameters: MetaEffectParameters,
 ) : BattleStateChange
 
 data class ModifierEffectChange(
@@ -252,6 +274,7 @@ data class RetriggerSkillChange(
     val maximumExecutions: Int?,
     val probabilityOwnership: ChildProbabilityOwnership,
     val parameters: MetaEffectParameters,
+    val effectValueScalePercent: Int = 100,
 ) : BattleStateChange
 
 enum class ReferenceEffectMode {
@@ -391,7 +414,7 @@ private class MetaEffectHandler(
                 )
             }
             113, 114 -> {
-                val value = invocation.valueOverride ?: configuredPotency(invocation)
+                val value = configuredPotency(invocation)
                 val signed = value.copy(value = if (ownedEffectId == 113) value.value else -value.value)
                 targets.map { target ->
                     MoraleEffectChange(
@@ -419,6 +442,43 @@ private class MetaEffectHandler(
                     )
                 }
             }
+            111 -> {
+                val referenced = referencedDetail(invocation)
+                val resolved = configuredPotency(invocation)
+                val value = if (raw.calcPos == 991 && kotlin.math.abs(resolved.value) >= 1_000_000) {
+                    resolved.value / 1_000_000
+                } else {
+                    resolved.value
+                }
+                listOf(
+                    ReferencedExtraParameterChange(
+                        source = context.source,
+                        rootSkillId = context.rootSkillId,
+                        skillId = context.currentSkillId,
+                        detailId = invocation.rule.detailId,
+                        referencedDetailId = referenced.detailId,
+                        calcPosition = raw.calcPos,
+                        calcParameter = raw.calcParam,
+                        value = value,
+                        parameters = parameters,
+                    ),
+                )
+            }
+            112 -> {
+                val referenced = referencedDetail(invocation)
+                val resolved = configuredPotency(invocation)
+                listOf(
+                    ReferencedValueChange(
+                        source = context.source,
+                        rootSkillId = context.rootSkillId,
+                        skillId = context.currentSkillId,
+                        detailId = invocation.rule.detailId,
+                        referencedDetailId = referenced.detailId,
+                        delta = resolved.value,
+                        parameters = parameters,
+                    ),
+                )
+            }
             122, 123, 210 -> listOf(
                 ExecuteChildSkillChange(
                     source = context.source,
@@ -426,7 +486,7 @@ private class MetaEffectHandler(
                     skillId = context.currentSkillId,
                     detailId = invocation.rule.detailId,
                     operation = operation,
-                    childSkillIds = invocation.rule.childSkillIds.toList(),
+                    childSkillIds = runtimeChildSkillIds(invocation),
                     selectedTargets = targets,
                     inheritedPreselectedTargets = invocation.preselectedTargets,
                     valueOverride = invocation.valueOverride,
@@ -439,8 +499,7 @@ private class MetaEffectHandler(
                 val inherited = invocation.executionOverride
                 val override = ReferencedDetailExecutionOverride(
                     referencedDetailId = referenced.detailId,
-                    valueDelta = inherited?.valueDelta,
-                    valueReplacement = invocation.valueOverride ?: configuredPotency(invocation),
+                    valueReplacement = configuredPotency(invocation),
                     extraParameters = inherited?.extraParameters.orEmpty(),
                     targetOverride = targets,
                     lifecycleOverride = inherited?.lifecycleOverride ?: EffectLifecycleOverride(
@@ -480,6 +539,11 @@ private class MetaEffectHandler(
                     maximumExecutions = raw.availableHit.takeIf { it > 0 },
                     probabilityOwnership = ChildProbabilityOwnership.CONFIGURED_CHILD,
                     parameters = parameters,
+                    effectValueScalePercent = invocation.executionOverride
+                        ?.extraParameters
+                        ?.get(raw.calcPos)
+                        ?.coerceAtLeast(0)
+                        ?: 100,
                 ),
             )
             131, 231 -> targets.map { target ->
@@ -520,7 +584,7 @@ private class MetaEffectHandler(
                 )
             }
             281 -> {
-                val potency = invocation.valueOverride ?: configuredPotency(invocation)
+                val potency = configuredPotency(invocation)
                 targets.map { target ->
                     ModifierEffectChange(
                         spec = persistentSpec(invocation, target, potency),
@@ -529,7 +593,7 @@ private class MetaEffectHandler(
                 }
             }
             261 -> {
-                val potency = invocation.valueOverride ?: configuredPotency(invocation)
+                val potency = configuredPotency(invocation)
                 val tag = when (raw.effectParam) {
                     303 -> com.stzb.server.game.battle.DamageTag.SHAKE
                     304 -> com.stzb.server.game.battle.DamageTag.PANIC
@@ -799,6 +863,15 @@ private class MetaEffectHandler(
                 invocation.rule.raw.effectParam,
             )
 
+    private fun runtimeChildSkillIds(invocation: EffectInvocation): List<Int> {
+        val configured = invocation.rule.childSkillIds.toList()
+        val delta = invocation.executionOverride?.valueDelta ?: return configured
+        val rawChildSkillId = invocation.rule.raw.constantParam
+        if (rawChildSkillId !in configured) return configured
+        val shifted = Math.addExact(rawChildSkillId, delta)
+        return configured.map { if (it == rawChildSkillId) shifted else it }
+    }
+
     private fun persistentSpec(
         invocation: EffectInvocation,
         target: BattleHeroRef,
@@ -837,13 +910,14 @@ private class MetaEffectHandler(
     }
 
     private fun configuredPotency(invocation: EffectInvocation): TypedBattlePotency.Resolved {
+        invocation.valueOverride?.let { return invocation.withValueDelta(it) }
         val source = sourceHero(invocation)
         val calculated = calculator.effectValue(
             invocation.rule,
             source,
             invocation.rootSkillLevel(source),
         )
-        return when (calculated) {
+        val resolved = when (calculated) {
             is TypedBattlePotency.Resolved -> calculated
             is TypedBattlePotency.Deferred -> throw UnsupportedConfiguredBattleValueException(
                 BattleEffectDiagnostic(
@@ -857,6 +931,7 @@ private class MetaEffectHandler(
                 ),
             )
         }
+        return invocation.withValueDelta(resolved)
     }
 
     private fun defenseIgnorePotency(invocation: EffectInvocation): TypedBattlePotency.Resolved {

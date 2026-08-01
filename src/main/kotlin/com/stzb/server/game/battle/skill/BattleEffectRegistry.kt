@@ -100,6 +100,16 @@ internal fun EffectInvocation.lifecycle(): EffectLifecycleOverride =
         clearPerHit = rule.raw.clearPerHit,
     )
 
+internal fun EffectInvocation.withValueDelta(
+    potency: TypedBattlePotency.Resolved,
+): TypedBattlePotency.Resolved {
+    val delta = executionOverride?.valueDelta ?: return potency
+    return potency.copy(
+        value = potency.value + delta,
+        exactValue = potency.exactValue + delta,
+    )
+}
+
 data class EffectExecution(
     val stateChanges: List<BattleStateChange>,
     val events: List<BattleEvent>,

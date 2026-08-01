@@ -576,7 +576,25 @@ class DefaultCompleteSkillEngine private constructor(
                 state.view.state(candidate)?.troops?.let { it > 0 } == true &&
                 kotlin.math.abs(candidate.position - output.target.position) == 1
         }
-        val amount = (output.amount * 50 / 100).coerceAtLeast(1)
+        val ownerHero = state.liveHero(owner)
+        val skillIndex = ownerHero.skillIds.indexOf(200282)
+        val skillLevel = ownerHero.skillLevels.getOrElse(skillIndex) { 1 }.coerceIn(1, 10)
+        val configured = DefaultBattleValueCalculator().effectValue(
+            graph.details.single { it.detailId == 20028212 },
+            ownerHero,
+            skillLevel,
+        )
+        val basePercent = when (configured) {
+            is TypedBattlePotency.Resolved -> configured.value
+            is TypedBattlePotency.Deferred ->
+                error("Unsupported qixurulin value: ${configured.diagnostic}")
+        }
+        val percent = basePercent + state.runtime.referencedValueDelta(
+            owner,
+            200282,
+            20028212,
+        )
+        val amount = (output.amount * percent / 100).coerceAtLeast(1)
         return SkillExecutionResult.immutable(
             stateChanges = adjacent.map { target ->
                 TroopDamageChange(
@@ -825,8 +843,10 @@ class DefaultCompleteSkillEngine private constructor(
             base == null || requireNotNull(state.view.state(base)).troops <= 0
         }
 
-    fun finishRound(round: Int): List<BattleEvent> =
-        applier.onRoundEnd(round).toEvents(round)
+    fun finishRound(round: Int): List<BattleEvent> {
+        state.runtime.advanceReferencedValueChanges(round)
+        return applier.onRoundEnd(round).toEvents(round)
+    }
 
     private fun executeBattleSkills(
         trigger: BattleTrigger,
@@ -1231,7 +1251,10 @@ class DefaultCompleteSkillEngine private constructor(
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 is ModifierEffectChange ->
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
-                is MarkerEffectChange -> Unit
+                is MarkerEffectChange,
+                is ReferencedExtraParameterChange,
+                is ReferencedValueChange,
+                -> Unit
                 is DamageModifierChange ->
                     if (change.durationRounds > 0) {
                         events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
