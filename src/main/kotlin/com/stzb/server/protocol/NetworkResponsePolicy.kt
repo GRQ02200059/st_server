@@ -17,10 +17,34 @@ object NetworkResponsePolicy {
         3846, 4331, 4967, 5043, 5044, 5045, 5049, 5070, 5082, 6067, 6256, 9099,
     )
 
+    fun observedShapeCommandIds(): Set<Int> =
+        booleanCommands +
+            jsonNullCommands +
+            scalarNumberCommands.keys +
+            stringCommands +
+            dictionaryCommands +
+            fixedTupleCommands.keys +
+            pagedListCommands +
+            objectResultCommands +
+            noOpArrayCommands +
+            setOf(
+                Cmd.UNION_INFO,
+                Cmd.UNION_CREATE,
+                Cmd.GET_HOMEPAGE_INFO,
+                212,
+                502,
+                5013,
+                4979,
+                3877,
+                4968,
+                5091,
+                6092,
+            )
+
     fun fallbackBody(cmdId: Int, requestBody: String? = null): String? =
         when {
-            cmdId == 100 -> GenericGameResponses.unionInfoUnavailable()
-            cmdId == 102 -> "${GameServerConfig.SERVER_ID}" // UNION_CREATE: 回单个新盟 id，客户端随后打开主界面发 100
+            cmdId == Cmd.UNION_INFO -> GenericGameResponses.unionInfoUnavailable()
+            cmdId == Cmd.UNION_CREATE -> "0"
             cmdId == 212 -> GenericGameResponses.userLookup()
             cmdId == 502 -> "[1,\"\"]"  // GET_USER_PROFILE(他人)：num=1(非0非2) => 客户端提示"无结果"并关闭，不崩
             cmdId == 3686 -> ProfileResponses.homepageInfo() // GET_HOMEPAGE_INFO(自己主页)：完整字典，空 {} 会崩
