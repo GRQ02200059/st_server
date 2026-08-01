@@ -44,6 +44,7 @@ object CommandContractCatalog {
             Cmd.RANK_LIST,
             Cmd.USER_GET_USERS_HEADICON,
             Cmd.MAIL_INFO,
+            Cmd.MAIL_BRIEF_INFO_BY_MAIL_ID,
             Cmd.ARMY_BATTLE,
             Cmd.BUILD_BUILDING,
             Cmd.UPGRADE_BUILDING,

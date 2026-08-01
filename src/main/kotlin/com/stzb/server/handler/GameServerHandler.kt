@@ -11,6 +11,7 @@ import com.stzb.server.game.ClientCardPackCatalog
 import com.stzb.server.game.CityFacadeOperationRequestParser
 import com.stzb.server.game.GearOperationRequestParser
 import com.stzb.server.game.GameResponses
+import com.stzb.server.game.MailBriefInfoResponses
 import com.stzb.server.game.MailInfoResponses
 import com.stzb.server.game.PlayerBattleService
 import com.stzb.server.game.PlayerConscriptService
@@ -154,6 +155,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.MAIL_INFO -> {
                 logIn(msg)
                 sendMailInfo(ctx, msg)
+            }
+
+            Cmd.MAIL_BRIEF_INFO_BY_MAIL_ID -> {
+                logIn(msg)
+                sendMailBriefInfo(ctx, msg)
             }
 
             Cmd.UNION_CREATE -> {
@@ -1153,6 +1159,14 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val json = MailInfoResponses.response(msg.bodyText)
         ctx.writeAndFlush(DownPacket.json(Cmd.MAIL_INFO, json, dataType = DownType.PLAIN))
         log.info(">> cmd=204 邮件详情已下发")
+    }
+
+    private fun sendMailBriefInfo(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val json = MailBriefInfoResponses.response(msg.bodyText)
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.MAIL_BRIEF_INFO_BY_MAIL_ID, json, dataType = DownType.PLAIN),
+        )
+        log.info(">> cmd=209 邮件概要已下发")
     }
 
     private fun sendHomepageInfo(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {

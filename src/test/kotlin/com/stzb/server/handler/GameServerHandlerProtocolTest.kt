@@ -282,6 +282,46 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `mail brief info emits one plain local response without mutating repositories`() {
+        val channel = newChannel()
+        val accountKey = "mail-brief-info-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Mail Brief Snapshot User",
+        )
+        UnionStateRepository.create(state, "Mail Brief Snapshot Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_002, nowSec = 1))
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+
+        channel.writeInbound(
+            upPacket(Cmd.MAIL_BRIEF_INFO_BY_MAIL_ID, "[677829,0]", userId = state.userId),
+        )
+
+        val packet = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.MAIL_BRIEF_INFO_BY_MAIL_ID, packet.cmd)
+        assertEquals(DownType.PLAIN, packet.dataType)
+        assertEquals(
+            mapper.readTree(
+                """[0,["","",0,1,677829,0,0,1,0,0,0,0,0,0,677829,0,"",0,"",0,0,0]]""",
+            ),
+            mapper.readTree(packet.body),
+        )
+        assertNull(channel.readOutbound<Any>())
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `world chat uses official 2100 shape and is returned by history`() {
         val channel = newChannel()
         val playerId = platformLogin(channel, "alice")
