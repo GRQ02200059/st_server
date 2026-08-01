@@ -2035,6 +2035,207 @@ class CompleteSkillEngineIntegrationTest {
         assertTrue(events.any { it is BattleEvent.SkillTriggered && it.skillId == 200001 })
     }
 
+    @Test
+    fun `shared probability use is consumed through engine when active skill rolls`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100001, 100, listOf(200049), position = 0)),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 0))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val actor = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = actor,
+            rootSkillId = 200049,
+            currentSkillId = 200049,
+            trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            battleView = engine.state.view,
+        )
+        fun groupedSpec(
+            detailId: Int,
+            effectId: Int,
+        ) = PersistentEffectSpec(
+            source = actor,
+            target = actor,
+            rootSkillId = 200293,
+            skillId = 211293,
+            skillKind = SkillKind.COMMAND,
+            rawSkillType = 2,
+            detailId = detailId,
+            effectId = effectId,
+            category = com.stzb.server.game.battle.EffectCategory.BENEFICIAL,
+            conflict = 0,
+            replaceType = 0,
+            bindFlag = 0,
+            maxStacks = 1,
+            delayRound = 0,
+            delayHit = 0,
+            availableRounds = 0,
+            availableHit = 1,
+            clearPerHit = false,
+            startBoundary = EffectStartBoundary.IMMEDIATE,
+            potency = TypedBattlePotency.percent(100),
+        )
+        engine.applyChanges(
+            listOf(
+                ModifierEffectChange(
+                    groupedSpec(21129311, 131),
+                    com.stzb.server.game.battle.BattleModifier.SkillProbabilityPercent(
+                        percent = 100,
+                        skillKind = SkillKind.ACTIVE,
+                    ),
+                ),
+                ModifierEffectChange(
+                    groupedSpec(21129312, 131),
+                    com.stzb.server.game.battle.BattleModifier.SkillProbabilityPercent(
+                        percent = 100,
+                        skillKind = SkillKind.PURSUIT,
+                    ),
+                ),
+                SharedEffectUseGroupChange(
+                    groupedSpec(21129318, 88),
+                    memberDetailId = 21129311,
+                ),
+                SharedEffectUseGroupChange(
+                    groupedSpec(21129319, 88),
+                    memberDetailId = 21129312,
+                ),
+            ),
+            context,
+        )
+        assertEquals(
+            listOf(131, 131, 88, 88),
+            engine.state.effectStore.effectsFor(actor).map { it.effectId },
+        )
+
+        engine.trigger(BattleTrigger.ACTIVE_SKILL_ATTEMPT, context)
+
+        assertTrue(engine.state.effectStore.effectsFor(actor).none {
+            it.effectId == 131 || it.effectId == 88
+        })
+    }
+
+    @Test
+    fun `dingjun forced normal attack selects enemy base on fourth round and consumes once`() {
+        val owner = hero(100810, 100, listOf(200293), position = 2).copy(
+            stats = BattleStats(
+                attack = 1,
+                defense = 10_000,
+                strategy = 100,
+                speed = 100,
+                siege = 0,
+                hitRange = 1,
+            ),
+        )
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(listOf(owner)),
+                defender = BattleTeam(
+                    listOf(
+                        hero(200001, 20, position = 0).copy(
+                            stats = BattleStats(1, 10_000, 100, 20, 0, 5),
+                        ),
+                        hero(200002, 10, position = 2).copy(
+                            stats = BattleStats(1, 10_000, 100, 10, 0, 5),
+                        ),
+                    ),
+                ),
+                maxRounds = 5,
+            ),
+            config,
+            FixedBattleRandom(0),
+        )
+        val ownerRef = BattleHeroRef(Side.ATTACKER, owner.position, owner.id)
+
+        assertEquals(
+            listOf(
+                1 to 2,
+                2 to 2,
+                3 to 2,
+                4 to 0,
+                5 to 2,
+            ),
+            result.events.filterIsInstance<BattleEvent.NormalAttack>()
+                .filter { it.source == ownerRef }
+                .map { it.round to it.target.position },
+        )
+    }
+
+    @Test
+    fun `joint attack redirects the first active damage beyond skill range and consumes once`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100001, 100, listOf(200049), position = 0)),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 10, position = 0),
+                    hero(200002, 20, position = 2),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val actor = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val enemyBase = engine.state.view.heroes().single {
+            it.side == Side.DEFENDER && it.position == 0
+        }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = actor,
+            rootSkillId = 200049,
+            currentSkillId = 200049,
+            trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            battleView = engine.state.view,
+        )
+        engine.applyChanges(
+            listOf(
+                ForcedTargetEffectChange(
+                    spec = PersistentEffectSpec(
+                        source = actor,
+                        target = actor,
+                        rootSkillId = 200293,
+                        skillId = 211293,
+                        skillKind = SkillKind.COMMAND,
+                        rawSkillType = 2,
+                        detailId = 21129316,
+                        effectId = 81,
+                        category = com.stzb.server.game.battle.EffectCategory.BENEFICIAL,
+                        conflict = 0,
+                        replaceType = 0,
+                        bindFlag = 0,
+                        maxStacks = 1,
+                        delayRound = 0,
+                        delayHit = 0,
+                        availableRounds = 0,
+                        availableHit = 1,
+                        clearPerHit = false,
+                        startBoundary = EffectStartBoundary.IMMEDIATE,
+                        potency = TypedBattlePotency.percent(100),
+                    ),
+                    forcedTarget = enemyBase,
+                ),
+            ),
+            context,
+        )
+
+        val events = engine.trigger(BattleTrigger.ACTIVE_SKILL_ATTEMPT, context)
+
+        assertTrue(events.filterIsInstance<BattleEvent.SkillDamage>().any {
+            it.skillId == 200049 && it.target == enemyBase
+        })
+        assertTrue(engine.state.effectStore.effectsFor(actor).none { it.effectId == 81 })
+    }
+
     private fun requestHeroRefs(team: BattleTeam, side: Side): List<BattleHeroRef> =
         team.heroes.map { BattleHeroRef(side, it.position, it.id) }
 

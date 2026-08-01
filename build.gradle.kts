@@ -31,6 +31,24 @@ tasks.test {
     useJUnitPlatform()
 }
 
+tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileTestKotlin") {
+    if (providers.gradleProperty("chatProtocolTestOnly").isPresent) {
+        exclude { element ->
+            !element.isDirectory &&
+                element.file.name !in setOf(
+                    "GameServerHandlerProtocolTest.kt",
+                    "WorldChatStoreTest.kt",
+                )
+        }
+    }
+    if (providers.gradleProperty("pveSettlementTestOnly").isPresent) {
+        exclude { element ->
+            !element.isDirectory &&
+                element.file.name != "PlayerBattleServiceTest.kt"
+        }
+    }
+}
+
 tasks.register<JavaExec>("protocolCoverageReport") {
     group = "verification"
     description = "Writes the 9.2.2 command contract coverage report."

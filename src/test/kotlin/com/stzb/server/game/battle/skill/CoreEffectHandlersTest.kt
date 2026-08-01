@@ -531,6 +531,24 @@ class CoreEffectHandlersTest {
     }
 
     @Test
+    fun `strategy rate range modifiers scale the configured damage rate`() {
+        val rule = rule(302, constant = 100)
+        val baseline = registry(BattleEffectStore(), rule).execute(rule, context())
+            .stateChanges.filterIsInstance<TroopDamageChange>().single().amount
+        val ranged = registry(BattleEffectStore(), rule).execute(
+            rule,
+            context(
+                sourceModifiers = listOf(
+                    BattleModifier.DamageRateMinimumPercent(50),
+                    BattleModifier.DamageRateMaximumPercent(50),
+                ),
+            ),
+        ).stateChanges.filterIsInstance<TroopDamageChange>().single().amount
+
+        assertTrue(ranged < baseline)
+    }
+
+    @Test
     fun `physical curve leaves troop base unmodified and applies modifier once to attack terms`() {
         val target = hero(id = 2, position = 2, troops = 10_000, maxTroops = 10_000)
         val source = hero(id = 1, position = 2, troops = 10_000, maxTroops = 10_000).copy(

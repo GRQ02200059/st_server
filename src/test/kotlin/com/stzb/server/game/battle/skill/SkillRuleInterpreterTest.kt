@@ -11,6 +11,7 @@ import com.stzb.server.game.battle.BattleStats
 import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.BattleTeam
 import com.stzb.server.game.battle.BattleConfigRepository
+import com.stzb.server.game.battle.DamageSchool
 import com.stzb.server.game.battle.EffectCategory
 import com.stzb.server.game.battle.FixedBattleRandom
 import com.stzb.server.game.battle.Side
@@ -193,6 +194,37 @@ class SkillRuleInterpreterTest {
 
         assertEquals(listOf(1), result.executedSkillIds)
         assertEquals(1, random.calls)
+    }
+
+    @Test
+    fun `skill probability use sink runs only when a matching modifier participates`() {
+        val graph = graph(rule(1, effectRule(101, 0), probability = 50))
+        val consumed = mutableListOf<Triple<BattleHeroRef, Int, SkillKind>>()
+        val context = context(
+            skillId = 1,
+            random = FixedBattleRandom(0),
+            sourceModifiers = listOf(
+                BattleModifier.SkillProbabilityPercent(
+                    percent = 20,
+                    skillKind = SkillKind.ACTIVE,
+                ),
+            ),
+        ).copy(
+            skillProbabilityUses = SkillProbabilityUseSink { source, skillId, skillKind ->
+                consumed += Triple(source, skillId, skillKind)
+            },
+        )
+
+        interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context,
+        )
+
+        assertEquals(
+            listOf(Triple(context.source, 1, SkillKind.ACTIVE)),
+            consumed,
+        )
     }
 
     @Test
@@ -650,6 +682,115 @@ class SkillRuleInterpreterTest {
     }
 
     @Test
+    fun `transformation casts a stable random foreign active skill without preparation`() {
+        val graph = graph(
+            rule(1, effectRule(101, 199, availableHit = 1)),
+            rule(10, effectRule(1001, 77, constantParam = 10)),
+            rule(
+                20,
+                effectRule(2001, 77, constantParam = 20),
+                effectRule(
+                    2002,
+                    77,
+                    constantParam = 99,
+                    probabilityInit = 0,
+                    probabilityMax = 0,
+                ),
+                prepareRounds = 2,
+            ),
+            rule(30, effectRule(3001, 77, constantParam = 30)),
+        )
+        val context = context(
+            skillId = 1,
+            random = FixedBattleRandom(0),
+            sourceExtraSkillIds = listOf(10),
+            alliedSkillIds = listOf(20),
+            enemySkillIds = listOf(30),
+        )
+
+        val result = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context,
+        )
+
+        assertEquals(listOf(1, 20), result.executedSkillIds)
+        assertEquals(
+            listOf(1, 20),
+            result.events.filterIsInstance<SkillTriggered>().map { it.skillId },
+        )
+        assertTrue(result.events.filterIsInstance<SkillTriggered>().all {
+            it.source == context.source && it.rootSkillId == 1
+        })
+        assertEquals(
+            listOf(20),
+            result.stateChanges.filterIsInstance<MarkerEffectChange>().map { it.marker },
+        )
+        assertTrue(result.stateChanges.any { it is TransformAndCastRandomActiveSkillChange })
+    }
+
+    @Test
+    fun `joint attack registers once without rolling its target probability early`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 81,
+                    attackType = 0,
+                    availableHit = 1,
+                    constantParam = 50,
+                    probabilityInit = 0,
+                    probabilityMax = 0,
+                    customSelectFlag = 321529301,
+                ),
+            ),
+        )
+        val context = context(skillId = 1)
+
+        val result = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context,
+        )
+        val forced = result.stateChanges.filterIsInstance<ForcedTargetEffectChange>().single()
+
+        assertEquals(context.source, forced.spec.target)
+        assertEquals(ref(Side.DEFENDER, 0, 3), forced.forcedTarget)
+        assertEquals(TypedBattlePotency.percent(50), forced.spec.potency)
+        assertEquals(1, forced.spec.availableHit)
+    }
+
+    @Test
+    fun `shared use effect registers its referenced detail without consuming it`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 88,
+                    effectParam = 201,
+                    attackType = 0,
+                    availableHit = 1,
+                ),
+            ),
+            rule(2, effectRule(201, 131, attackType = 0, availableHit = 1)),
+        )
+        val context = context(skillId = 1)
+
+        val result = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context,
+        )
+        val group = result.stateChanges.filterIsInstance<SharedEffectUseGroupChange>().single()
+
+        assertEquals(context.source, group.spec.target)
+        assertEquals(201, group.memberDetailId)
+        assertEquals(1, group.spec.availableHit)
+    }
+
+    @Test
     fun `clear effect change removes only matching referenced detail on selected target`() {
         val store = BattleEffectStore()
         val source = ref(Side.ATTACKER, 0, 1)
@@ -904,6 +1045,47 @@ class SkillRuleInterpreterTest {
     }
 
     @Test
+    fun `real damage sharing row emits a typed half strategy sharing effect`() {
+        val repository = BattleConfigRepository.loadDefault()
+        val catalogGraph = SkillRuleCatalog.build(
+            SkillScope(setOf(211934), emptySet()),
+            repository,
+        )
+        val realRule = catalogGraph.rule(211934)!!
+        val detail = catalogGraph.details.single { it.detailId == 21193401 }
+        val realGraph = graph(realRule.copy(details = listOf(detail)))
+
+        val result = SkillRuleInterpreter(
+            graph = realGraph,
+            registry = BattleEffectRegistry.strict(realGraph).registerMetaEffects(),
+            conditionInterpreter = PendingSkillConditionInterpreter { _, _, _ -> true },
+        ).execute(211934, realRule.kind.toTrigger(), context(skillId = 211934))
+
+        val sharing = result.stateChanges.filterIsInstance<DamageRedirectionEffectChange>().single()
+        assertEquals(50, sharing.sharePercent)
+        assertEquals(DamageSchool.STRATEGY, sharing.school)
+        assertEquals(1, sharing.spec.availableHit)
+    }
+
+    @Test
+    fun `trigger last applied effect emits a typed target intent`() {
+        val repository = BattleConfigRepository.loadDefault()
+        val catalogGraph = SkillRuleCatalog.build(SkillScope(setOf(214254), emptySet()), repository)
+        val realRule = catalogGraph.rule(214254)!!
+        val realGraph = graph(realRule)
+
+        val result = SkillRuleInterpreter(
+            graph = realGraph,
+            registry = BattleEffectRegistry.strict(realGraph).registerMetaEffects(),
+            conditionInterpreter = PendingSkillConditionInterpreter { _, _, _ -> true },
+        ).execute(214254, realRule.kind.toTrigger(), context(skillId = 214254))
+
+        val trigger = result.stateChanges.filterIsInstance<TriggerLastAppliedEffectChange>().single()
+        assertEquals(21425401, trigger.detailId)
+        assertTrue(trigger.targets.isNotEmpty())
+    }
+
+    @Test
     fun `morale increase retains typed intelligence scaling`() {
         val repository = BattleConfigRepository.loadDefault()
         val catalogGraph = SkillRuleCatalog.build(
@@ -965,6 +1147,7 @@ class SkillRuleInterpreterTest {
         vararg details: SkillEffectRule,
         probability: Int = 100,
         kind: SkillKind = SkillKind.ACTIVE,
+        prepareRounds: Int = 0,
     ): SkillRule =
         SkillRule(
             skillId = skillId,
@@ -977,7 +1160,7 @@ class SkillRuleInterpreterTest {
                 SkillKind.UNKNOWN -> 99
             },
             probability = probability,
-            prepareRounds = 0,
+            prepareRounds = prepareRounds,
             hitRange = 5,
             details = details.toList(),
         ).let { rule ->
@@ -1003,6 +1186,7 @@ class SkillRuleInterpreterTest {
         probabilityMax: Int = probabilityInit,
         availableRounds: Int = 2,
         castCondition: Int = 0,
+        customSelectFlag: Int = 0,
     ): SkillEffectRule =
         SkillEffectRule(
             detailId = detailId,
@@ -1021,6 +1205,7 @@ class SkillRuleInterpreterTest {
                 probabilityInit = probabilityInit,
                 probabilityMax = probabilityMax,
                 castCondition = castCondition,
+                customSelectFlag = customSelectFlag,
                 attackMax = attackMax,
                 availableRounds = availableRounds,
                 attributeType = attributeType,
@@ -1037,20 +1222,22 @@ class SkillRuleInterpreterTest {
         skillId: Int,
         random: BattleRandom = FixedBattleRandom(0),
         sourceModifiers: List<com.stzb.server.game.battle.BattleModifier> = emptyList(),
+        sourceExtraSkillIds: List<Int> = emptyList(),
         alliedSkillIds: List<Int> = emptyList(),
+        enemySkillIds: List<Int> = emptyList(),
         sourceStrategy: Int = 100,
         sourceSkillLevel: Int = 1,
     ): SkillBattleContext {
         val source = hero(
             1,
             0,
-            skillIds = listOf(skillId),
+            skillIds = listOf(skillId) + sourceExtraSkillIds,
             skillLevels = listOf(sourceSkillLevel),
             modifiers = sourceModifiers,
             strategy = sourceStrategy,
         )
         val ally = hero(2, 1, skillIds = alliedSkillIds)
-        val enemy = hero(3, 0)
+        val enemy = hero(3, 0, skillIds = enemySkillIds)
         return SkillBattleContext(
             request = BattleRequest(
                 attacker = BattleTeam(listOf(source, ally)),

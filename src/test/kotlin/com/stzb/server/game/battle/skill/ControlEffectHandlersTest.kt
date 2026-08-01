@@ -127,6 +127,56 @@ class ControlEffectHandlersTest {
     }
 
     @Test
+    fun `resistance rolls when control is applied and blocks only on success`() {
+        val store = BattleEffectStore()
+        store.apply(
+            active(118, target = target, category = EffectCategory.BENEFICIAL, strength = 50),
+        )
+        val blocked = execute(501, store, random = FixedBattleRandom(49))
+        assertEquals(118, blocked.stateChanges.filterIsInstance<EffectBlockedChange>()
+            .single().blockingEffectId)
+
+        val applied = execute(501, store, random = FixedBattleRandom(50))
+        assertTrue(applied.stateChanges.none { it is EffectBlockedChange })
+        assertTrue(applied.stateChanges.any { it is ApplyBattleEffectChange })
+    }
+
+    @Test
+    fun `extra control target adds one distinct enemy and consumes its single use`() {
+        val store = BattleEffectStore()
+        store.apply(
+            active(
+                effectId = 404,
+                target = source,
+                category = EffectCategory.BENEFICIAL,
+            ).also { it.remainingHits = 1 },
+        )
+        val control = rule(501).copy(
+            raw = rule(501).raw.copy(attackType = 41, attackMax = 1),
+        )
+        val request = BattleRequest(
+            BattleTeam(listOf(hero(1, 0), hero(2, 1))),
+            BattleTeam(listOf(hero(3, 0), hero(4, 1))),
+        )
+        val context = SkillBattleContext(
+            request = request,
+            runtime = SkillRuntimeState(),
+            random = FixedBattleRandom(0),
+            round = 2,
+            source = source,
+            rootSkillId = 1,
+            currentSkillId = 1,
+            trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            battleView = SelectedTargetView(request, target),
+        )
+
+        val result = registry(listOf(control), store).execute(control, context)
+
+        assertEquals(2, result.stateChanges.filterIsInstance<ApplyBattleEffectChange>().size)
+        assertEquals(1, result.stateChanges.filterIsInstance<ConsumeEffectUseChange>().size)
+    }
+
+    @Test
     fun `only controls preventing action or active casting cancel target preparation`() {
         val cancellationFamilies = setOf(501, 701, 901, 502, 702, 902)
         val nonCancellationFamilies = setOf(503, 703, 903, 505, 552, 752, 952)
@@ -400,10 +450,11 @@ class ControlEffectHandlersTest {
         store: BattleEffectStore,
         selectedTarget: BattleHeroRef = target,
         rule: SkillEffectRule = rule(effectId),
+        random: BattleRandom = FixedBattleRandom(0),
     ): EffectExecution {
         return registry(listOf(rule), store).execute(
             rule,
-            context(selectedTarget),
+            context(selectedTarget, random = random),
         )
     }
 
@@ -486,9 +537,10 @@ class ControlEffectHandlersTest {
         target: BattleHeroRef,
         category: EffectCategory = EffectCategory.HARMFUL,
         bindFlag: Int = 0,
+        strength: Int = 100,
     ) = ActiveSkillEffect(
         source, target, 1, 1, SkillKind.ACTIVE, 3, 10_000 + effectId, effectId,
-        category, 0, 100, 3, bindFlag, 1, 1, 2, null, false,
+        category, 0, strength, 3, bindFlag, 1, 1, 2, null, false,
     )
 
     private fun hero(id: Int, position: Int) = BattleHero(

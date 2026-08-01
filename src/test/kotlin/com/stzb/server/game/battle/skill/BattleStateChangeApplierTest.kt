@@ -742,6 +742,90 @@ class BattleStateChangeApplierTest {
     }
 
     @Test
+    fun `damage sharing splits matching damage and consumes its single use`() {
+        val fixture = fixture()
+        fixture.applier.apply(
+            listOf(
+                DamageRedirectionEffectChange(
+                    spec = spec(127).copy(availableHit = 1),
+                    protectedTargets = listOf(target),
+                    damageBearer = source,
+                    sharePercent = 50,
+                    school = DamageSchool.STRATEGY,
+                ),
+            ),
+            round = 0,
+        )
+        assertEquals(null, fixture.applier.permissionFor(target).damageRedirectTarget)
+
+        val physical = fixture.applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source, target, 100, 900,
+                    DamageSchool.PHYSICAL, DamageOrigin.ACTIVE, emptySet(), 20, 301,
+                ),
+            ),
+            round = 1,
+        )
+        assertEquals(listOf(100), physical.outputs.filterIsInstance<BattleStateOutput.HurtReceived>().map { it.amount })
+        assertEquals(900, fixture.state.view.state(target)?.troops)
+        assertEquals(1_000, fixture.state.view.state(source)?.troops)
+
+        val strategy = fixture.applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source, target, 100, 800,
+                    DamageSchool.STRATEGY, DamageOrigin.ACTIVE, emptySet(), 20, 302,
+                ),
+            ),
+            round = 1,
+        )
+        assertEquals(listOf(50, 50), strategy.outputs.filterIsInstance<BattleStateOutput.HurtReceived>().map { it.amount })
+        assertEquals(850, fixture.state.view.state(target)?.troops)
+        assertEquals(950, fixture.state.view.state(source)?.troops)
+        assertTrue(fixture.state.effectStore.effectsFor(target).none { it.effectId == 127 })
+    }
+
+    @Test
+    fun `linked hearts makes every other linked ally share fifteen percent damage`() {
+        val middle = BattleHeroRef(Side.ATTACKER, 1, BattleHeroId(3))
+        val rear = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(5))
+        val request = BattleRequest(
+            BattleTeam(
+                listOf(
+                    BattleHero(source.heroId, source.position, BattleStats(100, 100, 100, 100, 10, 3), 1_000),
+                    BattleHero(middle.heroId, middle.position, BattleStats(100, 100, 100, 100, 10, 3), 1_000),
+                    BattleHero(rear.heroId, rear.position, BattleStats(100, 100, 100, 100, 10, 3), 1_000),
+                ),
+            ),
+            BattleTeam(listOf(BattleHero(BattleHeroId(4), 0, BattleStats(100, 100, 100, 100, 10, 3), 1_000))),
+        )
+        val state = SkillBattleState(request, SkillRuntimeState())
+        val applier = BattleStateChangeApplier(state)
+        applier.apply(
+            listOf(
+                LinkedDamageSharingEffectChange(
+                    spec(409).copy(target = source),
+                    members = listOf(source, middle, rear),
+                    sharePercentPerAlly = 15,
+                ),
+            ),
+            round = 0,
+        )
+        val enemy = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
+
+        val result = applier.apply(
+            listOf(TroopDamageChange(enemy, rear, 100, 900, DamageSchool.PHYSICAL, DamageOrigin.ACTIVE, emptySet(), 30, 301)),
+            round = 1,
+        )
+
+        assertEquals(listOf(70, 15, 15), result.outputs.filterIsInstance<BattleStateOutput.HurtReceived>().map { it.amount })
+        assertEquals(930, state.view.state(rear)?.troops)
+        assertEquals(985, state.view.state(source)?.troops)
+        assertEquals(985, state.view.state(middle)?.troops)
+    }
+
+    @Test
     fun `damage creates only actual wounded and paired recovery consumes only actual recovery`() {
         val fixture = fixture(targetTroops = 10, targetWounded = 5)
         fixture.applier.apply(
@@ -959,6 +1043,115 @@ class BattleStateChangeApplierTest {
         fixture.applier.onRoundStart(2)
         assertFailsWith<IllegalArgumentException> { fixture.applier.onRoundStart(1) }
         assertFailsWith<IllegalArgumentException> { fixture.applier.onRoundEnd(1) }
+    }
+
+    @Test
+    fun `forced target consumes its single use only after probability succeeds`() {
+        val fixture = fixture()
+        fixture.applier.apply(
+            listOf(
+                ForcedTargetEffectChange(
+                    spec = spec(
+                        effectId = 81,
+                        rounds = 0,
+                        potency = TypedBattlePotency.percent(50),
+                    ).copy(
+                        target = source,
+                        availableHit = 1,
+                    ),
+                    forcedTarget = target,
+                ),
+            ),
+            round = 1,
+        )
+
+        assertEquals(
+            null,
+            fixture.applier.tryConsumeForcedTarget(
+                actor = source,
+                eligibleTargets = listOf(target),
+                random = com.stzb.server.game.battle.FixedBattleRandom(99),
+            ),
+        )
+        assertEquals(1, fixture.state.effectStore.effectsFor(source).single().remainingHits)
+        assertEquals(
+            target,
+            fixture.applier.tryConsumeForcedTarget(
+                actor = source,
+                eligibleTargets = listOf(target),
+                random = com.stzb.server.game.battle.FixedBattleRandom(0),
+            ),
+        )
+        assertTrue(fixture.state.effectStore.effectsFor(source).isEmpty())
+        assertEquals(
+            null,
+            fixture.applier.tryConsumeForcedTarget(
+                actor = source,
+                eligibleTargets = listOf(target),
+                random = com.stzb.server.game.battle.FixedBattleRandom(0),
+            ),
+        )
+    }
+
+    @Test
+    fun `shared effect use consumes every grouped probability modifier together`() {
+        val fixture = fixture()
+        fun groupedSpec(
+            detailId: Int,
+            effectId: Int,
+        ) = spec(
+            effectId = effectId,
+            rounds = 0,
+            potency = TypedBattlePotency.percent(100),
+        ).copy(
+            source = source,
+            target = source,
+            rootSkillId = 200293,
+            skillId = 211293,
+            detailId = detailId,
+            availableHit = 1,
+        )
+        fixture.applier.apply(
+            listOf(
+                ModifierEffectChange(
+                    groupedSpec(21129311, 131),
+                    BattleModifier.SkillProbabilityPercent(
+                        percent = 100,
+                        skillKind = SkillKind.ACTIVE,
+                    ),
+                ),
+                ModifierEffectChange(
+                    groupedSpec(21129312, 131),
+                    BattleModifier.SkillProbabilityPercent(
+                        percent = 100,
+                        skillKind = SkillKind.PURSUIT,
+                    ),
+                ),
+                SharedEffectUseGroupChange(
+                    groupedSpec(21129318, 88),
+                    memberDetailId = 21129311,
+                ),
+                SharedEffectUseGroupChange(
+                    groupedSpec(21129319, 88),
+                    memberDetailId = 21129312,
+                ),
+            ),
+            round = 1,
+        )
+
+        assertEquals(
+            listOf(131, 131, 88, 88),
+            fixture.state.effectStore.effectsFor(source).map { it.effectId },
+        )
+        fixture.applier.consumeSkillProbabilityUses(
+            actor = source,
+            skillId = 200049,
+            skillKind = SkillKind.ACTIVE,
+        )
+
+        assertTrue(fixture.state.effectStore.effectsFor(source).none {
+            it.effectId == 131 || it.effectId == 88
+        })
     }
 
     @Test

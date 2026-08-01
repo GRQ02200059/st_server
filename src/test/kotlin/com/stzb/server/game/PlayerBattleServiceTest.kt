@@ -492,4 +492,71 @@ class PlayerBattleServiceTest {
             finalWave.result.attacker.heroes.map { it.stats },
         )
     }
+
+    @Test
+    fun `captured map five expedition settles instead of remaining in march state`() {
+        val state = PlayerState(userId = 10003, cityWid = 15061506, roleName = "主公")
+        val heroes = listOf(
+            Triple(100027, 9_899, listOf(200027, 200755, 200031)),
+            Triple(100498, 6_615, listOf(200739, 200755, 200980)),
+            Triple(100023, 4_797, listOf(200023, 200220, 200228)),
+        ).map { (heroId, troops, skillIds) ->
+            state.addHero(heroId).apply {
+                this.troops = troops
+                level = 50
+                this.skillIds = skillIds.toMutableList()
+            }
+        }
+        state.saveTeam(heroes.map(PlayerHero::heroUid))
+        val service = PlayerBattleService(ClientBattleReportStore.createEmpty())
+
+        service.launchPveBattle(
+            state = state,
+            targetWid = 15051508,
+            nowSec = 1785573011,
+        ) ?: error("captured expedition should start")
+
+        val settlement = service.settlePveBattle(
+            state = state,
+            nowSec = 1785573014,
+        ) ?: error("captured expedition should settle on arrival")
+
+        assertTrue(settlement.battleId > 0)
+        assertEquals(null, state.activeMarch())
+    }
+
+    @Test
+    fun `captured army with skill 200255 settles instead of disappearing without a report`() {
+        val state = PlayerState(userId = 10003, cityWid = 15061506, roleName = "主公")
+        val heroes = listOf(
+            Triple(100683, 10_000, listOf(200957, 200647, 200863)),
+            Triple(100677, 8_913, listOf(200955, 200980, 200220)),
+            Triple(100785, 4_549, listOf(200255, 200980, 200647)),
+        ).map { (heroId, troops, skillIds) ->
+            state.addHero(heroId).apply {
+                this.troops = troops
+                level = 50
+                this.skillIds = skillIds.toMutableList()
+            }
+        }
+        val armyId = state.armyIds()[1]
+        state.saveTeam(heroes.map(PlayerHero::heroUid), armyId)
+        val service = PlayerBattleService(ClientBattleReportStore.createEmpty())
+
+        service.launchPveBattle(
+            state = state,
+            targetWid = 15051508,
+            armyId = armyId,
+            nowSec = 1785577168,
+        ) ?: error("captured expedition should start")
+
+        val settlement = service.settlePveBattle(
+            state = state,
+            armyId = armyId,
+            nowSec = 1785577171,
+        ) ?: error("captured expedition should settle on arrival")
+
+        assertTrue(settlement.battleId > 0)
+        assertEquals(null, state.activeMarch(armyId))
+    }
 }

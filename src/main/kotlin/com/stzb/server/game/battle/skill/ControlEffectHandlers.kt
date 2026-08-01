@@ -84,6 +84,14 @@ data class DamageRedirectionEffectChange(
     val spec: PersistentEffectSpec,
     val protectedTargets: List<BattleHeroRef>,
     val damageBearer: BattleHeroRef,
+    val sharePercent: Int = 100,
+    val school: com.stzb.server.game.battle.DamageSchool? = null,
+) : BattleStateChange
+
+data class LinkedDamageSharingEffectChange(
+    val spec: PersistentEffectSpec,
+    val members: List<BattleHeroRef>,
+    val sharePercentPerAlly: Int,
 ) : BattleStateChange
 
 class ActionPermissionResolver(
@@ -97,7 +105,7 @@ class ActionPermissionResolver(
         val cannotAct = effects.any { it.effectId in CONFUSION_IDS }
         val cannotCast = cannotAct || effects.any { it.effectId in HESITATION_IDS }
         val cannotNormal = cannotAct || effects.any { it.effectId in DISARM_IDS }
-        val doubleAttack = effects.any { it.effectId in DOUBLE_ATTACK_IDS }
+        val extraAttackCount = effects.count { it.effectId in DOUBLE_ATTACK_IDS }
         val guard = intendedTarget?.let { guarded ->
             effectStore.effectsFor(guarded).lastOrNull { it.effectId in GUARD_IDS }?.source
         }
@@ -109,8 +117,7 @@ class ActionPermissionResolver(
             redirectTarget = taunt ?: guard,
             normalAttackCount = when {
                 cannotAct || cannotNormal -> 0
-                doubleAttack -> 2
-                else -> 1
+                else -> 1 + extraAttackCount
             },
             grantsPursuitOpportunityPerNormal = !cannotAct && !cannotNormal,
             counterattack = effects.any { it.effectId == COUNTERATTACK_ID },
@@ -158,7 +165,7 @@ class ActionPermissionResolver(
         const val TAUNT_ID = 505
         val EVADE_IDS = setOf(514, 714)
         const val IGNORE_EVADE_ID = 515
-        val DOUBLE_ATTACK_IDS = setOf(544, 744)
+        val DOUBLE_ATTACK_IDS = setOf(200, 544, 744)
         val DISARM_IDS = setOf(552, 752, 952)
         const val SECONDARY_ATTACK_ID = 545
         const val COUNTERATTACK_ID = 551
@@ -199,7 +206,28 @@ private class ControlEffectHandler(
         check(invocation.rule.effectId == ownedEffectId) {
             "Handler $ownedEffectId cannot execute effect=${invocation.rule.effectId}"
         }
-        val targets = invocation.selectTargets(targetSelector)
+        val selectedTargets = invocation.selectTargets(targetSelector)
+        val extraControl = ownedEffectId in CONTROL_IDS &&
+            effectStore.effectsFor(invocation.context.source).any { it.effectId == EXTRA_CONTROL_TARGET_ID }
+        val targets = if (extraControl && selectedTargets.isNotEmpty()) {
+            val additional = invocation.context.battleView.heroes()
+                .filter { it.side != invocation.context.source.side }
+                .filter { candidate -> candidate !in selectedTargets }
+                .filter {
+                    val view = invocation.context.battleView
+                    val state = if (SkillBattleViewCapability.LIVE_STATE in view.capabilities) {
+                        view.state(it)
+                    } else {
+                        view.entryState(it)
+                    }
+                    state?.troops?.let { troops -> troops > 0 } != false
+                }
+                .sortedWith(compareByDescending<BattleHeroRef> { it.position }.thenBy { it.heroId.value })
+                .firstOrNull()
+            selectedTargets + listOfNotNull(additional)
+        } else {
+            selectedTargets
+        }
         if (ownedEffectId == DAMAGE_REDIRECTION_ID) {
             if (targets.isEmpty()) return EffectExecution.EMPTY
             val bearer = invocation.context.battleView.heroes()
@@ -233,7 +261,7 @@ private class ControlEffectHandler(
                 )
                 return@forEach
             }
-            val blocker = blockingEffect(target)
+            val blocker = blockingEffect(target, invocation)
             if (blocker != null) {
                 changes += EffectBlockedChange(
                     invocation.context.source,
@@ -262,6 +290,13 @@ private class ControlEffectHandler(
                     effectId = ownedEffectId,
                 )
             }
+        }
+        if (extraControl && targets.size > selectedTargets.size) {
+            changes += ConsumeEffectUseChange(
+                source = invocation.context.source,
+                target = invocation.context.source,
+                effectId = EXTRA_CONTROL_TARGET_ID,
+            )
         }
         return EffectExecution(changes, events)
     }
@@ -356,12 +391,19 @@ private class ControlEffectHandler(
         category = category,
     )
 
-    private fun blockingEffect(target: BattleHeroRef): Int? {
+    private fun blockingEffect(
+        target: BattleHeroRef,
+        invocation: EffectInvocation,
+    ): Int? {
         if (ownedEffectId !in INSIGHT_BLOCKED_IDS) return null
-        val activeIds = effectStore.effectsFor(target).mapTo(mutableSetOf()) { it.effectId }
+        val active = effectStore.effectsFor(target)
+        val activeIds = active.mapTo(mutableSetOf()) { it.effectId }
         return when {
             activeIds.any { it in INSIGHT_IDS } -> activeIds.first { it in INSIGHT_IDS }
             ownedEffectId in DISARM_IDS && DISARM_IMMUNITY_ID in activeIds -> DISARM_IMMUNITY_ID
+            active.lastOrNull { it.effectId == RESISTANCE_ID }?.let { resistance ->
+                invocation.context.random.nextInt(100) < resistance.effectiveStrength.coerceIn(0, 100)
+            } == true -> RESISTANCE_ID
             else -> null
         }
     }
@@ -377,6 +419,8 @@ private class ControlEffectHandler(
         val DISPEL_IDS = setOf(512, 712)
         const val DAMAGE_REDIRECTION_ID = 506
         const val COMMAND_IMMUNITY_ID = 121
+        const val RESISTANCE_ID = 118
+        const val EXTRA_CONTROL_TARGET_ID = 404
     }
 }
 

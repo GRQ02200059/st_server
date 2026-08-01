@@ -1301,14 +1301,15 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val state = playerState(session, userId, GameServerConfig.CITY_WID)
         val chatId = nextChatId.getAndIncrement()
         val nowSec = System.currentTimeMillis() / 1000
+        val roleId = "role_$userId"
         val notification = WorldChatRecord(
             listOf(
+                // ChatData.ConvertChatDataVo consumes this positional 48-field contract.
                 chatId, channelId, subType, userId, state.roleName, content, nowSec,
                 0, "", 0, params, 0, channelIdIndeed, GameServerConfig.SERVER_ID,
-                0, "", 0, 0, "", null,
-                "", 0, 0, "", 0, 0, 0, 0, 0, "",
-                0, "", 0, 0, -1, "", "", "", 0, "", 0,
-                0, 0, 0, 0, "role_$userId",
+                0, "", 0, 0, "", CHAT_DEFAULT_HEAD_ICON_ID, "", roleId,
+                0, 0, "", 0, 0, 0, 0, "", 0, "", 0, 0, -1,
+                0, "", "", 0, 0, "", state.cityWid, 0, 0, 0, roleId, 0, 0,
             ),
         )
         if (channelId == WORLD_CHAT_CHANNEL_ID) {
@@ -1562,6 +1563,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         private const val WORLD_CHAT_CHANNEL_ID = 0
         private const val WORLD_CHAT_HISTORY_SLOT = 0
         private const val CHAT_HISTORY_SLOT_COUNT = 18
+        private const val CHAT_DEFAULT_HEAD_ICON_ID = 301
 
         /** 喂狗周期; 必须显著小于客户端 3s recv-timeout, 留足抖动余量。 */
         private const val KEEP_ALIVE_MS = 1500L

@@ -87,6 +87,23 @@ class SkillTargetSelector(
             }
             .sortedWith(CLIENT_POSITION_ORDER)
 
+        val limit = raw.attackMax.coerceAtLeast(1)
+        context.forcedTargets.select(
+            BattleTargetDecisionRequest(rule, context, candidates, limit),
+        )?.let { selected ->
+            val diagnostic =
+                "detail=${rule.detailId}, source=${context.source}, candidates=$candidates, " +
+                    "selected=$selected, limit=$limit"
+            require(selected.size <= limit) { "Forced target count exceeds limit: $diagnostic" }
+            require(selected.distinct().size == selected.size) {
+                "Forced targets contain duplicates: $diagnostic"
+            }
+            require(selected.all(candidates::contains)) {
+                "Forced target is outside live pre-range candidates: $diagnostic"
+            }
+            return selected
+        }
+
         candidates = when (raw.selectType) {
             SELECT_INSIDE_CURRENT_RANGE -> candidates.filter { inCurrentAttackRange(context.source, it, view) }
             SELECT_OUTSIDE_CURRENT_RANGE -> candidates.filterNot {
@@ -105,7 +122,6 @@ class SkillTargetSelector(
             }
         }
 
-        val limit = raw.attackMax.coerceAtLeast(1)
         return when (raw.selectType) {
             SELECT_RANDOM -> selectRandom(rule, candidates, limit, context)
             SELECT_MINIMUM -> selectByAttribute(candidates, raw.selectAttri, view, minimum = true)

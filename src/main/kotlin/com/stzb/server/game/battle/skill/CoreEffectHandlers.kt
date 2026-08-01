@@ -4,6 +4,7 @@ import com.stzb.server.game.battle.BattleDamageCalculator
 import com.stzb.server.game.battle.BattleEffectValueUnit
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleStatus
 import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.ConfiguredBattleEffectValue
@@ -536,7 +537,21 @@ class DefaultBattleValueCalculator(
         } else {
             raw.calculationTypes[source.advanceLevel.coerceIn(0, raw.calculationTypes.lastIndex)]
         }
-        return (rate * multiplier).roundToInt().coerceAtLeast(1)
+        val configuredRate = (rate * multiplier).roundToInt().coerceAtLeast(1)
+        if (invocation.rule.effectId !in STRATEGY_DAMAGE_EFFECT_IDS) return configuredRate
+        val minimum = source.modifiers
+            .filterIsInstance<BattleModifier.DamageRateMinimumPercent>()
+            .lastOrNull()
+            ?.percent
+        val maximum = source.modifiers
+            .filterIsInstance<BattleModifier.DamageRateMaximumPercent>()
+            .lastOrNull()
+            ?.percent
+        if (minimum == null && maximum == null) return configuredRate
+        val low = (minimum ?: maximum ?: 100).coerceAtLeast(0)
+        val high = (maximum ?: minimum ?: 100).coerceAtLeast(low)
+        val factor = if (low == high) low else low + invocation.context.random.nextInt(high - low + 1)
+        return (configuredRate * factor / 100.0).roundToInt().coerceAtLeast(1)
     }
 
     private companion object {
@@ -545,6 +560,7 @@ class DefaultBattleValueCalculator(
         const val PERCENT_ATTRIBUTE_SCALE_THRESHOLD = 100_000
         const val FIRE_ATTACK_EFFECT_ID = 307
         val FLAT_ATTRIBUTE_EFFECT_IDS = (101..105) + (201..205)
+        val STRATEGY_DAMAGE_EFFECT_IDS = setOf(302, 304, 305, 306, 307)
     }
 }
 

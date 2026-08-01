@@ -326,6 +326,8 @@ class SkillRuleInterpreter private constructor(
                         value = change.marker,
                         appliedRound = context.round,
                         durationRounds = change.parameters.availableRounds,
+                        rootSkillId = change.rootSkillId,
+                        source = change.source,
                     )
                     is ClearReferencedEffectChange ->
                         if (change.referencedEffectId == 77) {
@@ -348,6 +350,8 @@ class SkillRuleInterpreter private constructor(
                     is ExecuteChildSkillChange -> executeChildren(change, executionContext)
                     is RetriggerSkillChange -> retrigger(change, executionContext)
                     is TriggerReferencedEffectChange -> triggerReferencedEffect(change, executionContext)
+                    is TransformAndCastRandomActiveSkillChange ->
+                        transformAndCastRandomActiveSkill(change, executionContext)
                     else -> SkillExecutionResult.EMPTY
                 }
             }
@@ -484,6 +488,44 @@ class SkillRuleInterpreter private constructor(
         }
     }
 
+    private fun transformAndCastRandomActiveSkill(
+        change: TransformAndCastRandomActiveSkillChange,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        val sourceSkills = requestHero(context, change.source).skillIds.toSet()
+        val candidates = context.battleView.heroes()
+            .asSequence()
+            .filter { ref ->
+                if (SkillBattleViewCapability.LIVE_STATE in context.battleView.capabilities) {
+                    (context.battleView.state(ref)?.troops ?: 0) > 0
+                } else {
+                    requestHero(context, ref).troops > 0
+                }
+            }
+            .flatMap { ref -> requestHero(context, ref).skillIds.asSequence() }
+            .filterNot(sourceSkills::contains)
+            .filter { skillId ->
+                skillId != change.rootSkillId && graph.rule(skillId)?.kind == SkillKind.ACTIVE
+            }
+            .distinct()
+            .sorted()
+            .toList()
+        if (candidates.isEmpty()) return SkillExecutionResult.EMPTY
+
+        val selectedSkillId = candidates[context.random.nextInt(candidates.size)]
+        return executeSkill(
+            skillId = selectedSkillId,
+            trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            parentContext = context.copy(
+                source = change.source,
+                rootSkillId = change.rootSkillId,
+                currentSkillId = selectedSkillId,
+                trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            ),
+            probabilityOwnership = ChildProbabilityOwnership.FORCED_SUCCESS,
+        )
+    }
+
     private fun diagnosticResult(
         detail: SkillEffectRule,
         context: SkillBattleContext,
@@ -565,11 +607,18 @@ class SkillRuleInterpreter private constructor(
             }
         val moraleAddition = (morale - 100).toDouble() / (100 + 0.5 * morale)
         val moraleAdjusted = (rule.probability * (1 + moraleAddition)).toInt()
-        val modifier = liveModifiers(context, source)
+        val matchingModifiers = liveModifiers(context, source)
             .filterIsInstance<BattleModifier.SkillProbabilityPercent>()
             .filter { it.skillId == null || it.skillId == rule.skillId }
             .filter { it.skillKind == null || it.skillKind == rule.kind }
-            .sumOf { it.percent }
+        val modifier = matchingModifiers.sumOf { it.percent }
+        if (matchingModifiers.isNotEmpty()) {
+            context.skillProbabilityUses.consume(
+                context.source,
+                rule.skillId,
+                rule.kind,
+            )
+        }
         val probability = (moraleAdjusted + modifier).coerceIn(0, 100)
         return context.random.nextInt(100) < probability
     }
@@ -578,6 +627,7 @@ class SkillRuleInterpreter private constructor(
         detail: SkillEffectRule,
         context: SkillBattleContext,
     ): Boolean {
+        if (detail.effectId == 81) return true
         val source = requestHero(context, context.source)
         val level = EffectInvocation(
             rule = detail,

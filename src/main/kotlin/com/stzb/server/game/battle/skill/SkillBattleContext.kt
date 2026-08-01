@@ -226,7 +226,21 @@ data class SkillBattleContext(
     val trigger: BattleTrigger,
     val battleView: SkillBattleView = SkillBattleView.entrySnapshot(request),
     val targetDecisions: BattleTargetDecisionSource = BattleTargetDecisionSource.NONE,
+    val forcedTargets: BattleForcedTargetSource = BattleForcedTargetSource.NONE,
+    val skillProbabilityUses: SkillProbabilityUseSink = SkillProbabilityUseSink.NONE,
 )
+
+fun interface SkillProbabilityUseSink {
+    fun consume(
+        source: BattleHeroRef,
+        skillId: Int,
+        skillKind: SkillKind,
+    )
+
+    companion object {
+        val NONE = SkillProbabilityUseSink { _, _, _ -> }
+    }
+}
 
 data class PreparedSkill(
     val source: BattleHeroRef,

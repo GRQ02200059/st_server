@@ -162,6 +162,8 @@ class SkillRuntimeState {
         value: Int,
         appliedRound: Int,
         durationRounds: Int,
+        rootSkillId: Int = 0,
+        source: BattleHeroRef? = null,
     ) {
         require(detailId > 0) { "Marker detail ID must be positive: $detailId" }
         require(appliedRound >= 0) { "Marker round must be non-negative: $appliedRound" }
@@ -169,6 +171,9 @@ class SkillRuntimeState {
         markers[MarkerKey(target, detailId)] = MarkerValue(
             value = value,
             expiresAtRound = appliedRound + durationRounds.coerceAtLeast(1),
+            rootSkillId = rootSkillId,
+            source = source,
+            sequence = nextSequence++,
         )
     }
 
@@ -187,6 +192,24 @@ class SkillRuntimeState {
 
     fun removeMarker(target: BattleHeroRef, detailId: Int): Boolean =
         markers.remove(MarkerKey(target, detailId)) != null
+
+    fun latestMarkedTarget(
+        rootSkillId: Int,
+        targetSide: Side,
+        round: Int,
+    ): BattleHeroRef? {
+        markers.keys.toList().forEach { key ->
+            markerValue(key.target, key.detailId, round)
+        }
+        return markers.entries
+            .asSequence()
+            .filter { (key, marker) ->
+                key.target.side == targetSide && marker.rootSkillId == rootSkillId
+            }
+            .maxByOrNull { (_, marker) -> marker.sequence }
+            ?.key
+            ?.target
+    }
 
     @Deprecated(
         message = "Use recordBattleTriggerOccurrence to make explicit that callers record battle events",
@@ -337,6 +360,9 @@ class SkillRuntimeState {
     private data class MarkerValue(
         val value: Int,
         val expiresAtRound: Int,
+        val rootSkillId: Int,
+        val source: BattleHeroRef?,
+        val sequence: Long,
     )
 
     companion object {

@@ -130,7 +130,8 @@ object BattleEngine {
                                 selected.position,
                                 selected.id,
                             )
-                            target = permission.redirectTarget ?: target
+                            target = permission.redirectTarget
+                                ?: engine.forcedNormalAttackTarget(actor, target, random)
                             engine.recordTarget(actor, target)
                             events += engine.trigger(
                                 BattleTrigger.NORMAL_ATTACK_BEFORE,

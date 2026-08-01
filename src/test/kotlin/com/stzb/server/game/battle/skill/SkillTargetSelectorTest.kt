@@ -844,6 +844,32 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `forced target override selects an enemy outside normal skill range`() {
+        val overrides = BattleForcedTargetSource { request ->
+            assertEquals(source, request.context.source)
+            assertEquals(listOf(enemyFront, enemyMiddle, enemyBase), request.candidates)
+            listOf(enemyBase)
+        }
+
+        assertEquals(
+            listOf(enemyBase),
+            select(
+                rule(
+                    attackType = 43,
+                    selectType = 0,
+                    attackMax = 1,
+                    skillHitRange = 1,
+                    skillKind = SkillKind.ACTIVE,
+                ),
+                context(
+                    view(sourceRange = 1),
+                    forcedTargets = overrides,
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `random selector rejects a replayed target outside its live candidates`() {
         val decisions = BattleTargetDecisionSource { listOf(allyBase) }
 
@@ -1022,6 +1048,7 @@ class SkillTargetSelectorTest {
             defender = BattleTeam(emptyList()),
         ),
         targetDecisions: BattleTargetDecisionSource = BattleTargetDecisionSource.NONE,
+        forcedTargets: BattleForcedTargetSource = BattleForcedTargetSource.NONE,
     ) = SkillBattleContext(
         request = request,
         runtime = runtime,
@@ -1033,6 +1060,7 @@ class SkillTargetSelectorTest {
         trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
         battleView = view,
         targetDecisions = targetDecisions,
+        forcedTargets = forcedTargets,
     )
 
     private fun view(

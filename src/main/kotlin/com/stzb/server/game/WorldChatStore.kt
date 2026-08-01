@@ -13,7 +13,7 @@ data class WorldChatRecord(
         listOf(fields.first(), fields.drop(1))
 
     companion object {
-        const val FIELD_COUNT = 46
+        const val FIELD_COUNT = 48
     }
 }
 

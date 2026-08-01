@@ -17,3 +17,15 @@ fun interface BattleTargetDecisionSource {
         val NONE = BattleTargetDecisionSource { null }
     }
 }
+
+fun interface BattleForcedTargetSource {
+    /**
+     * Returns a target override before normal skill-range filtering.
+     * Implementations must return null when no forced target is consumed.
+     */
+    fun select(request: BattleTargetDecisionRequest): List<BattleHeroRef>?
+
+    companion object {
+        val NONE = BattleForcedTargetSource { null }
+    }
+}

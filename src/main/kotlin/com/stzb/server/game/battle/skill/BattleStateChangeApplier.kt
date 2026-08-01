@@ -7,6 +7,7 @@ import com.stzb.server.game.battle.BattleEvent
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleModifier
+import com.stzb.server.game.battle.BattleRandom
 import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.BattleStats
@@ -390,6 +391,13 @@ class BattleStateChangeApplier(
     private data class Redirection(
         val protectedTargets: List<BattleHeroRef>,
         val damageBearer: BattleHeroRef,
+        val sharePercent: Int,
+        val school: DamageSchool?,
+    )
+
+    private data class LinkedSharing(
+        val members: List<BattleHeroRef>,
+        val sharePercentPerAlly: Int,
     )
 
     private val statModifiers = mutableMapOf<EffectKey, StatModifier>()
@@ -402,6 +410,9 @@ class BattleStateChangeApplier(
     private val ongoingDamage = mutableMapOf<EffectKey, OngoingDamageBehavior>()
     private val ongoingRecovery = mutableMapOf<EffectKey, ScheduledRecoveryEffectChange>()
     private val redirections = mutableMapOf<EffectKey, Redirection>()
+    private val linkedSharings = mutableMapOf<EffectKey, LinkedSharing>()
+    private val forcedTargets = mutableMapOf<EffectKey, BattleHeroRef>()
+    private val sharedEffectUseMembers = mutableMapOf<EffectKey, Int>()
     private var lastStartedRound = 0
     private var lastEndedRound = 0
 
@@ -412,6 +423,105 @@ class BattleStateChangeApplier(
 
     fun willApply(change: BattleStatChange): Boolean =
         state.effectStore.canApply(statEffect(change))
+
+    fun tryConsumeForcedTarget(
+        actor: BattleHeroRef,
+        eligibleTargets: List<BattleHeroRef>,
+        random: BattleRandom,
+    ): BattleHeroRef? {
+        val (key, forcedTarget) = activeEntries(forcedTargets)
+            .lastOrNull { (key, target) ->
+                key.target == actor &&
+                    target in eligibleTargets &&
+                    (state.view.state(target)?.troops ?: 0) > 0
+            }
+            ?: return null
+        val probability = key.strength().coerceIn(0, 100)
+        if (probability < 100 && random.nextInt(100) >= probability) return null
+
+        synchronize(
+            state.effectStore.consumeHit(
+                target = key.target,
+                effectId = key.effectId,
+                source = key.source,
+                detailId = key.detailId,
+            ),
+        )
+        return forcedTarget
+    }
+
+    fun consumeSkillProbabilityUses(
+        actor: BattleHeroRef,
+        skillId: Int,
+        skillKind: SkillKind,
+    ): BattleStateApplyResult {
+        val usedModifierKeys = activeEntries(state.effectModifiers)
+            .filter { (key, modifier) ->
+                key.target == actor &&
+                    modifier is BattleModifier.SkillProbabilityPercent &&
+                    (modifier.skillId == null || modifier.skillId == skillId) &&
+                    (modifier.skillKind == null || modifier.skillKind == skillKind)
+            }
+            .map { it.first }
+        if (usedModifierKeys.isEmpty()) return BattleStateApplyResult()
+
+        val activeGroups = activeEntries(sharedEffectUseMembers)
+        val outputs = mutableListOf<BattleStateOutput>()
+        usedModifierKeys.forEach { usedKey ->
+            val groups = activeGroups.filter { (groupKey, memberDetailId) ->
+                groupKey.source == usedKey.source &&
+                    groupKey.target == usedKey.target &&
+                    groupKey.rootSkillId == usedKey.rootSkillId &&
+                    memberDetailId == usedKey.detailId
+            }
+            if (groups.isEmpty()) {
+                outputs += synchronize(
+                    state.effectStore.consumeHit(
+                        target = usedKey.target,
+                        effectId = usedKey.effectId,
+                        source = usedKey.source,
+                        detailId = usedKey.detailId,
+                    ),
+                )
+                return@forEach
+            }
+
+            val groupRoot = groups.first().first
+            val allGroups = activeGroups.filter { (groupKey, _) ->
+                groupKey.source == groupRoot.source &&
+                    groupKey.target == groupRoot.target &&
+                    groupKey.rootSkillId == groupRoot.rootSkillId
+            }
+            val memberDetailIds = allGroups.mapTo(linkedSetOf()) { it.second }
+            state.effectStore.effectsFor(actor)
+                .filter { effect ->
+                    effect.source == groupRoot.source &&
+                        effect.rootSkillId == groupRoot.rootSkillId &&
+                        effect.detailId in memberDetailIds
+                }
+                .forEach { member ->
+                    outputs += synchronize(
+                        state.effectStore.consumeHit(
+                            target = actor,
+                            effectId = member.effectId,
+                            source = member.source,
+                            detailId = member.detailId,
+                        ),
+                    )
+                }
+            allGroups.forEach { (groupKey, _) ->
+                outputs += synchronize(
+                    state.effectStore.consumeHit(
+                        target = groupKey.target,
+                        effectId = groupKey.effectId,
+                        source = groupKey.source,
+                        detailId = groupKey.detailId,
+                    ),
+                )
+            }
+        }
+        return BattleStateApplyResult(outputs)
+    }
 
     fun applyActivated(
         change: ScheduledEffectActivationChange,
@@ -488,6 +598,25 @@ class BattleStateChangeApplier(
         )
     }
 
+    fun triggerLastAppliedOngoingDamage(
+        target: BattleHeroRef,
+        round: Int,
+    ): BattleStateApplyResult {
+        val behavior = activeEntries(ongoingDamage)
+            .lastOrNull { (key, _) -> key.target == target }
+            ?.second
+            ?: return BattleStateApplyResult()
+        return apply(
+            listOf(
+                behavior.change.tick(
+                    liveSource = behavior.sourceSnapshot,
+                    liveTarget = state.liveHero(behavior.change.target),
+                ),
+            ),
+            round,
+        )
+    }
+
     fun onRoundEnd(round: Int): BattleStateApplyResult {
         require(round > 0) { "round must be positive: $round" }
         require(round >= maxOf(lastStartedRound, lastEndedRound)) {
@@ -506,7 +635,9 @@ class BattleStateChangeApplier(
         val secondaryAttack = effects.any { it.effectId == 545 }
         val redirect = activeEntries(redirections)
             .asSequence()
-            .filter { (_, behavior) -> actor in behavior.protectedTargets }
+            .filter { (_, behavior) ->
+                behavior.sharePercent == 100 && actor in behavior.protectedTargets
+            }
             .lastOrNull()
             ?.second
             ?.damageBearer
@@ -570,6 +701,14 @@ class BattleStateChangeApplier(
             }
             is ModifierEffectChange -> validateSpec(change.spec, delayedActivation)
             is ApplyBattleEffectChange -> validateSpec(change.spec, delayedActivation)
+            is ForcedTargetEffectChange -> {
+                validateSpec(change.spec, delayedActivation)
+                requireHero(change.forcedTarget)
+            }
+            is SharedEffectUseGroupChange -> {
+                validateSpec(change.spec, delayedActivation)
+                require(change.memberDetailId > 0)
+            }
             is ScheduledDamageEffectChange -> validateSpec(change.spec, delayedActivation)
             is ScheduledRecoveryEffectChange -> validateSpec(change.spec, delayedActivation)
             is ActionEffectChange -> validateSpec(change.spec, delayedActivation)
@@ -577,6 +716,14 @@ class BattleStateChangeApplier(
                 validateSpec(change.spec, delayedActivation)
                 change.protectedTargets.forEach(::requireHero)
                 requireHero(change.damageBearer)
+                require(change.sharePercent in 1..100) {
+                    "damage share percent must be within 1..100"
+                }
+            }
+            is LinkedDamageSharingEffectChange -> {
+                validateSpec(change.spec, delayedActivation)
+                change.members.forEach(::requireHero)
+                require(change.sharePercentPerAlly in 1..100)
             }
             is CancelPreparedSkillsChange -> validateSpec(change.spec, delayedActivation)
             is CleanseEffectsChange -> validateSpec(change.spec, delayedActivation)
@@ -691,6 +838,12 @@ class BattleStateChangeApplier(
             is ApplyBattleEffectChange -> applyEffect(change.spec, outputs) { key, _ ->
                 statusFor(change.spec.effectId)?.let { state.effectStatuses[key] = it }
             }
+            is ForcedTargetEffectChange -> applyEffect(change.spec, outputs) { key, _ ->
+                forcedTargets[key] = change.forcedTarget
+            }
+            is SharedEffectUseGroupChange -> applyEffect(change.spec, outputs) { key, _ ->
+                sharedEffectUseMembers[key] = change.memberDetailId
+            }
             is ScheduledDamageEffectChange -> {
                 applyEffect(change.spec, outputs) { key, _ ->
                     ongoingDamage[key] = OngoingDamageBehavior(
@@ -713,6 +866,16 @@ class BattleStateChangeApplier(
                     redirections[key] = Redirection(
                         change.protectedTargets.toList(),
                         change.damageBearer,
+                        change.sharePercent,
+                        change.school,
+                    )
+                }
+            }
+            is LinkedDamageSharingEffectChange -> {
+                applyEffect(change.spec, outputs) { key, _ ->
+                    linkedSharings[key] = LinkedSharing(
+                        change.members.distinct(),
+                        change.sharePercentPerAlly,
                     )
                 }
             }
@@ -730,6 +893,10 @@ class BattleStateChangeApplier(
                 outputs += synchronize(change.apply(state.effectStore))
                 recalculateStats(change.target)
             }
+            is ConsumeEffectUseChange -> {
+                outputs += synchronize(change.apply(state.effectStore))
+                recalculateStats(change.target)
+            }
             is MoraleEffectChange -> {
                 val target = state.mutable(change.target)
                 target.morale = (target.morale + change.delta).coerceAtLeast(0)
@@ -739,6 +906,76 @@ class BattleStateChangeApplier(
     }
 
     private fun applyDamage(
+        change: TroopDamageChange,
+        outputs: MutableList<BattleStateOutput>,
+    ) {
+        val linked = activeEntries(linkedSharings)
+            .lastOrNull { (_, behavior) -> change.target in behavior.members }
+        if (linked != null) {
+            val behavior = linked.second
+            val bearers = behavior.members.filter { it != change.target }
+            val each = change.amount.toLong()
+                .times(behavior.sharePercentPerAlly)
+                .div(100)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+            val retained = (change.amount - each * bearers.size).coerceAtLeast(0)
+            applyDirectDamage(change.copy(amount = retained), outputs)
+            bearers.forEach { bearer ->
+                applyDirectDamage(
+                    change.copy(
+                        target = bearer,
+                        amount = each,
+                        troopsAfter = (state.mutable(bearer).troops - each).coerceAtLeast(0),
+                    ),
+                    outputs,
+                )
+            }
+            return
+        }
+        val sharing = activeEntries(redirections)
+            .lastOrNull { (_, behavior) ->
+                behavior.sharePercent < 100 &&
+                    change.target in behavior.protectedTargets &&
+                    behavior.damageBearer != change.target &&
+                    (behavior.school == null || behavior.school == change.school)
+            }
+        if (sharing != null) {
+            val (key, behavior) = sharing
+            val sharedAmount = change.amount.toLong()
+                .times(behavior.sharePercent)
+                .div(100)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+            applyDirectDamage(change.copy(amount = change.amount - sharedAmount), outputs)
+            applyDirectDamage(
+                change.copy(
+                    target = behavior.damageBearer,
+                    amount = sharedAmount,
+                    troopsAfter = (
+                        state.mutable(behavior.damageBearer).troops - sharedAmount
+                        ).coerceAtLeast(0),
+                ),
+                outputs,
+            )
+            val active = state.effectStore.effectsFor(key.target)
+                .singleOrNull { it.key() == key }
+            if (active?.remainingHits != null) {
+                outputs += synchronize(
+                    state.effectStore.consumeHit(
+                        target = key.target,
+                        effectId = key.effectId,
+                        source = key.source,
+                        detailId = key.detailId,
+                    ),
+                )
+            }
+            return
+        }
+        applyDirectDamage(change, outputs)
+    }
+
+    private fun applyDirectDamage(
         change: TroopDamageChange,
         outputs: MutableList<BattleStateOutput>,
     ) {
@@ -988,6 +1225,9 @@ class BattleStateChangeApplier(
         ongoingDamage.remove(key)
         ongoingRecovery.remove(key)
         redirections.remove(key)
+        linkedSharings.remove(key)
+        forcedTargets.remove(key)
+        sharedEffectUseMembers.remove(key)
         state.effectStatuses.remove(key)
         state.effectModifiers.remove(key)
     }
@@ -998,7 +1238,8 @@ class BattleStateChangeApplier(
             .mapTo(mutableSetOf()) { it.key() }
         (
             statModifiers.keys + damageModifiers.keys + ongoingDamage.keys +
-                ongoingRecovery.keys + redirections.keys + state.effectStatuses.keys +
+                ongoingRecovery.keys + redirections.keys + linkedSharings.keys + forcedTargets.keys +
+                sharedEffectUseMembers.keys + state.effectStatuses.keys +
                 state.effectModifiers.keys
             )
             .filterNot { it in activeKeys }

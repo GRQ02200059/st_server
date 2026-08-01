@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.game.battle.skill.BattleTargetDecisionSource
 import com.stzb.server.game.ClientTroopFeatureRepository
 import com.stzb.server.game.ClientTroopTypeRepository
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.ArrayDeque
 import kotlin.math.roundToInt
@@ -34,6 +35,16 @@ internal object OfficialReportFixture {
         val amount: Int,
     )
 
+    data class FullBattleSummary(
+        val rounds: Int,
+        val actionRoundsByPosition: Map<Int, List<Int>>,
+        val skillTriggers: Map<Int, Int>,
+        val damageBySide: Map<Side, Int>,
+        val recoveryBySide: Map<Side, Int>,
+        val finalTroopsByPosition: Map<Int, Int>,
+        val outcome: BattleOutcome,
+    )
+
     private val mapper = jacksonObjectMapper()
 
     fun read(path: Path): List<Action> =
@@ -41,6 +52,145 @@ internal object OfficialReportFixture {
 
     fun hasReport(path: Path): Boolean =
         mapper.readTree(path.toFile()).path(1).path("report").isTextual
+
+    fun readableReports(): List<Path> =
+        listOf(
+            Path.of("assent/cfg/paper/11"),
+            Path.of("assent/cfg/paper/6231"),
+        ).flatMap { directory ->
+            Files.list(directory).use { paths ->
+                paths
+                    .filter { it.fileName.toString().endsWith(".json") }
+                    .filter(::hasReport)
+                    .toList()
+            }
+        }.sortedBy(Path::toString)
+
+    fun fullBattleSummary(actions: List<Action>): FullBattleSummary {
+        var round = 0
+        var currentActor: Int? = null
+        val actionRounds = linkedMapOf<Int, MutableList<Int>>()
+        val skillTriggers = linkedMapOf<Int, Int>()
+        val damageBySide = linkedMapOf(
+            Side.ATTACKER to 0,
+            Side.DEFENDER to 0,
+        )
+        val recoveryBySide = linkedMapOf(
+            Side.ATTACKER to 0,
+            Side.DEFENDER to 0,
+        )
+        val finalTroops = linkedMapOf<Int, Int>()
+        var outcome: BattleOutcome? = null
+
+        actions.forEach { action ->
+            when (action.id) {
+                ClientBattleTextReplayProtocol.ROUND -> {
+                    round = action.intParam(0)
+                    currentActor = null
+                }
+                ClientBattleTextReplayProtocol.HERO_ACTION_START -> {
+                    val position = action.intParam(0)
+                    currentActor = position
+                    actionRounds.getOrPut(position, ::mutableListOf).add(round)
+                }
+                ClientBattleTextReplayProtocol.HERO_ACTION_END -> currentActor = null
+                ClientBattleTextReplayProtocol.SKILL_TRIGGERED_PASSIVE,
+                ClientBattleTextReplayProtocol.SKILL_TRIGGERED_COMMAND,
+                ClientBattleTextReplayProtocol.SKILL_TRIGGERED_ACTIVE,
+                ClientBattleTextReplayProtocol.SKILL_TRIGGERED_PURSUIT,
+                -> {
+                    val skillId = action.intParam(1)
+                    skillTriggers[skillId] = skillTriggers.getOrDefault(skillId, 0) + 1
+                }
+                ClientBattleTextReplayProtocol.NORMAL_DAMAGE -> {
+                    val sourcePosition = requireNotNull(currentActor) {
+                        "normal damage outside hero action: ${action.raw}"
+                    }
+                    damageBySide.add(sideForPosition(sourcePosition), action.intParam(1))
+                }
+                ClientBattleTextReplayProtocol.ONGOING_DAMAGE,
+                ClientBattleTextReplayProtocol.SKILL_DAMAGE,
+                -> {
+                    val sourcePosition = action.intParam(0)
+                    damageBySide.add(sideForPosition(sourcePosition), action.intParam(3))
+                }
+                ClientBattleTextReplayProtocol.RECOVERY -> {
+                    val sourcePosition = action.intParam(0)
+                    recoveryBySide.add(sideForPosition(sourcePosition), action.intParam(3))
+                }
+                ClientBattleTextReplayProtocol.FINAL_TROOPS ->
+                    finalTroops[action.intParam(0)] = action.intParam(1)
+                ClientBattleTextReplayProtocol.ATTACKER_WIN ->
+                    outcome = BattleOutcome.ATTACKER_WIN
+                ClientBattleTextReplayProtocol.DRAW ->
+                    outcome = BattleOutcome.DRAW
+                ClientBattleTextReplayProtocol.DEFENDER_WIN ->
+                    outcome = BattleOutcome.DEFENDER_WIN
+            }
+        }
+
+        return FullBattleSummary(
+            rounds = round,
+            actionRoundsByPosition = actionRounds.mapValues { (_, rounds) -> rounds.toList() },
+            skillTriggers = skillTriggers.toMap(),
+            damageBySide = damageBySide.toMap(),
+            recoveryBySide = recoveryBySide.toMap(),
+            finalTroopsByPosition = finalTroops.toMap(),
+            outcome = requireNotNull(outcome) { "paper report has no battle outcome" },
+        )
+    }
+
+    fun fullBattleSummary(result: BattleResult): FullBattleSummary {
+        val actionRounds = result.events
+            .filterIsInstance<BattleEvent.HeroActionStart>()
+            .groupBy(
+                { ClientBattleTextReplayProtocol.position(it.source) },
+                BattleEvent.HeroActionStart::round,
+            )
+        val skillTriggers = result.events
+            .filterIsInstance<BattleEvent.SkillTriggered>()
+            .groupingBy(BattleEvent.SkillTriggered::skillId)
+            .eachCount()
+        val damageBySide = linkedMapOf(
+            Side.ATTACKER to 0,
+            Side.DEFENDER to 0,
+        )
+        val recoveryBySide = linkedMapOf(
+            Side.ATTACKER to 0,
+            Side.DEFENDER to 0,
+        )
+        result.events.forEach { event ->
+            when (event) {
+                is BattleEvent.NormalAttack ->
+                    damageBySide.add(event.source.side, event.damage)
+                is BattleEvent.SkillDamage ->
+                    damageBySide.add(event.source.side, event.damage)
+                is BattleEvent.OngoingDamage ->
+                    damageBySide.add(event.source.side, event.damage)
+                is BattleEvent.Recovery ->
+                    recoveryBySide.add(event.source.side, event.amount)
+                else -> Unit
+            }
+        }
+        val finalTroops = buildMap {
+            result.attacker.heroes.forEach { hero ->
+                put(ClientBattleTextReplayProtocol.position(Side.ATTACKER, hero.position), hero.troops)
+            }
+            result.defender.heroes.forEach { hero ->
+                put(ClientBattleTextReplayProtocol.position(Side.DEFENDER, hero.position), hero.troops)
+            }
+        }
+        return FullBattleSummary(
+            rounds = result.events.filterIsInstance<BattleEvent.RoundStart>()
+                .maxOfOrNull(BattleEvent.RoundStart::round) ?: 0,
+            actionRoundsByPosition = actionRounds,
+            skillTriggers = skillTriggers,
+            damageBySide = damageBySide,
+            recoveryBySide = recoveryBySide,
+            finalTroopsByPosition = finalTroops,
+            outcome = result.outcome,
+        )
+    }
 
     fun parseText(text: String): List<Action> =
         text.split('#').map { raw ->
@@ -401,6 +551,17 @@ internal object OfficialReportFixture {
 
     private fun Action.intParam(index: Int): Int =
         params[index].toInt()
+
+    private fun MutableMap<Side, Int>.add(side: Side, amount: Int) {
+        this[side] = getValue(side) + amount
+    }
+
+    private fun sideForPosition(position: Int): Side =
+        when (position) {
+            in 1..3 -> Side.ATTACKER
+            in 4..6 -> Side.DEFENDER
+            else -> error("invalid client battle position=$position")
+        }
 
     private fun preciseStatsBeforeBattle(actions: List<Action>): PrecisePaperStats {
         val formats = mapOf(

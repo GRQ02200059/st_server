@@ -7,6 +7,7 @@ import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.ConfiguredBattleEffectValue
 import com.stzb.server.game.battle.SkillKind
+import com.stzb.server.game.battle.opposite
 
 enum class MetaEffectOperation {
     MARKER,
@@ -174,6 +175,34 @@ data class MetaEffectChange(
     val parameters: MetaEffectParameters,
 ) : BattleStateChange
 
+data class TriggerLastAppliedEffectChange(
+    val source: BattleHeroRef,
+    val rootSkillId: Int,
+    val skillId: Int,
+    val detailId: Int,
+    val targets: List<BattleHeroRef>,
+    val parameters: MetaEffectParameters,
+    val appliedSpec: PersistentEffectSpec? = null,
+) : BattleStateChange
+
+data class TransformAndCastRandomActiveSkillChange(
+    val source: BattleHeroRef,
+    val rootSkillId: Int,
+    val skillId: Int,
+    val detailId: Int,
+    val parameters: MetaEffectParameters,
+) : BattleStateChange
+
+data class ForcedTargetEffectChange(
+    val spec: PersistentEffectSpec,
+    val forcedTarget: BattleHeroRef,
+) : BattleStateChange
+
+data class SharedEffectUseGroupChange(
+    val spec: PersistentEffectSpec,
+    val memberDetailId: Int,
+) : BattleStateChange
+
 data class ModifierEffectChange(
     val spec: PersistentEffectSpec,
     val modifier: com.stzb.server.game.battle.BattleModifier,
@@ -290,6 +319,15 @@ data class ReduceReferencedEffectUseChange(
     }
 }
 
+data class ConsumeEffectUseChange(
+    val source: BattleHeroRef,
+    val target: BattleHeroRef,
+    val effectId: Int,
+) : BattleStateChange {
+    fun apply(store: BattleEffectStore): EffectLifecycleResult =
+        store.consumeHit(target = target, effectId = effectId, source = source)
+}
+
 object MetaEffectHandlers {
     val effectIds: Set<Int> = setOf(
         0,
@@ -363,6 +401,19 @@ private class MetaEffectHandler(
                         operation = operation,
                         potency = signed,
                         parameters = parameters,
+                    )
+                }
+            }
+            88 -> {
+                val referenced = referencedDetail(invocation)
+                targets.map { target ->
+                    SharedEffectUseGroupChange(
+                        spec = persistentSpec(
+                            invocation,
+                            target,
+                            TypedBattlePotency.flat(1),
+                        ),
+                        memberDetailId = referenced.detailId,
                     )
                 }
             }
@@ -492,6 +543,149 @@ private class MetaEffectHandler(
                         target,
                         TypedBattlePotency.flat(1),
                     ),
+                )
+            }
+            81 -> {
+                val forcedTarget = if (raw.customSelectFlag != 0) {
+                    context.battleView.heroes()
+                        .filter { candidate ->
+                            candidate.side != context.source.side &&
+                                (
+                                    if (SkillBattleViewCapability.LIVE_STATE in
+                                        context.battleView.capabilities
+                                    ) {
+                                        context.battleView.state(candidate)
+                                    } else {
+                                        context.battleView.entryState(candidate)
+                                    }
+                                    )?.troops?.let { it > 0 } == true
+                        }
+                        .minByOrNull(BattleHeroRef::position)
+                } else {
+                    context.runtime.latestMarkedTarget(
+                        rootSkillId = context.rootSkillId,
+                        targetSide = context.source.side.opposite(),
+                        round = context.round,
+                    )
+                }
+                if (forcedTarget == null) {
+                    emptyList()
+                } else {
+                    targets.map { target ->
+                        ForcedTargetEffectChange(
+                            spec = persistentSpec(
+                                invocation,
+                                target,
+                                TypedBattlePotency.percent(raw.constantParam.coerceIn(0, 100)),
+                            ),
+                            forcedTarget = forcedTarget,
+                        )
+                    }
+                }
+            }
+            118 -> {
+                val source = sourceHero(invocation)
+                val level = invocation.rootSkillLevel(source)
+                val percent = (
+                    raw.probabilityInit +
+                        (level - 1) * (raw.probabilityMax - raw.probabilityInit) / 9.0
+                    ).toInt().coerceIn(0, 100)
+                targets.map { target ->
+                    ApplyBattleEffectChange(
+                        persistentSpec(
+                            invocation,
+                            target,
+                            TypedBattlePotency.percent(percent),
+                        ),
+                    )
+                }
+            }
+            127 -> targets.mapNotNull { target ->
+                val bearer = when {
+                    context.source != target -> context.source
+                    else -> targets.firstOrNull { it != target }
+                } ?: return@mapNotNull null
+                val percent = if (raw.calcPos == 992) {
+                    raw.constantParam / 5
+                } else {
+                    raw.constantParam
+                }.coerceIn(1, 100)
+                DamageRedirectionEffectChange(
+                    spec = persistentSpec(
+                        invocation,
+                        target,
+                        TypedBattlePotency.percent(percent),
+                    ),
+                    protectedTargets = listOf(target),
+                    damageBearer = bearer,
+                    sharePercent = percent,
+                    school = when (raw.effectParam) {
+                        0 -> com.stzb.server.game.battle.DamageSchool.PHYSICAL
+                        1 -> com.stzb.server.game.battle.DamageSchool.STRATEGY
+                        else -> null
+                    },
+                )
+            }
+            409 -> {
+                if (targets.isEmpty()) emptyList() else listOf(
+                    LinkedDamageSharingEffectChange(
+                        spec = persistentSpec(
+                            invocation,
+                            targets.first(),
+                            TypedBattlePotency.percent(raw.constantParam),
+                        ),
+                        members = targets,
+                        sharePercentPerAlly = raw.constantParam.coerceIn(1, 100),
+                    ),
+                )
+            }
+            149 -> listOf(
+                TriggerLastAppliedEffectChange(
+                    source = context.source,
+                    rootSkillId = context.rootSkillId,
+                    skillId = context.currentSkillId,
+                    detailId = invocation.rule.detailId,
+                    targets = targets,
+                    parameters = parameters,
+                ),
+            )
+            200 -> targets.map { target ->
+                ActionEffectChange(
+                    spec = persistentSpec(
+                        invocation,
+                        target,
+                        TypedBattlePotency.flat(1),
+                    ),
+                    kind = ActionEffectKind.DOUBLE_ATTACK,
+                )
+            }
+            199 -> listOf(
+                TransformAndCastRandomActiveSkillChange(
+                    source = context.source,
+                    rootSkillId = context.rootSkillId,
+                    skillId = context.currentSkillId,
+                    detailId = invocation.rule.detailId,
+                    parameters = parameters,
+                ),
+            )
+            82, 83 -> targets.map { target ->
+                val potency = TypedBattlePotency.percent(raw.constantParam)
+                ModifierEffectChange(
+                    spec = persistentSpec(invocation, target, potency),
+                    modifier = if (ownedEffectId == 82) {
+                        BattleModifier.DamageRateMaximumPercent(potency.value)
+                    } else {
+                        BattleModifier.DamageRateMinimumPercent(potency.value)
+                    },
+                )
+            }
+            404 -> targets.map { target ->
+                ApplyBattleEffectChange(
+                    persistentSpec(
+                        invocation,
+                        target,
+                        TypedBattlePotency.flat(1),
+                    ).copy(availableHit = raw.availableHit.coerceAtLeast(1)),
                 )
             }
             151, 153, 408 -> {

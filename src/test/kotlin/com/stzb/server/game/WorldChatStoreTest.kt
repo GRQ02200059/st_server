@@ -29,7 +29,7 @@ class WorldChatStoreTest {
     }
 
     @Test
-    fun `rejects records that do not match the 46 field chat contract`() {
+    fun `rejects records that do not match the 48 field chat contract`() {
         assertFailsWith<IllegalArgumentException> {
             WorldChatRecord(List(WorldChatRecord.FIELD_COUNT - 1) { 0 })
         }

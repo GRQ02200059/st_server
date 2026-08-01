@@ -100,6 +100,8 @@ sealed interface BattleModifier {
         val detailId: Int,
         val percent: Int,
     ) : BattleModifier
+    data class DamageRateMinimumPercent(val percent: Int) : BattleModifier
+    data class DamageRateMaximumPercent(val percent: Int) : BattleModifier
     data class RecoveryTakenPercent(val percent: Int) : BattleModifier
     data class DefenseIgnorePercent(
         val percent: Int,

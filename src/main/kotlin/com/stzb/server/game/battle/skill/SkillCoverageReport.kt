@@ -122,14 +122,14 @@ data class SkillCoverageReport(
          * not constitute executable coverage.
          */
         private val RUNTIME_CONSUMED_META_EFFECT_IDS = setOf(
-            77,
-            113, 114, 121,
+            77, 82, 83,
+            113, 114, 118, 121,
             122, 123,
-            129, 130, 131, 141,
+            127, 129, 130, 131, 141, 149,
             151, 152, 153, 161,
-            171, 181,
+            171, 181, 199, 200,
             210, 231, 261, 281, 313,
-            408,
+            404, 408, 409,
         )
     }
 }

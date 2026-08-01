@@ -75,6 +75,24 @@ class DefaultCompleteSkillEngine private constructor(
             runtime = state.runtime,
             trigger = trigger,
             battleView = state.view,
+            skillProbabilityUses = SkillProbabilityUseSink { source, skillId, skillKind ->
+                applier.consumeSkillProbabilityUses(source, skillId, skillKind)
+                context.skillProbabilityUses.consume(source, skillId, skillKind)
+            },
+            forcedTargets = BattleForcedTargetSource { request ->
+                if (request.rule.skillKind == SkillKind.ACTIVE &&
+                    request.rule.effectId in 301..307
+                ) {
+                    applier.tryConsumeForcedTarget(
+                        actor = request.context.source,
+                        eligibleTargets = request.candidates,
+                        random = request.context.random,
+                    )?.let(::listOf)
+                        ?: context.forcedTargets.select(request)
+                } else {
+                    context.forcedTargets.select(request)
+                }
+            },
         )
         val events = mutableListOf<BattleEvent>()
         if (trigger.emitsPoint()) {
@@ -240,6 +258,19 @@ class DefaultCompleteSkillEngine private constructor(
 
     fun recordTarget(source: BattleHeroRef, target: BattleHeroRef) {
         history.record(source, target)
+    }
+
+    fun forcedNormalAttackTarget(
+        actor: BattleHeroRef,
+        normalTarget: BattleHeroRef,
+        random: BattleRandom,
+    ): BattleHeroRef {
+        val eligibleTargets = state.view.heroes().filter { candidate ->
+            candidate.side != actor.side &&
+                (state.view.state(candidate)?.troops ?: 0) > 0
+        }
+        return applier.tryConsumeForcedTarget(actor, eligibleTargets, random)
+            ?: normalTarget
     }
 
     internal fun recordDamageThresholds(
@@ -1153,7 +1184,16 @@ class DefaultCompleteSkillEngine private constructor(
                 is ExecuteChildSkillChange,
                 is RetriggerSkillChange,
                 is TriggerReferencedEffectChange,
+                is TransformAndCastRandomActiveSkillChange,
                 -> Unit
+                is TriggerLastAppliedEffectChange -> {
+                    change.appliedSpec?.let { appliedSpec ->
+                        events += processDamageOutputs(
+                            applier.triggerAppliedOngoingDamage(appliedSpec, context.round),
+                            context,
+                        )
+                    }
+                }
                 is MetaEffectChange -> {
                     when (change.operation) {
                         MetaEffectOperation.SKILL_RANGE_INCREASE -> {
@@ -1205,6 +1245,7 @@ class DefaultCompleteSkillEngine private constructor(
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 }
                 is ReduceReferencedEffectUseChange,
+                is ConsumeEffectUseChange,
                 -> events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 else -> events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
             }
@@ -1343,8 +1384,25 @@ class DefaultCompleteSkillEngine private constructor(
                         currentSkillId = 214254,
                         trigger = BattleTrigger.EFFECT_APPLIED,
                     )
-                    events += processDamageOutputs(
-                        applier.triggerAppliedOngoingDamage(output.spec, context.round),
+                    val triggerResult = interpreter.executeDetailForEngine(
+                            graph.details.single { it.detailId == 21425401 },
+                            appliedContext,
+                            preselectedTargets = listOf(output.spec.target),
+                        )
+                    events += apply(
+                        SkillExecutionResult.immutable(
+                            triggerResult.stateChanges.map { change ->
+                                if (change is TriggerLastAppliedEffectChange) {
+                                    change.copy(appliedSpec = output.spec)
+                                } else {
+                                    change
+                                }
+                            },
+                            triggerResult.events,
+                            triggerResult.executedSkillIds,
+                            triggerResult.diagnostics,
+                            triggerResult.timingDues,
+                        ),
                         appliedContext,
                     )
                 }
