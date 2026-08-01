@@ -72,7 +72,15 @@ class NetworkResponsePolicyTest {
 
     @Test
     fun `telemetry acknowledgements require explicit handlers`() {
-        listOf(24, 191, 885).forEach { cmd ->
+        listOf(
+            Cmd.LOG_FPS,
+            Cmd.SEND_ACSDK_CHEAT_INFO,
+            Cmd.USER_CLOSE_UI,
+            Cmd.USER_OPEN_UI,
+            Cmd.LOG_MUSIC_OPEN,
+            Cmd.RESFILE_LOG_HUB_RECORD,
+            Cmd.DAILY_REPORT_LOG,
+        ).forEach { cmd ->
             assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
             assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
         }
@@ -112,14 +120,14 @@ class NetworkResponsePolicyTest {
 
     @Test
     fun `recorded acknowledgement commands return booleans instead of arrays`() {
-        listOf(748, 888, 2311).forEach { cmdId ->
+        listOf(748, 2311).forEach { cmdId ->
             assertEquals("true", NetworkResponsePolicy.observedShapeBody(cmdId), "cmd=$cmdId")
         }
     }
 
     @Test
     fun `recorded fire and forget commands still receive json null`() {
-        listOf(6, 875, 2405, 3400, 5025, 6037, 6351, 7041).forEach { cmdId ->
+        listOf(6, 2405, 3400, 5025, 6037, 6351, 7041).forEach { cmdId ->
             assertEquals("null", NetworkResponsePolicy.observedShapeBody(cmdId), "cmd=$cmdId")
         }
     }

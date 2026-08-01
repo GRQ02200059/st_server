@@ -5,6 +5,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CapturedShapeTest {
     private val mapper = jacksonObjectMapper()
@@ -39,7 +41,7 @@ class CapturedShapeTest {
 
     @Test
     fun `captured null commands answer json null`() {
-        listOf(933, 2402, 2404, 2600, 2601, 4326, 4966).forEach { cmd ->
+        listOf(933, 2402, 2404, 2600, 2601).forEach { cmd ->
             assertEquals("null", NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
         }
     }
@@ -47,9 +49,22 @@ class CapturedShapeTest {
     @Test
     fun `captured boolean commands keep boolean kind`() {
         // 981 REALNAME_LOGOUT / 4087 CHECK_HAVE_UNION_TO_JOIN 正式服真实 recv 为 bool。
-        listOf(748, 888, 981, 2311, 4087).forEach { cmd ->
+        listOf(748, 981, 2311, 4087).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("boolean", ShapeAssert.topLevelKind(body), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `handler owned log acknowledgements are absent from observed shape fallback`() {
+        listOf(
+            Cmd.USER_CLOSE_UI,
+            Cmd.LOG_MUSIC_OPEN,
+            Cmd.RESFILE_LOG_HUB_RECORD,
+            Cmd.DAILY_REPORT_LOG,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
         }
     }
 

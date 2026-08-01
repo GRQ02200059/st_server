@@ -66,35 +66,45 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
-    fun `telemetry acknowledgements ignore arbitrary payloads without mutating repositories`() {
+    fun `log acknowledgements ignore arbitrary payloads without mutating repositories`() {
         val channel = newChannel()
-        val accountKey = "telemetry-ack-snapshot"
+        val accountKey = "log-ack-snapshot"
         val state = PlayerStateRepository.getOrCreate(
             accountKey = accountKey,
             cityWid = GameServerConfig.CITY_WID,
-            roleName = "Telemetry Snapshot User",
+            roleName = "Log Ack Snapshot User",
         )
-        UnionStateRepository.create(state, "Telemetry Snapshot Union", nowSec = 1)
+        UnionStateRepository.create(state, "Log Ack Snapshot Union", nowSec = 1)
         assertTrue(WorldStateRepository.claimLand(state, wid = 10_002, nowSec = 1))
         val playerBefore = requireNotNull(
             FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
         ).toSnapshot()
         val worldBefore = WorldStateRepository.projection()
         val unionsBefore = UnionStateRepository.all()
-        val cases = listOf(
-            Triple(Cmd.LOG_FPS, """["ignored-fps",59.7,{"device":"ignored"}]""", "null"),
-            Triple(Cmd.SEND_ACSDK_CHEAT_INFO, """{"sdk":"ignored","role":"ignored","account":"ignored"}""", "true"),
-            Triple(Cmd.USER_OPEN_UI, """["ignored-ui-action",{"detail":"ignored"}]""", "null"),
+        val expectedBodies = mapOf(
+            Cmd.LOG_FPS to "null",
+            Cmd.SEND_ACSDK_CHEAT_INFO to "true",
+            Cmd.USER_CLOSE_UI to "null",
+            Cmd.USER_OPEN_UI to "null",
+            Cmd.LOG_MUSIC_OPEN to "true",
+            Cmd.RESFILE_LOG_HUB_RECORD to "null",
+            Cmd.DAILY_REPORT_LOG to "null",
+        )
+        val syntheticPayloads = listOf(
+            """["synthetic-alpha",{"opaque":17}]""",
+            """{"synthetic":"beta","values":[false,42]}""",
         )
 
-        cases.forEach { (cmd, request, expectedBody) ->
-            channel.writeInbound(upPacket(cmd, request, userId = state.userId))
+        expectedBodies.forEach { (cmd, expectedBody) ->
+            syntheticPayloads.forEach { request ->
+                channel.writeInbound(upPacket(cmd, request, userId = state.userId))
 
-            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "cmd=$cmd")
-            assertEquals(cmd, response.cmd)
-            assertEquals(DownType.PLAIN, response.dataType)
-            assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
-            assertNull(channel.readOutbound<Any>(), "cmd=$cmd emitted an extra packet")
+                val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "cmd=$cmd")
+                assertEquals(cmd, response.cmd)
+                assertEquals(DownType.PLAIN, response.dataType)
+                assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
+                assertNull(channel.readOutbound<Any>(), "cmd=$cmd emitted an extra packet")
+            }
         }
         assertEquals(
             playerBefore,

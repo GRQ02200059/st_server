@@ -99,7 +99,11 @@ object CommandContractCatalog {
             listOf(
                 Cmd.LOG_FPS,
                 Cmd.SEND_ACSDK_CHEAT_INFO,
+                Cmd.USER_CLOSE_UI,
                 Cmd.USER_OPEN_UI,
+                Cmd.LOG_MUSIC_OPEN,
+                Cmd.RESFILE_LOG_HUB_RECORD,
+                Cmd.DAILY_REPORT_LOG,
                 Cmd.PRE_SERVER_QUERY_USER_OP,
                 Cmd.IP_USER_COUNT_PRE,
             ).map(::provisionalClientRequest) +

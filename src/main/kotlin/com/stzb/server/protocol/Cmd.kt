@@ -67,7 +67,9 @@ object Cmd {
     const val RANK_LIST = 700
     const val CHAT = 710
     const val CHAT_HISTORY = 711
+    const val USER_CLOSE_UI = 875
     const val USER_OPEN_UI = 885
+    const val LOG_MUSIC_OPEN = 888
     const val GEAR_EQUIP = 1226
     const val GEAR_FORGET = 1227
     const val HERO_ACTIVE_FACADE = 2520
@@ -81,10 +83,12 @@ object Cmd {
     const val SET_CLIENT_RED_DOT_DATA = 3400
     const val GET_HOMEPAGE_INFO = 3686
     const val BUILD_FACADE_APPLY_BUILD_SCHEME = 3945
+    const val RESFILE_LOG_HUB_RECORD = 4326
     const val GET_USER_NPC_ARMY = 4329
     const val GET_LAND_NPC_ARMY = 4330
     const val GET_LAND_DEFEND_ARMY = 4331
     const val QUERY_ARMY_RELATED_FORT = 4159
+    const val DAILY_REPORT_LOG = 4966
     const val GET_WORLD_SCENCE_INFO = 5025
     const val SEND_WORLD_SCENCE_FULL_INFO = 5026
     const val BATTLE_REPORT_SHORT_DETAIL = 6231

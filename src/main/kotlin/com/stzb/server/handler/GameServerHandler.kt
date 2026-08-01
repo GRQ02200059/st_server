@@ -157,8 +157,24 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(Cmd.SEND_ACSDK_CHEAT_INFO, "true", dataType = DownType.PLAIN))
             }
 
+            Cmd.USER_CLOSE_UI -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.USER_CLOSE_UI, "null", dataType = DownType.PLAIN))
+            }
+
             Cmd.USER_OPEN_UI -> {
                 ctx.writeAndFlush(DownPacket.json(Cmd.USER_OPEN_UI, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.LOG_MUSIC_OPEN -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.LOG_MUSIC_OPEN, "true", dataType = DownType.PLAIN))
+            }
+
+            Cmd.RESFILE_LOG_HUB_RECORD -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.RESFILE_LOG_HUB_RECORD, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.DAILY_REPORT_LOG -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.DAILY_REPORT_LOG, "null", dataType = DownType.PLAIN))
             }
 
             Cmd.PRE_SERVER_QUERY_USER_OP -> {

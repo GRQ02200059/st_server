@@ -43,11 +43,19 @@ class CommandContractRegistryTest {
         val commands = listOf(
             Cmd.LOG_FPS,
             Cmd.SEND_ACSDK_CHEAT_INFO,
+            Cmd.USER_CLOSE_UI,
             Cmd.USER_OPEN_UI,
+            Cmd.LOG_MUSIC_OPEN,
+            Cmd.RESFILE_LOG_HUB_RECORD,
+            Cmd.DAILY_REPORT_LOG,
         )
         assertEquals(24, Cmd.LOG_FPS)
         assertEquals(191, Cmd.SEND_ACSDK_CHEAT_INFO)
+        assertEquals(875, Cmd.USER_CLOSE_UI)
         assertEquals(885, Cmd.USER_OPEN_UI)
+        assertEquals(888, Cmd.LOG_MUSIC_OPEN)
+        assertEquals(4_326, Cmd.RESFILE_LOG_HUB_RECORD)
+        assertEquals(4_966, Cmd.DAILY_REPORT_LOG)
 
         commands.forEach { cmd ->
             val contract = CommandContractCatalog.registry.contract(cmd)

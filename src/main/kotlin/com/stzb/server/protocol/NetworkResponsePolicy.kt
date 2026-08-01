@@ -74,7 +74,7 @@ object NetworkResponsePolicy {
         }
 
     private val booleanCommands = setOf(
-        748, 888, 981, 2311, 4087,
+        748, 981, 2311, 4087,
     )
 
     /**
@@ -82,15 +82,12 @@ object NetworkResponsePolicy {
      */
     private val jsonNullCommands = setOf(
         Cmd.ARMY_BATTLE,
-        875,
         933,
         2402,
         2404,
         2405,
         2600,
         2601,
-        4326,
-        4966,
         Cmd.SET_CLIENT_RED_DOT_DATA,
         Cmd.GET_WORLD_SCENCE_INFO,
         6037,
