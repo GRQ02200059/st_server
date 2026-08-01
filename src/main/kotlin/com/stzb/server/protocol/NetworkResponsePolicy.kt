@@ -167,8 +167,12 @@ object NetworkResponsePolicy {
         val request = runCatching { mapper.readTree(requestBody ?: "[]") }.getOrNull()
         val recType = request
             ?.takeIf { it.isArray && it.size() > 1 }
+            ?.takeIf { value ->
+                (0..1).all { index ->
+                    value[index].isIntegralNumber && value[index].canConvertToInt()
+                }
+            }
             ?.get(1)
-            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
             ?.asInt()
             ?: 0
         return mapper.writeValueAsString(listOf(recType, emptyList<Any>()))

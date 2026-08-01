@@ -157,6 +157,13 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `invalid transfer season group id defaults to zero and an empty list`() {
+        listOf("""["bad",7]""", "[1.5,7]", "[2147483648,7]").forEach { request ->
+            assertEquals("[0,[]]", NetworkResponsePolicy.observedShapeBody(6078, request), "request=$request")
+        }
+    }
+
+    @Test
     fun `first captured response batch is registered as observed shape`() {
         listOf(202, 203, 727, 3758, 6030, 6078).forEach { cmd ->
             assertEquals(
