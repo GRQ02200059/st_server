@@ -607,6 +607,95 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `union official list reads the requested local union without mutating repositories`() {
+        val channel = newChannel()
+        val accountKey = "union-official-list"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Local Union Leader",
+        )
+        val unionId = UnionStateRepository.create(state, "Official List Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_002, nowSec = 1))
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+
+        channel.writeInbound(
+            upPacket(Cmd.UNION_OFFICIAL_LIST, "[$unionId]", userId = state.userId + 10_000),
+        )
+
+        val packet = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.UNION_OFFICIAL_LIST, packet.cmd)
+        assertEquals(DownType.PLAIN, packet.dataType)
+        val rows = mapper.readTree(packet.body)
+        assertEquals(17, rows.size())
+        assertEquals(
+            mapper.readTree("""[1,0,${state.userId},"Local Union Leader",301,0,0,0]"""),
+            rows[0],
+        )
+        assertNull(channel.readOutbound<Any>())
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `invalid union official list requests return one plain empty array without mutation`() {
+        val channel = newChannel()
+        val accountKey = "union-official-list-invalid"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Local Invalid Request Leader",
+        )
+        UnionStateRepository.create(state, "Invalid Request Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_002, nowSec = 1))
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val invalidRequests = listOf(
+            "malformed" to "not-json",
+            "non-array" to "{}",
+            "missing" to "[]",
+            "fractional" to "[1.5]",
+            "string" to """["1001"]""",
+            "boolean" to "[true]",
+            "positive out-of-range" to "[2147483648]",
+            "negative out-of-range" to "[-2147483649]",
+            "trailing text" to "[1001] trailing",
+            "trailing token" to "[1001] []",
+        )
+
+        invalidRequests.forEach { (case, request) ->
+            channel.writeInbound(
+                upPacket(Cmd.UNION_OFFICIAL_LIST, request, userId = state.userId),
+            )
+
+            val packet = assertIs<DownPacket>(channel.readOutbound<Any>(), case)
+            assertEquals(Cmd.UNION_OFFICIAL_LIST, packet.cmd, case)
+            assertEquals(DownType.PLAIN, packet.dataType, case)
+            assertEquals("[]", packet.body.toString(Charsets.UTF_8), case)
+            assertNull(channel.readOutbound<Any>(), "$case emitted an extra packet")
+        }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `union chat members use authenticated identity and return empty without a union`() {
         val foreignChannel = newChannel()
         val foreignUserId = platformLogin(foreignChannel, "union-chat-foreign")

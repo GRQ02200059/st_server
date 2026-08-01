@@ -1,5 +1,6 @@
 package com.stzb.server.handler
 
+import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.auth.AccountIdentity
 import com.stzb.server.auth.AccountIdentityResolver
@@ -21,6 +22,7 @@ import com.stzb.server.game.RankListResponses
 import com.stzb.server.game.RecruitResultParser
 import com.stzb.server.game.SkillOperationRequestParser
 import com.stzb.server.game.TeamRequestParser
+import com.stzb.server.game.UnionOfficialListResponses
 import com.stzb.server.game.UnionStateRepository
 import com.stzb.server.game.UserHeadIconResponses
 import com.stzb.server.game.WorldChatRecord
@@ -185,6 +187,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.UNION_MEMBER -> {
                 logIn(msg)
                 sendUnionMembers(ctx, session, msg)
+            }
+
+            Cmd.UNION_OFFICIAL_LIST -> {
+                logIn(msg)
+                sendUnionOfficialList(ctx, msg)
             }
 
             Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT -> {
@@ -1147,6 +1154,23 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         log.info(">> cmd=103 同盟成员已下发 (uid=$userId, hasUnion=${UnionStateRepository.forUser(userId) != null})")
     }
 
+    private fun sendUnionOfficialList(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val unionId = requestedUnionId(msg)
+        val union = UnionStateRepository.find(unionId)
+        val json = UnionOfficialListResponses.response(union)
+        ctx.writeAndFlush(DownPacket.json(Cmd.UNION_OFFICIAL_LIST, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=110 同盟官员列表已下发 (unionId=$unionId, found=${union != null})")
+    }
+
+    private fun requestedUnionId(msg: UpPacket): Int =
+        runCatching { strictRequestMapper.readTree(msg.bodyText) }
+            .getOrNull()
+            ?.takeIf { it.isArray && it.size() > 0 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.intValue()
+            ?: 0
+
     private fun sendUnionChatMembers(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
         val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
         val union = UnionStateRepository.forUser(userId)
@@ -1668,6 +1692,8 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     companion object {
         private val log = LoggerFactory.getLogger(GameServerHandler::class.java)
         private val mapper = jacksonObjectMapper()
+        private val strictRequestMapper = jacksonObjectMapper()
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
         private val defaultHeroIds = listOf(100003, 100004, 100005, 100011, 100013, 100015, 100016, 100017)
         private val serverSessions = ServerSessionRegistry()
         private val onlineSessions = OnlineSessionRegistry()

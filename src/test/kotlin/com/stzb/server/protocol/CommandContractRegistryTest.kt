@@ -14,6 +14,14 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `union official list exposes a readable handler owned contract`() {
+        assertEquals(110, Cmd.UNION_OFFICIAL_LIST)
+        val contract = CommandContractCatalog.registry.contract(Cmd.UNION_OFFICIAL_LIST)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `rank list exposes a readable handler owned contract`() {
         assertEquals(700, Cmd.RANK_LIST)
         val contract = CommandContractCatalog.registry.contract(Cmd.RANK_LIST)

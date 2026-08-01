@@ -37,6 +37,7 @@ object CommandContractCatalog {
             CurrentClientCommand.UNION_CREATE,
             CurrentClientCommand.UNION_INFO,
             CurrentClientCommand.UNION_MEMBER,
+            Cmd.UNION_OFFICIAL_LIST,
             Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT,
             CurrentClientCommand.GET_HOMEPAGE_INFO,
             CurrentClientCommand.CHAT,

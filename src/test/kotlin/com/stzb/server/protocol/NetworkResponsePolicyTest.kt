@@ -25,6 +25,12 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `union official list requires the explicit local state handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_OFFICIAL_LIST, "[1005]"))
+        assertTrue(Cmd.UNION_OFFICIAL_LIST !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `rank list requires the explicit handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.RANK_LIST))
     }
