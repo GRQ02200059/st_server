@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.JavaExec
+
 plugins {
     kotlin("jvm") version "1.9.23"
     application
@@ -27,6 +29,14 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.register<JavaExec>("protocolCoverageReport") {
+    group = "verification"
+    description = "Writes the 9.2.2 command contract coverage report."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.stzb.server.protocol.CommandCoverageReport")
+    args(layout.buildDirectory.file("reports/protocol/command-coverage.md").get().asFile.absolutePath)
 }
 
 // 客户端配置表 (tb_cfg_*.bin) 已纳入版本控制, 存放于
