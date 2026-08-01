@@ -100,6 +100,8 @@ object CommandContractCatalog {
                 Cmd.LOG_FPS,
                 Cmd.SEND_ACSDK_CHEAT_INFO,
                 Cmd.USER_OPEN_UI,
+                Cmd.PRE_SERVER_QUERY_USER_OP,
+                Cmd.IP_USER_COUNT_PRE,
             ).map(::provisionalClientRequest) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,
@@ -143,6 +145,30 @@ object CommandContractCatalog {
         listOf(
             CommandContract(
                 id = Cmd.COMMUNITY_GET_USER_TOKEN,
+                names = emptyList(),
+                direction = CommandDirection.CLIENT_REQUEST,
+                domain = CommandDomain.EXTERNAL,
+                status = CommandStatus.REJECTED,
+                owner = "GameServerHandler",
+            ),
+            CommandContract(
+                id = Cmd.PRE_SERVER_GEN_H5_SIGN,
+                names = emptyList(),
+                direction = CommandDirection.CLIENT_REQUEST,
+                domain = CommandDomain.EXTERNAL,
+                status = CommandStatus.REJECTED,
+                owner = "GameServerHandler",
+            ),
+            CommandContract(
+                id = Cmd.QUERY_NEW_COMMUNITY_INFO,
+                names = emptyList(),
+                direction = CommandDirection.CLIENT_REQUEST,
+                domain = CommandDomain.EXTERNAL,
+                status = CommandStatus.REJECTED,
+                owner = "GameServerHandler",
+            ),
+            CommandContract(
+                id = Cmd.QUERY_SIMULATE_TOKEN,
                 names = emptyList(),
                 direction = CommandDirection.CLIENT_REQUEST,
                 domain = CommandDomain.EXTERNAL,

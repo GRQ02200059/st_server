@@ -65,7 +65,7 @@ class CapturedShapeTest {
     @Test
     fun `captured opaque string commands keep string kind`() {
         // 980 GET_USER_SEASON_RECORD 正式服真实 recv 为序列化 JSON 字符串。
-        listOf(671, 980, 40004, 40016).forEach { cmd ->
+        listOf(671, 980, 40016).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("string", ShapeAssert.topLevelKind(body), "cmd=$cmd")
         }
@@ -86,11 +86,7 @@ class CapturedShapeTest {
             2604 to 2,
             3928 to 2,
             8009 to 6,
-            40003 to 3,
             40018 to 2,
-            40020 to 5,
-            40021 to 1,
-            40022 to 2,
         )
         expectedSizes.forEach { (cmd, size) ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!

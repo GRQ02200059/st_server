@@ -79,6 +79,20 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `pre login and external commands require explicit handlers`() {
+        listOf(
+            Cmd.PRE_SERVER_QUERY_USER_OP,
+            Cmd.PRE_SERVER_GEN_H5_SIGN,
+            Cmd.QUERY_NEW_COMMUNITY_INFO,
+            Cmd.QUERY_SIMULATE_TOKEN,
+            Cmd.IP_USER_COUNT_PRE,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `unregistered command has no shape response`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(45_678))
         assertTrue(!CommandContractCatalog.registry.isShapeResponseAllowed(45_678))

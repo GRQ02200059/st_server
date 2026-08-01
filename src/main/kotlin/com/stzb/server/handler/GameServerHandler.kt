@@ -161,6 +161,28 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(Cmd.USER_OPEN_UI, "null", dataType = DownType.PLAIN))
             }
 
+            Cmd.PRE_SERVER_QUERY_USER_OP -> {
+                sendPreServerQueryUserOp(ctx, msg)
+            }
+
+            Cmd.PRE_SERVER_GEN_H5_SIGN -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.PRE_SERVER_GEN_H5_SIGN, "\"\"", dataType = DownType.PLAIN))
+            }
+
+            Cmd.QUERY_NEW_COMMUNITY_INFO -> {
+                ctx.writeAndFlush(
+                    DownPacket.json(Cmd.QUERY_NEW_COMMUNITY_INFO, """[0,"",{},[],""]""", dataType = DownType.PLAIN),
+                )
+            }
+
+            Cmd.QUERY_SIMULATE_TOKEN -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.QUERY_SIMULATE_TOKEN, "[0]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.IP_USER_COUNT_PRE -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.IP_USER_COUNT_PRE, "[0,0]", dataType = DownType.PLAIN))
+            }
+
             Cmd.BATTLE_REPORT_PROFILE -> {
                 logIn(msg)
                 sendBattleReportProfile(ctx, session, msg)
@@ -469,6 +491,23 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val json = GameResponses.preServerTokenCheck()
         ctx.writeAndFlush(DownPacket.json(Cmd.SYS_PRE_SERVER_TOKEN_CHECK, json, dataType = DownType.PLAIN))
         log.info(">> cmd=99994 预登录校验已下发")
+    }
+
+    private fun sendPreServerQueryUserOp(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val requestedUserId = runCatching { strictRequestMapper.readTree(msg.bodyText) }
+            .getOrNull()
+            ?.takeIf { it.isArray && it.size() > 0 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: 0
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.PRE_SERVER_QUERY_USER_OP,
+                "[0,$requestedUserId,[]]",
+                dataType = DownType.PLAIN,
+            ),
+        )
     }
 
     private fun sendPrebookServerInfo(ctx: ChannelHandlerContext) {

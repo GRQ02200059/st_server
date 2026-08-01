@@ -107,7 +107,7 @@ object NetworkResponsePolicy {
 
     /** 抓包确认返回顶层字符串（不透明 token/序列化串）的命令，兜底回空串。 */
     private val stringCommands = setOf(
-        671, 980, 40004, 40016,
+        671, 980, 40016,
     )
 
     private val dictionaryCommands = setOf(
@@ -130,11 +130,7 @@ object NetworkResponsePolicy {
         6244 to "[[]]",
         8009 to "[0,0,{},0,[],null]",
         20003 to "[0,[]]",
-        40003 to "[0,0,[]]",
         40018 to "[0,0]",
-        40020 to "[0,\"\",{},[],\"\"]",
-        40021 to "[0]",
-        40022 to "[0,0]",
     )
 
     private val pagedListCommands = setOf(

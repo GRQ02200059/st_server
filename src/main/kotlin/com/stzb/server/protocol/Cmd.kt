@@ -94,7 +94,12 @@ object Cmd {
     const val EXERCISE_DAILY_SAVE_TEAM = 8011
     const val NORMAL_TEAM_COMPOSITION = 9026
     const val HERO_TEAM_LIBRARY = 9029
+    const val PRE_SERVER_QUERY_USER_OP = 40003
+    const val PRE_SERVER_GEN_H5_SIGN = 40004
     const val GET_PREBOOK_SERVER_INFO = 40008
+    const val QUERY_NEW_COMMUNITY_INFO = 40020
+    const val QUERY_SIMULATE_TOKEN = 40021
+    const val IP_USER_COUNT_PRE = 40022
 }
 
 /**

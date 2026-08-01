@@ -8,6 +8,37 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `pre login and external commands expose readable handler owned contracts`() {
+        assertEquals(40_003, Cmd.PRE_SERVER_QUERY_USER_OP)
+        assertEquals(40_004, Cmd.PRE_SERVER_GEN_H5_SIGN)
+        assertEquals(40_020, Cmd.QUERY_NEW_COMMUNITY_INFO)
+        assertEquals(40_021, Cmd.QUERY_SIMULATE_TOKEN)
+        assertEquals(40_022, Cmd.IP_USER_COUNT_PRE)
+
+        listOf(
+            Cmd.PRE_SERVER_QUERY_USER_OP,
+            Cmd.IP_USER_COUNT_PRE,
+        ).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandDomain.UNKNOWN, contract?.domain, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+        listOf(
+            Cmd.PRE_SERVER_GEN_H5_SIGN,
+            Cmd.QUERY_NEW_COMMUNITY_INFO,
+            Cmd.QUERY_SIMULATE_TOKEN,
+        ).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandDomain.EXTERNAL, contract?.domain, "cmd=$cmd")
+            assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `telemetry commands expose readable handler owned client request contracts`() {
         val commands = listOf(
             Cmd.LOG_FPS,

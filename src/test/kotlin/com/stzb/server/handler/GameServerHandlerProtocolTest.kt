@@ -106,6 +106,95 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `pre server user operation query echoes only a valid integer user id`() {
+        val channel = newChannel()
+        val validRequests = listOf(
+            "[17]" to "[0,17,[]]",
+            "[-42]" to "[0,-42,[]]",
+            "[2147483647]" to "[0,2147483647,[]]",
+            "[-2147483648]" to "[0,-2147483648,[]]",
+            """[23,{"ignored":"slot"}]""" to "[0,23,[]]",
+        )
+        val invalidRequests = listOf(
+            "",
+            "not-json",
+            "{}",
+            "0",
+            "[]",
+            "[null]",
+            """["17"]""",
+            "[1.5]",
+            "[2147483648]",
+            "[-2147483649]",
+            "[17] true",
+        )
+
+        validRequests.forEach { (request, expectedBody) ->
+            channel.writeInbound(upPacket(Cmd.PRE_SERVER_QUERY_USER_OP, request))
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "request=$request")
+            assertEquals(Cmd.PRE_SERVER_QUERY_USER_OP, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+        invalidRequests.forEach { request ->
+            channel.writeInbound(upPacket(Cmd.PRE_SERVER_QUERY_USER_OP, request))
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "request=$request")
+            assertEquals(Cmd.PRE_SERVER_QUERY_USER_OP, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals("[0,0,[]]", response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `pre login external responses ignore payloads and leave repositories unchanged`() {
+        val channel = newChannel()
+        val accountKey = "pre-login-external-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Pre Login Snapshot User",
+        )
+        UnionStateRepository.create(state, "Pre Login Snapshot Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_003, nowSec = 1))
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val sensitiveShapedPayload =
+            """[{"token":"local-placeholder","account":"local-account","session":"local-session","ips":["192.0.2.1"],"device":"local-device"}]"""
+        val cases = listOf(
+            Triple(Cmd.PRE_SERVER_QUERY_USER_OP, "[31]", "[0,31,[]]"),
+            Triple(Cmd.PRE_SERVER_GEN_H5_SIGN, sensitiveShapedPayload, "\"\""),
+            Triple(Cmd.QUERY_NEW_COMMUNITY_INFO, sensitiveShapedPayload, """[0,"",{},[],""]"""),
+            Triple(Cmd.QUERY_SIMULATE_TOKEN, sensitiveShapedPayload, "[0]"),
+            Triple(Cmd.IP_USER_COUNT_PRE, sensitiveShapedPayload, "[0,0]"),
+        )
+
+        cases.forEach { (cmd, request, expectedBody) ->
+            channel.writeInbound(upPacket(cmd, request, userId = state.userId))
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "cmd=$cmd")
+            assertEquals(cmd, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "cmd=$cmd emitted an extra packet")
+        }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `unknown command is logged without fabricated success response`() {
         val channel = newChannel()
 
