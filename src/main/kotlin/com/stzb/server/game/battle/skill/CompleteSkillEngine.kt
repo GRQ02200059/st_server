@@ -7,14 +7,29 @@ import com.stzb.server.game.battle.BattleDamageCalculator
 import com.stzb.server.game.battle.BattleEvent
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleRandom
 import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.DamageOrigin
 import com.stzb.server.game.battle.DamageSchool
 import com.stzb.server.game.battle.DamageTag
 import com.stzb.server.game.battle.SkillKind
+import com.stzb.server.game.battle.opposite
+import kotlin.math.roundToInt
 
 private const val ZHENGSHI_SIGNAL = "skill.200244.next-action"
+private const val BAIZHAN_STACKS = "skill.200252.stacks"
+private const val BAIZHAN_MAX_STACKS = 3
+
+private data class QiqinqizongGuardResult(
+    val guarded: Boolean,
+    val completion: SkillExecutionResult,
+)
+
+private data class PibingjuyiDamageBeforeResult(
+    val change: TroopDamageChange,
+    val owner: BattleHeroRef?,
+)
 
 interface CompleteSkillEngine {
     fun prepareBattle(context: SkillBattleContext): List<BattleEvent>
@@ -33,6 +48,7 @@ class DefaultCompleteSkillEngine private constructor(
     private var prepared = false
     private val actionResolver = BattleActionResolver()
     private val cooldownUntilRound = mutableMapOf<Pair<BattleHeroRef, Int>, Int>()
+    private val pendingExtraNormalAttacks = mutableMapOf<BattleHeroRef, Int>()
 
     override fun prepareBattle(context: SkillBattleContext): List<BattleEvent> {
         if (prepared) return emptyList()
@@ -41,6 +57,14 @@ class DefaultCompleteSkillEngine private constructor(
             val sources = livingHeroesInSpeedOrder()
             sources.forEach { source ->
                 addAll(trigger(BattleTrigger.BATTLE_PASSIVE, context.copy(source = source)))
+                if (isBaizhanOwner(source)) {
+                    state.runtime.addCounter(
+                        owner = source,
+                        namespace = BAIZHAN_STACKS,
+                        delta = BAIZHAN_MAX_STACKS,
+                        maximum = BAIZHAN_MAX_STACKS,
+                    )
+                }
                 if (201006 in state.liveHero(source).skillIds) {
                     state.view.heroes()
                         .filter { candidate ->
@@ -98,7 +122,7 @@ class DefaultCompleteSkillEngine private constructor(
         if (trigger.emitsPoint()) {
             events += BattleEvent.TriggerPoint(scoped.round, scoped.source, trigger)
         }
-        val result = when (trigger) {
+        val configuredResult = when (trigger) {
             BattleTrigger.ROUND_START -> {
                 val first = state.view.heroes()
                     .filter { requireNotNull(state.view.state(it)).troops > 0 }
@@ -109,14 +133,16 @@ class DefaultCompleteSkillEngine private constructor(
                     )
                     .firstOrNull()
                 if (scoped.source == first) {
+                    val boundaryOutputs = applier.beginRound(scoped.round)
+                    events += processDamageOutputs(boundaryOutputs, scoped)
                     val timingResult = timing.onRoundStart(scoped)
                     events += apply(timingResult, scoped)
                     val roundOutputs = applier.onRoundStart(scoped.round)
                     events += processDamageOutputs(roundOutputs, scoped)
-                    shoujingRoundResult(scoped)
+                    shoujingRoundResult(scoped) + pibingjuyiRoundStartResult(scoped)
                 } else {
                     SkillExecutionResult.EMPTY
-                }
+                } + baizhanSpendResult(scoped.source, scoped)
             }
             BattleTrigger.ROUND_END -> {
                 tianziRoundEndResult(scoped)
@@ -124,16 +150,42 @@ class DefaultCompleteSkillEngine private constructor(
             BattleTrigger.ACTIVE_SKILL_ATTEMPT,
             BattleTrigger.PURSUIT_ATTEMPT,
             -> attemptSkills(trigger, scoped)
-            BattleTrigger.ACTION_BEFORE ->
-                timing.onAction(scoped) +
+            BattleTrigger.ACTION_BEFORE -> {
+                val actionResult = timing.onAction(scoped) +
                     zhengshiActionResult(scoped) +
-                    dingjunActionResult(scoped) +
-                    fenjiActionResult(scoped)
+                    dingjunActionResult(scoped)
+                events += apply(actionResult, scoped)
+                val fenjiResult = executeFenjiAction(scoped) { event ->
+                    events += event
+                }
+                val pluginResponseSeed = SkillExecutionResult.immutable(
+                    stateChanges = emptyList(),
+                    events = emptyList(),
+                    executedSkillIds =
+                        actionResult.executedSkillIds + fenjiResult.executedSkillIds,
+                    diagnostics = emptyList(),
+                )
+                events += apply(
+                    withSuccessfulSkillPluginResponses(pluginResponseSeed, scoped),
+                    scoped,
+                )
+                SkillExecutionResult.EMPTY
+            }
             BattleTrigger.BATTLE_PASSIVE,
             BattleTrigger.BATTLE_COMMAND,
-            -> executeBattleSkills(trigger, scoped)
+            -> {
+                skillsFor(scoped.source, trigger).forEach { skillId ->
+                    val skillResult = executeBattleSkill(trigger, scoped, skillId)
+                    events += apply(
+                        withSuccessfulSkillPluginResponses(skillResult, scoped),
+                        scoped,
+                    )
+                }
+                SkillExecutionResult.EMPTY
+            }
             else -> SkillExecutionResult.EMPTY
-        } + qibuActionResult(scoped)
+        } + fuboyangshaNormalAttackResult(scoped) + qibuActionResult(scoped)
+        val result = configuredResult + sanjunduoshuaiResult(scoped, configuredResult)
         events += apply(withSuccessfulSkillPluginResponses(result, scoped), scoped)
         return events
     }
@@ -142,11 +194,9 @@ class DefaultCompleteSkillEngine private constructor(
         actor: BattleHeroRef,
         context: SkillBattleContext,
     ): ActionPermission {
-        val permission = applier.permissionFor(actor)
-        val base = ActionPermissionResolver(state.effectStore).permissionFor(
-            actor,
-            context.copy(runtime = state.runtime, battleView = state.view),
-        )
+        val scopedContext = context.copy(runtime = state.runtime, battleView = state.view)
+        val permission = applier.permissionFor(actor, scopedContext)
+        val base = ActionPermissionResolver(state.effectStore).permissionFor(actor, scopedContext)
         return base.copy(
             canAct = permission.canAct,
             canCastActive = permission.canCastActive,
@@ -226,6 +276,108 @@ class DefaultCompleteSkillEngine private constructor(
         return events
     }
 
+    private fun executeSimulatedNormalAttack(
+        change: SimulatedNormalAttackChange,
+        context: SkillBattleContext,
+    ): List<BattleEvent> {
+        if ((state.view.state(change.source)?.troops ?: 0) <= 0) return emptyList()
+        val permission = permissionFor(change.source, context)
+        val targetPool = permission.resolvedTargetPool.ifEmpty {
+            state.view.heroes().filter { ref ->
+                ref.side == (permission.resolvedAllegiance ?: change.source.side).opposite()
+            }
+        }
+        val currentSource = state.liveHero(change.source)
+        val eligible = actionResolver.normalAttackTargetsInRange(
+            source = currentSource,
+            enemies = targetPool.map(state::liveHero),
+        )
+        val selected = when (change.mode) {
+            SimulatedNormalAttackMode.SINGLE -> {
+                val target = actionResolver.selectNormalAttackTarget(
+                    source = currentSource,
+                    enemies = eligible.map { it.first },
+                    random = context.random,
+                ) ?: return emptyList()
+                listOf(target)
+            }
+            SimulatedNormalAttackMode.ALL_IN_RANGE -> eligible.map { it.first }
+        }
+        return buildList {
+            selected.forEach targetLoop@{ targetHero ->
+                if (baseDefeated() || (state.view.state(change.source)?.troops ?: 0) <= 0) {
+                    return@targetLoop
+                }
+                var target = targetPool.single {
+                    it.position == targetHero.position && it.heroId == targetHero.id
+                }
+                if (change.mode == SimulatedNormalAttackMode.SINGLE) {
+                    target = permission.redirectTarget
+                        ?: forcedNormalAttackTarget(change.source, target, context.random)
+                }
+                if ((state.view.state(target)?.troops ?: 0) <= 0) return@targetLoop
+                recordTarget(change.source, target)
+                addAll(
+                    trigger(
+                        BattleTrigger.NORMAL_ATTACK_BEFORE,
+                        context.copy(
+                            source = change.source,
+                            trigger = BattleTrigger.NORMAL_ATTACK_BEFORE,
+                        ),
+                    ),
+                )
+                val evaded = tryEvade(context.round, change.source, target)
+                if (evaded != null) {
+                    add(evaded)
+                } else {
+                    addAll(
+                        resolveNormalAttack(
+                            round = context.round,
+                            source = change.source,
+                            target = target,
+                            random = context.random,
+                            context = context,
+                        ),
+                    )
+                    if (!baseDefeated()) {
+                        val targetContext = context.copy(
+                            source = target,
+                            trigger = BattleTrigger.DAMAGE_AFTER,
+                        )
+                        if (
+                            BattleModifier.CounterattackImmunity !in
+                            state.liveHero(change.source).modifiers &&
+                            permissionFor(target, targetContext).counterattack
+                        ) {
+                            addAll(
+                                reactiveAttack(
+                                    context.round,
+                                    target,
+                                    change.source,
+                                    551,
+                                    targetContext,
+                                ),
+                            )
+                        }
+                    }
+                }
+                state.runtime.recordBattleTriggerOccurrence(
+                    change.source,
+                    BattleTrigger.NORMAL_ATTACK_AFTER,
+                )
+                addAll(
+                    trigger(
+                        BattleTrigger.NORMAL_ATTACK_AFTER,
+                        context.copy(
+                            source = change.source,
+                            trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+                        ),
+                    ),
+                )
+            }
+        }
+    }
+
     internal fun schedule(
         change: BattleStateChange,
         round: Int,
@@ -234,6 +386,9 @@ class DefaultCompleteSkillEngine private constructor(
     }
 
     internal fun timingPosition(): TimingPosition = timing.position()
+
+    internal fun consumePendingExtraNormalAttacks(actor: BattleHeroRef): Int =
+        pendingExtraNormalAttacks.remove(actor) ?: 0
 
     internal fun applyChanges(
         changes: List<BattleStateChange>,
@@ -401,30 +556,69 @@ class DefaultCompleteSkillEngine private constructor(
         }
     }
 
-    private fun fenjiActionResult(context: SkillBattleContext): SkillExecutionResult {
-        if (200961 !in state.liveHero(context.source).skillIds) return SkillExecutionResult.EMPTY
+    private fun executeFenjiAction(
+        context: SkillBattleContext,
+        onEvent: (BattleEvent) -> Unit,
+    ): SkillExecutionResult {
+        if (200961 !in state.liveHero(context.source).skillIds) {
+            return SkillExecutionResult.EMPTY
+        }
         val listenerContext = context.copy(
             rootSkillId = 200961,
             currentSkillId = 200961,
             trigger = BattleTrigger.ACTION_BEFORE,
         )
-        var result = interpreter.executeDetailForEngine(
-            graph.details.single { it.detailId == 20096102 },
-            listenerContext,
-            preselectedTargets = listOf(context.source),
-        )
-        result += interpreter.executeDetailForEngine(
+        return interpreter.executeDetailStreamingForEngine(
             graph.details.single { it.detailId == 20096103 },
             listenerContext,
+        ) { step ->
+            apply(step, listenerContext).forEach(onEvent)
+        }
+    }
+
+    private fun isBaizhanOwner(source: BattleHeroRef): Boolean =
+        source.position != 0 &&
+            200252 in state.liveHero(source).skillIds
+
+    private fun baizhanSpendResult(
+        owner: BattleHeroRef,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (!isBaizhanOwner(owner) ||
+            state.runtime.counter(owner, BAIZHAN_STACKS) <= 0
+        ) {
+            return SkillExecutionResult.EMPTY
+        }
+        state.runtime.addCounter(
+            owner = owner,
+            namespace = BAIZHAN_STACKS,
+            delta = -1,
+            maximum = BAIZHAN_MAX_STACKS,
         )
-        val accumulated = state.effectStore.effectsFor(context.source)
-            .filter { it.detailId == 21396101 }
-            .sumOf { it.effectiveStrength }
-        if (accumulated < 40) return result
-        return result + interpreter.executeDetailForEngine(
-            graph.details.single { it.detailId == 20096101 },
-            listenerContext,
+        state.runtime.recordMarker(
+            target = owner,
+            detailId = 21325201,
+            value = 1,
+            appliedRound = context.round,
+            durationRounds = 1,
+            rootSkillId = 200252,
+            source = owner,
         )
+        val recoveryContext = context.copy(
+            source = owner,
+            rootSkillId = 200252,
+            currentSkillId = 214252,
+        )
+        return try {
+            interpreter.executeDetailForEngine(
+                detail = graph.details.single { it.detailId == 21425203 },
+                context = recoveryContext,
+                preselectedTargets = listOf(owner),
+                probabilityAlreadyAccepted = true,
+            )
+        } finally {
+            state.runtime.removeMarker(owner, 21325201)
+        }
     }
 
     private fun manwangHurtResult(
@@ -451,6 +645,71 @@ class DefaultCompleteSkillEngine private constructor(
                 trigger = BattleTrigger.HURT_AFTER,
             ),
         )
+    }
+
+    private fun sanjunduoshuaiResult(
+        context: SkillBattleContext,
+        configuredResult: SkillExecutionResult,
+    ): SkillExecutionResult {
+        val hero = state.liveHero(context.source)
+        if (200987 !in hero.skillIds) return SkillExecutionResult.EMPTY
+        val successfulResponses = when (context.trigger) {
+            BattleTrigger.NORMAL_ATTACK_AFTER -> 1
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT -> configuredResult.executedSkillIds.count { skillId ->
+                skillId in hero.skillIds && graph.rule(skillId)?.kind == SkillKind.ACTIVE
+            }
+            BattleTrigger.PURSUIT_ATTEMPT -> configuredResult.executedSkillIds.count { skillId ->
+                skillId in hero.skillIds && graph.rule(skillId)?.kind == SkillKind.PURSUIT
+            }
+            else -> 0
+        }
+        return (0 until successfulResponses).fold(SkillExecutionResult.EMPTY) { result, _ ->
+            result + sanjunduoshuaiBranch(context)
+        }
+    }
+
+    private fun sanjunduoshuaiBranch(
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        val responseContext = context.copy(
+            rootSkillId = 200987,
+            currentSkillId = 211987,
+        )
+        val physicalBranch = context.random.nextInt(100) < 50
+        val damageDetailId = if (physicalBranch) 21198701 else 21198723
+        val modifierDetailId = if (physicalBranch) 21198712 else 21198724
+        val damage = interpreter.executeDetailForEngine(
+            detail = graph.details.single { it.detailId == damageDetailId },
+            context = responseContext,
+            probabilityAlreadyAccepted = true,
+        )
+        val modifierTargets = if (physicalBranch) {
+            listOf(context.source)
+        } else {
+            damage.stateChanges.filterIsInstance<TroopDamageChange>()
+                .map(TroopDamageChange::target)
+                .distinct()
+        }
+        val modifier = interpreter.executeDetailForEngine(
+            detail = graph.details.single { it.detailId == modifierDetailId },
+            context = responseContext,
+            preselectedTargets = modifierTargets,
+            probabilityAlreadyAccepted = true,
+        )
+        return SkillExecutionResult.immutable(
+            stateChanges = emptyList(),
+            events = listOf(
+                SkillTriggered(
+                    round = context.round,
+                    source = context.source,
+                    rootSkillId = 200987,
+                    skillId = 211987,
+                    trigger = context.trigger,
+                ),
+            ),
+            executedSkillIds = listOf(211987),
+            diagnostics = emptyList(),
+        ) + damage + modifier
     }
 
     private fun qibuActionResult(context: SkillBattleContext): SkillExecutionResult {
@@ -493,6 +752,206 @@ class DefaultCompleteSkillEngine private constructor(
                 rootSkillId = 200950,
                 currentSkillId = 200950,
             ),
+        )
+    }
+
+    private fun fuboyangshaNormalAttackResult(
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (context.trigger != BattleTrigger.NORMAL_ATTACK_AFTER) {
+            return SkillExecutionResult.EMPTY
+        }
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side == context.source.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200255 in state.liveHero(candidate).skillIds
+        } ?: return SkillExecutionResult.EMPTY
+        val bonus = state.view.activeEffectStrength(context.source, 20025525)
+        if (bonus <= 0) return SkillExecutionResult.EMPTY
+
+        val progress = state.runtime.addCounter(
+            owner,
+            FUBO_UPLIFT_COUNTER,
+            delta = bonus,
+        )
+        val layers = state.runtime.counter(owner, FUBO_LAYER_COUNTER)
+        val generatedLayers = minOf(progress / FUBO_LAYER_THRESHOLD, FUBO_MAX_LAYERS - layers)
+        if (generatedLayers > 0) {
+            state.runtime.addCounter(
+                owner,
+                FUBO_UPLIFT_COUNTER,
+                delta = -generatedLayers * FUBO_LAYER_THRESHOLD,
+            )
+            state.runtime.addCounter(
+                owner,
+                FUBO_LAYER_COUNTER,
+                delta = generatedLayers,
+                maximum = FUBO_MAX_LAYERS,
+            )
+        }
+        if (context.source == owner) {
+            val availableLayers = state.runtime.counter(owner, FUBO_LAYER_COUNTER)
+            val extraAttacks = availableLayers / FUBO_LAYERS_PER_EXTRA_ATTACK
+            if (extraAttacks > 0) {
+                state.runtime.addCounter(
+                    owner,
+                    FUBO_LAYER_COUNTER,
+                    delta = -extraAttacks * FUBO_LAYERS_PER_EXTRA_ATTACK,
+                )
+                pendingExtraNormalAttacks[owner] =
+                    (pendingExtraNormalAttacks[owner] ?: 0) + extraAttacks
+            }
+        }
+        return SkillExecutionResult.EMPTY
+    }
+
+    private fun pibingjuyiRoundStartResult(
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        state.view.heroes()
+            .filter { candidate ->
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                    200264 in state.liveHero(candidate).skillIds
+            }
+            .forEach { owner ->
+                state.view.heroes()
+                    .filter { candidate ->
+                        candidate.side == owner.side &&
+                            state.view.state(candidate)?.troops?.let { it > 0 } == true
+                    }
+                    .forEach { target ->
+                        state.runtime.addCounter(
+                            target,
+                            PIBING_BIRUI_LAYER_COUNTER,
+                            delta = PIBING_LAYERS_PER_ROUND,
+                            maximum = PIBING_MAX_LAYERS,
+                        )
+                        state.runtime.recordMarker(
+                            target = target,
+                            detailId = 20026412,
+                            value = 1,
+                            appliedRound = context.round,
+                            durationRounds = 8,
+                            rootSkillId = 200264,
+                            source = owner,
+                        )
+                    }
+            }
+        return SkillExecutionResult.EMPTY
+    }
+
+    private fun pibingjuyiDamageBeforeResult(
+        change: TroopDamageChange,
+        context: SkillBattleContext,
+    ): PibingjuyiDamageBeforeResult {
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side == change.target.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200264 in state.liveHero(candidate).skillIds
+        } ?: return PibingjuyiDamageBeforeResult(change, null)
+        if (state.runtime.counter(change.target, PIBING_BIRUI_LAYER_COUNTER) <= 0) {
+            return PibingjuyiDamageBeforeResult(change, null)
+        }
+        state.runtime.addCounter(
+            change.target,
+            PIBING_BIRUI_LAYER_COUNTER,
+            delta = -1,
+            maximum = PIBING_MAX_LAYERS,
+        )
+        val detailId = when (change.school) {
+            DamageSchool.PHYSICAL -> 21726401
+            DamageSchool.STRATEGY -> 21726402
+        }
+        val modifier = interpreter.executeDetailForEngine(
+            detail = graph.details.single { it.detailId == detailId },
+            context = context.copy(
+                source = owner,
+                rootSkillId = 200264,
+                currentSkillId = 217264,
+                trigger = BattleTrigger.DAMAGE_BEFORE,
+            ),
+            preselectedTargets = listOf(change.target),
+            probabilityAlreadyAccepted = true,
+        ).stateChanges.filterIsInstance<DamageModifierChange>().single()
+        val retainedPercent = (100 - kotlin.math.abs(modifier.percent)).coerceAtLeast(0)
+        val reducedAmount = change.amount.toLong()
+            .times(retainedPercent)
+            .div(100)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+        val targetTroops = requireNotNull(state.view.state(change.target)).troops
+        return PibingjuyiDamageBeforeResult(
+            change = change.copy(
+                amount = reducedAmount,
+                troopsAfter = (targetTroops - reducedAmount).coerceAtLeast(0),
+            ),
+            owner = owner,
+        )
+    }
+
+    private fun pibingjuyiBurnResult(
+        owner: BattleHeroRef?,
+        target: BattleHeroRef,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        owner ?: return SkillExecutionResult.EMPTY
+        if (state.view.state(target)?.troops?.let { it > 0 } != true) {
+            return SkillExecutionResult.EMPTY
+        }
+        val burnContext = context.copy(
+            source = owner,
+            rootSkillId = 200264,
+            currentSkillId = 211264,
+            trigger = BattleTrigger.EFFECT_APPLYING,
+        )
+        val probabilityDetail = graph.details.single { it.detailId == 21126422 }
+        if (!interpreter.detailProbabilitySucceedsForEngine(probabilityDetail, burnContext)) {
+            return SkillExecutionResult.EMPTY
+        }
+        val base = interpreter.executeDetailForEngine(
+            detail = graph.details.single { it.detailId == 21626411 },
+            context = burnContext.copy(currentSkillId = 216264),
+            preselectedTargets = listOf(target),
+            probabilityAlreadyAccepted = true,
+        )
+        val growth = state.runtime.counter(target, PIBING_BURN_GROWTH_COUNTER)
+        val boostedChanges = base.stateChanges.map { change ->
+            if (change !is ScheduledDamageEffectChange) {
+                change
+            } else {
+                val boostedPotency = change.potency.copy(
+                    value = change.potency.value + growth,
+                    exactValue = change.potency.exactValue + growth,
+                )
+                change.copy(spec = change.spec.copy(potency = boostedPotency))
+            }
+        }
+        state.runtime.recordMarker(
+            target = target,
+            detailId = 20026421,
+            value = 1,
+            appliedRound = context.round,
+            durationRounds = 8,
+            rootSkillId = 200264,
+            source = owner,
+        )
+        val growthDelta = interpreter.executeDetailForEngine(
+            detail = graph.details.single { it.detailId == 21426401 },
+            context = burnContext.copy(currentSkillId = 214264),
+            preselectedTargets = listOf(target),
+            probabilityAlreadyAccepted = true,
+        ).stateChanges.filterIsInstance<ReferencedValueChange>().single().delta
+        state.runtime.addCounter(
+            target,
+            PIBING_BURN_GROWTH_COUNTER,
+            delta = growthDelta,
+        )
+        return SkillExecutionResult.immutable(
+            stateChanges = boostedChanges,
+            events = base.events,
+            executedSkillIds = base.executedSkillIds,
+            diagnostics = base.diagnostics,
+            timingDues = base.timingDues,
         )
     }
 
@@ -561,6 +1020,7 @@ class DefaultCompleteSkillEngine private constructor(
         if (context.round <= 0 ||
             output.amount <= 0 ||
             output.school != DamageSchool.STRATEGY ||
+            DamageTag.IMPERIAL_SEAL_RELEASE in output.tags ||
             output.skillId == 210282
         ) {
             return SkillExecutionResult.EMPTY
@@ -651,53 +1111,227 @@ class DefaultCompleteSkillEngine private constructor(
         )
     }
 
+    private fun shenshidingjiEffectApplyingResult(
+        change: BattleStatChange,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        if (context.round <= 0 || change.potency.value >= 0) {
+            return SkillExecutionResult.EMPTY
+        }
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side == change.source.side &&
+                candidate.side != change.target.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200257 in state.liveHero(candidate).skillIds
+        } ?: return SkillExecutionResult.EMPTY
+        return interpreter.executeDetailForEngine(
+            graph.details.single { it.detailId == 21025701 },
+            context.copy(
+                source = owner,
+                rootSkillId = 200257,
+                currentSkillId = 210257,
+                trigger = BattleTrigger.EFFECT_APPLYING,
+            ),
+            preselectedTargets = listOf(change.target),
+        )
+    }
+
+    private fun qiqinqizongGuardResult(
+        target: BattleHeroRef,
+        context: SkillBattleContext,
+    ): QiqinqizongGuardResult? {
+        if (context.round <= 0) return null
+        val owner = state.view.heroes().firstOrNull { candidate ->
+            candidate.side == target.side &&
+                state.view.state(candidate)?.troops?.let { it > 0 } == true &&
+                200298 in state.liveHero(candidate).skillIds
+        } ?: return null
+        if (!state.runtime.consumeLimitedOccurrence(
+                owner = owner,
+                namespace = QIQIN_PROTECTED_EVENTS,
+                limit = 7,
+            )
+        ) {
+            return null
+        }
+        val completion =
+            if (state.runtime.limitedOccurrenceCount(owner, QIQIN_PROTECTED_EVENTS) == 7) {
+                qiqinqizongFinalResult(owner, context)
+            } else {
+                SkillExecutionResult.EMPTY
+            }
+        val ownerHero = state.liveHero(owner)
+        val skillIndex = ownerHero.skillIds.indexOf(200298)
+        val skillLevel = ownerHero.skillLevels.getOrElse(skillIndex) { 1 }.coerceIn(1, 10)
+        val detail = graph.details.single { it.detailId == 21029812 }
+        val probability = (
+            detail.raw.probabilityInit +
+                (skillLevel - 1) *
+                (detail.raw.probabilityMax - detail.raw.probabilityInit) / 9.0
+            ).toInt().coerceIn(0, 100)
+        return QiqinqizongGuardResult(
+            guarded = context.random.nextInt(100) < probability,
+            completion = completion,
+        )
+    }
+
+    private fun qiqinqizongFinalResult(
+        owner: BattleHeroRef,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
+        val target = state.view.heroes()
+            .filter { candidate ->
+                candidate.side != owner.side &&
+                    state.view.state(candidate)?.troops?.let { it > 0 } == true
+            }
+            .maxByOrNull(state.view::accumulatedDamageDealt)
+            ?: return SkillExecutionResult.EMPTY
+        val finalContext = context.copy(
+            source = owner,
+            rootSkillId = 200298,
+            currentSkillId = 214298,
+            trigger = BattleTrigger.EFFECT_APPLYING,
+        )
+        val details = if (state.view.metadata(owner)?.country == 3) {
+            listOf(graph.details.single { it.detailId == 21429803 })
+        } else {
+            val probabilityDetail = graph.details.single { it.detailId == 21129813 }
+            if (!interpreter.detailProbabilitySucceedsForEngine(
+                    probabilityDetail,
+                    finalContext.copy(currentSkillId = 211298),
+                )
+            ) {
+                return SkillExecutionResult.EMPTY
+            }
+            listOf(21429801, 21429802).map { detailId ->
+                graph.details.single { it.detailId == detailId }
+            }
+        }
+        return details.fold(SkillExecutionResult.EMPTY) { aggregate, detail ->
+            val immediate = interpreter.executeDetailForEngine(
+                detail = detail,
+                context = finalContext,
+                preselectedTargets = listOf(target),
+                probabilityAlreadyAccepted = true,
+            )
+            aggregate + SkillExecutionResult.immutable(
+                stateChanges = immediate.stateChanges.map { change ->
+                    ScheduledTimingChange(
+                        snapshot = DelayedEffect(
+                            source = owner,
+                            rootSkillId = 200298,
+                            skillId = 214298,
+                            detailId = detail.detailId,
+                            dueRound = 0,
+                        ),
+                        delayRound = 1,
+                        delayHit = 0,
+                        change = change,
+                    )
+                },
+                events = emptyList(),
+                executedSkillIds = emptyList(),
+                diagnostics = immediate.diagnostics,
+            )
+        }
+    }
+
     private fun chijieDamageBeforeResult(
         change: TroopDamageChange,
         context: SkillBattleContext,
+    ): SkillExecutionResult =
+        chijieSourceDamageBeforeResult(change, context) +
+            chijieTargetDamageBeforeResult(change, context)
+
+    private fun chijieSourceDamageBeforeResult(
+        change: TroopDamageChange,
+        context: SkillBattleContext,
     ): SkillExecutionResult {
-        if (context.round <= 0) return SkillExecutionResult.EMPTY
-        var result = SkillExecutionResult.EMPTY
         val sourceOwner = state.view.heroes().firstOrNull { candidate ->
             candidate.side == change.source.side &&
                 state.view.state(candidate)?.troops?.let { it > 0 } == true &&
                 200989 in state.liveHero(candidate).skillIds
+        } ?: return SkillExecutionResult.EMPTY
+        val detailId = when (change.school) {
+            DamageSchool.PHYSICAL -> 21398901
+            DamageSchool.STRATEGY -> 21498901
         }
-        if (sourceOwner != null) {
-            val detailId = when (change.school) {
-                DamageSchool.PHYSICAL -> 21398901
-                DamageSchool.STRATEGY -> 21498901
-            }
-            result += interpreter.executeDetailForEngine(
-                graph.details.single { it.detailId == detailId },
-                context.copy(
-                    source = sourceOwner,
-                    rootSkillId = 200989,
-                    currentSkillId = detailId / 100,
-                    trigger = BattleTrigger.DAMAGE_BEFORE,
-                ),
-                preselectedTargets = listOf(change.source),
-                valueOverride = TypedBattlePotency.flat(10),
-            )
-        }
+        val detail = graph.details.single { it.detailId == detailId }
+        return interpreter.executeDetailForEngine(
+            detail,
+            context.copy(
+                source = sourceOwner,
+                rootSkillId = 200989,
+                currentSkillId = detailId / 100,
+                trigger = BattleTrigger.DAMAGE_BEFORE,
+            ),
+            preselectedTargets = listOf(change.source),
+            valueOverride = chijiePotency(sourceOwner, detail),
+        )
+    }
+
+    private fun chijieTargetDamageBeforeResult(
+        change: TroopDamageChange,
+        context: SkillBattleContext,
+    ): SkillExecutionResult {
         val targetOwner = state.view.heroes().firstOrNull { candidate ->
             candidate.side == change.target.side &&
                 state.view.state(candidate)?.troops?.let { it > 0 } == true &&
                 200989 in state.liveHero(candidate).skillIds
+        } ?: return SkillExecutionResult.EMPTY
+        val detail = graph.details.single { it.detailId == 21598901 }
+        return interpreter.executeDetailForEngine(
+            detail,
+            context.copy(
+                source = targetOwner,
+                rootSkillId = 200989,
+                currentSkillId = 215989,
+                trigger = BattleTrigger.DAMAGE_BEFORE,
+            ),
+            preselectedTargets = listOf(change.target),
+            valueOverride = chijiePotency(targetOwner, detail),
+        )
+    }
+
+    private fun chijiePotency(
+        owner: BattleHeroRef,
+        detail: SkillEffectRule,
+    ): TypedBattlePotency.Resolved {
+        val hero = state.liveHero(owner)
+        val attribute = when (detail.coefficientSource) {
+            BattleCoefficientSource.ATTACK -> hero.stats.precise(BattleStat.ATTACK)
+            BattleCoefficientSource.DEFENSE -> hero.stats.precise(BattleStat.DEFENSE)
+            BattleCoefficientSource.STRATEGY -> hero.stats.precise(BattleStat.STRATEGY)
+            BattleCoefficientSource.SPEED -> hero.stats.precise(BattleStat.SPEED)
+            BattleCoefficientSource.NONE -> 0.0
         }
-        if (targetOwner != null) {
-            result += interpreter.executeDetailForEngine(
-                graph.details.single { it.detailId == 21598901 },
-                context.copy(
-                    source = targetOwner,
-                    rootSkillId = 200989,
-                    currentSkillId = 215989,
-                    trigger = BattleTrigger.DAMAGE_BEFORE,
-                ),
-                preselectedTargets = listOf(change.target),
-                valueOverride = TypedBattlePotency.flat(10),
-            )
-        }
-        return result
+        val skillIndex = hero.skillIds.indexOf(200989)
+        val skillLevel = hero.skillLevels.getOrElse(skillIndex) { 1 }.coerceIn(1, 10)
+        val ratio = detail.raw.initEffectRatio +
+            (skillLevel - 1) * (100 - detail.raw.initEffectRatio) / 9.0
+        val exactValue = (
+            detail.raw.constantParam +
+                detail.raw.intelParam * attribute / 200.0
+            ) / 100.0 * ratio / 100.0
+        return TypedBattlePotency.flat(exactValue.roundToInt(), exactValue)
+    }
+
+    private fun recalculateDirectDamage(
+        change: TroopDamageChange,
+    ): TroopDamageChange {
+        val calculation = change.calculation ?: return change
+        val targetTroops = requireNotNull(state.view.state(change.target)).troops
+        val amount = calculation.calculate(
+            source = change.sourceSnapshot ?: state.liveHero(change.source),
+            target = state.liveHero(change.target),
+            school = change.school,
+            origin = change.origin,
+            tags = change.tags,
+        ).coerceAtMost(targetTroops)
+        return change.copy(
+            amount = amount,
+            troopsAfter = (targetTroops - amount).coerceAtLeast(0),
+        )
     }
 
     private fun zhongkeDamageResult(
@@ -789,12 +1423,37 @@ class DefaultCompleteSkillEngine private constructor(
         if (baseDefeated()) return emptyList()
         val effect = state.effectStore.effectsFor(source).lastOrNull { it.effectId == effectId }
             ?: return emptyList()
-        val sourceHero = liveHero(source)
-        val targetHero = liveHero(target)
+        var sourceHero = liveHero(source)
+        var targetHero = liveHero(target)
         if (sourceHero.troops <= 0 || targetHero.troops <= 0) return emptyList()
         if (actionResolver.selectNormalAttackTarget(sourceHero, listOf(targetHero), random = null) == null) {
             return emptyList()
         }
+        val damageContext = context.copy(
+            round = round,
+            source = source,
+            trigger = BattleTrigger.DAMAGE_BEFORE,
+        )
+        val events = mutableListOf<BattleEvent>()
+        events += apply(
+            chijieDamageBeforeResult(
+                TroopDamageChange(
+                    source = source,
+                    target = target,
+                    amount = 0,
+                    troopsAfter = targetHero.troops,
+                    school = DamageSchool.PHYSICAL,
+                    origin = DamageOrigin.NORMAL,
+                    tags = emptySet(),
+                    skillId = effect.skillId,
+                    effectId = effectId,
+                ),
+                damageContext,
+            ),
+            damageContext,
+        )
+        sourceHero = liveHero(source)
+        targetHero = liveHero(target)
         val damage = BattleDamageCalculator.physical(
             source = sourceHero,
             target = targetHero,
@@ -817,7 +1476,17 @@ class DefaultCompleteSkillEngine private constructor(
             ),
             round,
         )
-        return processDamageOutputs(result, context.copy(round = round, source = source))
+        events += processDamageOutputs(result, context.copy(round = round, source = source))
+        events += processDamageOutputs(
+            applier.consumeEffectHit(
+                target = source,
+                effectId = effectId,
+                source = effect.source,
+                detailId = effect.detailId,
+            ),
+            context.copy(round = round, source = source),
+        )
+        return events
     }
 
     fun tryEvade(
@@ -848,29 +1517,58 @@ class DefaultCompleteSkillEngine private constructor(
         return applier.onRoundEnd(round).toEvents(round)
     }
 
-    private fun executeBattleSkills(
+    private fun executeBattleSkill(
         trigger: BattleTrigger,
         context: SkillBattleContext,
-    ): SkillExecutionResult =
-        skillsFor(context.source, trigger).fold(SkillExecutionResult.EMPTY) { result, skillId ->
-            val skillContext = context.copy(
-                    rootSkillId = skillId,
-                    currentSkillId = skillId,
-                )
-            specialPlugins.pluginFor(skillId)?.takeIf {
-                trigger == BattleTrigger.BATTLE_COMMAND
-            }?.let { plugin ->
-                val pluginResult = pluginTriggeredResult(skillId, trigger, skillContext, plugin)
-                if (plugin.replacesConfiguredExecution) {
-                    return@fold result + pluginResult
-                }
-                return@fold result +
-                    interpreter.execute(skillId, trigger, skillContext) +
-                    pluginResult
-            }
-            val skillResult = interpreter.execute(skillId, trigger, skillContext)
-            result + skillResult
+        skillId: Int,
+    ): SkillExecutionResult {
+        if (trigger == BattleTrigger.BATTLE_PASSIVE && skillId == 200987) {
+            return SkillExecutionResult.immutable(
+                stateChanges = emptyList(),
+                events = listOf(
+                    SkillTriggered(
+                        round = context.round,
+                        source = context.source,
+                        rootSkillId = skillId,
+                        skillId = skillId,
+                        trigger = trigger,
+                    ),
+                ),
+                executedSkillIds = listOf(skillId),
+                diagnostics = emptyList(),
+            )
         }
+        if (trigger == BattleTrigger.BATTLE_COMMAND && skillId == 200961) {
+            return SkillExecutionResult.immutable(
+                stateChanges = emptyList(),
+                events = listOf(
+                    SkillTriggered(
+                        round = context.round,
+                        source = context.source,
+                        rootSkillId = skillId,
+                        skillId = skillId,
+                        trigger = trigger,
+                    ),
+                ),
+                executedSkillIds = listOf(skillId),
+                diagnostics = emptyList(),
+            )
+        }
+        val skillContext = context.copy(
+            rootSkillId = skillId,
+            currentSkillId = skillId,
+        )
+        specialPlugins.pluginFor(skillId)?.takeIf {
+            trigger == BattleTrigger.BATTLE_COMMAND
+        }?.let { plugin ->
+            val pluginResult = pluginTriggeredResult(skillId, trigger, skillContext, plugin)
+            if (plugin.replacesConfiguredExecution) {
+                return pluginResult
+            }
+            return interpreter.execute(skillId, trigger, skillContext) + pluginResult
+        }
+        return interpreter.execute(skillId, trigger, skillContext)
+    }
 
     private fun attemptSkills(
         trigger: BattleTrigger,
@@ -1088,7 +1786,7 @@ class DefaultCompleteSkillEngine private constructor(
                         com.stzb.server.game.battle.DamageOrigin.ACTIVE,
                         buildSet {
                             add(DamageTag.ONGOING)
-                            if (detail.effectId == 305) add(DamageTag.FIRE)
+                            if (detail.effectId == 305) add(DamageTag.BURN)
                         },
                         requireNotNull(statusFor(detail.effectId)),
                         detail.coefficientSource,
@@ -1162,7 +1860,7 @@ class DefaultCompleteSkillEngine private constructor(
             }
         }
         val dueChangeIndices = result.dueChangeIndexMask()
-        for ((changeIndex, change) in result.stateChanges.withIndex()) {
+        changeLoop@ for ((changeIndex, change) in result.stateChanges.withIndex()) {
             if (dueChangeIndices[changeIndex]) continue
             when (change) {
                 is ScheduledEffectActivationChange -> {
@@ -1174,8 +1872,21 @@ class DefaultCompleteSkillEngine private constructor(
                     }
                 }
                 is ScheduledTimingChange -> {
+                    val scheduled = if (change.change is TroopDamageChange) {
+                        events += apply(
+                            chijieSourceDamageBeforeResult(change.change, context),
+                            context,
+                        )
+                        change.copy(
+                            change = change.change.copy(
+                                sourceSnapshot = state.liveHero(change.change.source),
+                            ),
+                        )
+                    } else {
+                        change
+                    }
                     val position = timing.position()
-                    timing.enqueue(change, context.round.coerceAtLeast(1), position.hit)
+                    timing.enqueue(scheduled, context.round.coerceAtLeast(1), position.hit)
                 }
                 is ScheduledDamageEffectChange ->
                     if (change.spec.startBoundary == EffectStartBoundary.AFTER_DELAY) {
@@ -1217,6 +1928,16 @@ class DefaultCompleteSkillEngine private constructor(
                         )
                     }
                 }
+                is TriggerSpecifiedEffectChange -> {
+                    events += processDamageOutputs(
+                        applier.triggerSpecifiedOngoingDamage(
+                            target = change.target,
+                            effectId = change.triggeredEffectId,
+                            round = context.round,
+                        ),
+                        context,
+                    )
+                }
                 is MetaEffectChange -> {
                     when (change.operation) {
                         MetaEffectOperation.SKILL_RANGE_INCREASE -> {
@@ -1244,28 +1965,114 @@ class DefaultCompleteSkillEngine private constructor(
                                 )
                             }
                         }
-                        else -> Unit
+                        else -> throw UnsupportedBattleStateChangeException(change)
                     }
                 }
                 is MoraleEffectChange ->
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 is ModifierEffectChange ->
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
+                is NamedFlagCounterChange ->
+                    state.runtime.addCounter(
+                        owner = change.target,
+                        namespace = "skill.named-flag.${change.flagId}",
+                        delta = change.delta,
+                        maximum = change.maximum,
+                    )
+                is SimulatedNormalAttackChange ->
+                    events += executeSimulatedNormalAttack(change, context)
                 is MarkerEffectChange,
                 is ReferencedExtraParameterChange,
                 is ReferencedValueChange,
                 -> Unit
                 is DamageModifierChange ->
-                    if (change.durationRounds > 0) {
-                        events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
+                    events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
+                is ApplyBattleEffectChange -> {
+                    val durationExtension = if (statusForControl(change.spec.effectId) != null) {
+                        applier.matchingControlDurationExtensions(
+                            actor = change.spec.source,
+                            rootSkillId = change.spec.rootSkillId,
+                            skillKind = change.spec.skillKind,
+                        )
+                    } else {
+                        ControlDurationExtensionMatch(0, emptyList())
                     }
+                    val extendedChange = if (durationExtension.rounds > 0) {
+                        change.copy(
+                            spec = change.spec.copy(
+                                availableRounds =
+                                    change.spec.availableRounds + durationExtension.rounds,
+                            ),
+                        )
+                    } else {
+                        change
+                    }
+                    val eligibleForGuard = change.spec.category ==
+                        com.stzb.server.game.battle.EffectCategory.HARMFUL &&
+                        change.spec.effectId in QIQIN_CONTROL_EFFECT_IDS
+                    val guard = if (eligibleForGuard) {
+                        qiqinqizongGuardResult(change.spec.target, context)
+                    } else {
+                        null
+                    }
+                    events += apply(guard?.completion ?: SkillExecutionResult.EMPTY, context)
+                    val blocked = guard?.guarded == true
+                    val applied = if (blocked) {
+                        EffectBlockedChange(
+                            source = change.spec.source,
+                            target = change.spec.target,
+                            skillId = change.spec.skillId,
+                            effectId = change.spec.effectId,
+                            blockingEffectId = 118,
+                        )
+                    } else {
+                        extendedChange
+                    }
+                    val appliedResult = applier.apply(listOf(applied), context.round)
+                    events += processDamageOutputs(appliedResult, context)
+                    val successfullyExtended = durationExtension.rounds > 0 &&
+                        appliedResult.outputs.any { output ->
+                            output is BattleStateOutput.EffectApplied &&
+                                output.spec.detailId == change.spec.detailId
+                        }
+                    if (successfullyExtended) {
+                        events += processDamageOutputs(
+                            applier.consumeControlDurationExtensions(durationExtension),
+                            context,
+                        )
+                    }
+                }
                 is BattleStatChange -> {
+                    events += apply(
+                        shenshidingjiEffectApplyingResult(change, context),
+                        context,
+                    )
                     events += apply(juxianStatApplyingResult(change, context), context)
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
                 }
                 is TroopDamageChange -> {
-                    events += apply(chijieDamageBeforeResult(change, context), context)
-                    events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
+                    val guard = qiqinqizongGuardResult(change.target, context)
+                    events += apply(guard?.completion ?: SkillExecutionResult.EMPTY, context)
+                    if (guard?.guarded == true) {
+                        events += BattleEvent.Evaded(context.round, change.source, change.target)
+                        continue@changeLoop
+                    }
+                    val chijie = if (change.sourceSnapshot == null) {
+                        chijieDamageBeforeResult(change, context)
+                    } else {
+                        chijieTargetDamageBeforeResult(change, context)
+                    }
+                    events += apply(chijie, context)
+                    val recalculated = recalculateDirectDamage(change)
+                    val pibing = pibingjuyiDamageBeforeResult(recalculated, context)
+                    events += processDamageOutputs(
+                        applier.apply(listOf(pibing.change), context.round),
+                        context,
+                    )
+                    events += apply(
+                        pibingjuyiBurnResult(pibing.owner, pibing.change.source, context),
+                        context,
+                    )
                 }
                 is ClearReferencedEffectChange -> {
                     events += processDamageOutputs(applier.apply(listOf(change), context.round), context)
@@ -1299,6 +2106,14 @@ class DefaultCompleteSkillEngine private constructor(
             if (output.amount > 0) {
                 state.runtime.recordRoundHurt(output.target, context.round)
                 recordDamageThresholds(output.source, context)
+                if (isBaizhanOwner(output.source)) {
+                    state.runtime.addCounter(
+                        owner = output.source,
+                        namespace = BAIZHAN_STACKS,
+                        delta = 1,
+                        maximum = BAIZHAN_MAX_STACKS,
+                    )
+                }
                 events += apply(
                     huangtianDamageResult(output, damageContext),
                     damageContext,
@@ -1347,6 +2162,10 @@ class DefaultCompleteSkillEngine private constructor(
             }
             events += trigger(BattleTrigger.HURT_AFTER, hurtContext)
             if (output.amount > 0) {
+                events += apply(
+                    baizhanSpendResult(output.target, hurtContext),
+                    hurtContext,
+                )
                 events += emergencyRecoveryEvents(output.target, hurtContext)
             }
             events += apply(timing.onHit(damageContext), damageContext)
@@ -1595,6 +2414,7 @@ class DefaultCompleteSkillEngine private constructor(
                         )
                     },
                 )
+                is BattleStateOutput.DamageAbsorbed -> emptyList()
                 is BattleStateOutput.EffectRemoved -> listOf(
                     BattleEvent.StatusRemoved(
                         round,
@@ -1656,6 +2476,19 @@ class DefaultCompleteSkillEngine private constructor(
 
     companion object {
         private const val DISORDER_SKILL_ID = 200002
+        private const val QIQIN_PROTECTED_EVENTS = "skill.200298.protected-events"
+        private const val FUBO_UPLIFT_COUNTER = "skill.200255.normal-damage-uplift"
+        private const val FUBO_LAYER_COUNTER = "skill.200255.yangsha-layers"
+        private const val FUBO_LAYER_THRESHOLD = 40
+        private const val FUBO_LAYERS_PER_EXTRA_ATTACK = 4
+        private const val FUBO_MAX_LAYERS = 20
+        private const val PIBING_BIRUI_LAYER_COUNTER = "skill.200264.birui-layers"
+        private const val PIBING_BURN_GROWTH_COUNTER = "skill.200264.burn-growth"
+        private const val PIBING_LAYERS_PER_ROUND = 2
+        private const val PIBING_MAX_LAYERS = 99
+        private val QIQIN_CONTROL_EFFECT_IDS =
+            setOf(501, 502, 503, 505, 552, 701, 702, 703, 752, 901, 902, 903, 952)
+
         fun create(
             request: com.stzb.server.game.battle.BattleRequest,
             config: BattleConfigRepository,
@@ -1779,9 +2612,10 @@ private fun statusFor(effectId: Int) = when (effectId) {
 }
 
 private fun statusForControl(effectId: Int) = when (effectId) {
-    501 -> com.stzb.server.game.battle.BattleStatus.CONFUSION
-    502 -> com.stzb.server.game.battle.BattleStatus.HESITATION
-    552 -> com.stzb.server.game.battle.BattleStatus.DISARM
+    501, 701, 901 -> com.stzb.server.game.battle.BattleStatus.CONFUSION
+    502, 702, 902 -> com.stzb.server.game.battle.BattleStatus.HESITATION
+    503, 703, 903 -> com.stzb.server.game.battle.BattleStatus.BERSERK
+    552, 752, 952 -> com.stzb.server.game.battle.BattleStatus.DISARM
     else -> null
 }
 

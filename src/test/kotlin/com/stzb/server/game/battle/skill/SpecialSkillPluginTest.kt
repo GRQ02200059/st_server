@@ -60,6 +60,9 @@ class SpecialSkillPluginTest {
                 ) ||
                 it.field == SkillConditionField.CAST_CONDITION &&
                 it.value in setOf(104, 203, 205, 207, 303) ||
+                it.skillId == 200957 &&
+                it.field == SkillConditionField.CAST_CONDITION &&
+                it.value in 400..406 ||
                 it.field == SkillConditionField.CONDITION &&
                 it.value in setOf(1030, 1050, 1060, 1070, 1080, 1090, 2050, 2060) ||
                 it.field == SkillConditionField.CAST_CONDITION &&
@@ -139,6 +142,25 @@ class SpecialSkillPluginTest {
                 it == SkillConditionCode(210269, SkillConditionField.CONDITION, 25002) ||
                 it == SkillConditionCode(210269, SkillConditionField.CONDITION, 25003) ||
                 it == SkillConditionCode(200989, SkillConditionField.CONDITION, 24001) ||
+                it == SkillConditionCode(210257, SkillConditionField.CONDITION, 33003) ||
+                it == SkillConditionCode(210257, SkillConditionField.CONDITION, 24001) ||
+                it == SkillConditionCode(210257, SkillConditionField.CONDITION, 33004) ||
+                it == SkillConditionCode(210298, SkillConditionField.CONDITION, 5007) ||
+                it == SkillConditionCode(210298, SkillConditionField.CONDITION, 33005) ||
+                it == SkillConditionCode(200255, SkillConditionField.CONDITION, 29004) ||
+                it == SkillConditionCode(200255, SkillConditionField.CONDITION, 30000) ||
+                it == SkillConditionCode(212255, SkillConditionField.PRECONDITION, 4040) ||
+                it == SkillConditionCode(200264, SkillConditionField.CONDITION, 29001) ||
+                it == SkillConditionCode(
+                    200264,
+                    SkillConditionField.CAST_CONDITION,
+                    420026421,
+                ) ||
+                it == SkillConditionCode(
+                    211264,
+                    SkillConditionField.CAST_CONDITION,
+                    320026412,
+                ) ||
                 it == SkillConditionCode(
                     200968,
                     SkillConditionField.CAST_CONDITION,

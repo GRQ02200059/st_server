@@ -33,7 +33,7 @@ class ControlEffectHandlersTest {
 
     @Test
     fun `registry implements the exact configured control and action id set`() {
-        assertEquals(35, controlIds.size)
+        assertEquals(41, controlIds.size)
         assertEquals(controlIds, ControlEffectHandlers.effectIds)
         assertEquals(
             controlIds,
@@ -309,6 +309,29 @@ class ControlEffectHandlersTest {
     }
 
     @Test
+    fun `prepared disarm rerolls once per round and remains stable within the round`() {
+        val store = BattleEffectStore()
+        store.apply(active(752, target = source, strength = 90))
+        val resolver = ActionPermissionResolver(store)
+        val failedRoll = CountingBattleRandom(99)
+        val runtime = SkillRuntimeState()
+        val roundOne = context(target, failedRoll).copy(
+            round = 1,
+            runtime = runtime,
+        )
+
+        assertTrue(resolver.permissionFor(source, roundOne).canNormalAttack)
+        assertTrue(resolver.permissionFor(source, roundOne).canNormalAttack)
+        assertEquals(1, failedRoll.calls)
+
+        val successfulRoll = CountingBattleRandom(0)
+        val roundTwo = roundOne.copy(round = 2, random = successfulRoll)
+        assertFalse(resolver.permissionFor(source, roundTwo).canNormalAttack)
+        assertFalse(resolver.permissionFor(source, roundTwo).canNormalAttack)
+        assertEquals(1, successfulRoll.calls)
+    }
+
+    @Test
     fun `confusion dominates other permissions`() {
         val store = BattleEffectStore()
         store.apply(active(501, target = source))
@@ -432,6 +455,7 @@ class ControlEffectHandlersTest {
             571 to ActionEffectKind.IGNORE_TROOP_COUNTER,
             581 to ActionEffectKind.REDUCE_INHERENT_PREPARATION,
             771 to ActionEffectKind.IGNORE_TROOP_COUNTER,
+            871 to ActionEffectKind.IGNORE_TROOP_COUNTER,
         )
         expectedKinds.forEach { (effectId, kind) ->
             val execution = execute(effectId, BattleEffectStore())
@@ -443,6 +467,71 @@ class ControlEffectHandlersTest {
             }
             assertEquals(kind, intent.kind)
         }
+    }
+
+    @Test
+    fun `configured action and immunity aliases retain distinct runtime behavior`() {
+        val firstAction = execute(561, BattleEffectStore())
+        assertEquals(
+            ActionEffectKind.FIRST_ACTION,
+            assertIs<ActionEffectChange>(firstAction.stateChanges.single()).kind,
+        )
+        assertEquals(
+            BattleStatus.FIRST_ACTION,
+            assertIs<BattleEvent.StatusApplied>(firstAction.events.single()).status,
+        )
+        val firstActionStore = BattleEffectStore()
+        firstActionStore.apply(active(561, target = source, category = EffectCategory.BENEFICIAL))
+        assertTrue(ActionPermissionResolver(firstActionStore).permissionFor(source).firstAction)
+
+        val insight = execute(811, BattleEffectStore())
+        assertIs<ApplyBattleEffectChange>(insight.stateChanges.single())
+        assertEquals(
+            BattleStatus.INSIGHT,
+            assertIs<BattleEvent.StatusApplied>(insight.events.single()).status,
+        )
+        val insightStore = BattleEffectStore()
+        insightStore.apply(active(811, target = target, category = EffectCategory.BENEFICIAL))
+        assertEquals(
+            811,
+            assertIs<EffectBlockedChange>(
+                execute(501, insightStore).stateChanges.single(),
+            ).blockingEffectId,
+        )
+
+        val evade = execute(814, BattleEffectStore())
+        assertIs<ApplyBattleEffectChange>(evade.stateChanges.single())
+        assertEquals(
+            BattleStatus.EVADE,
+            assertIs<BattleEvent.StatusApplied>(evade.events.single()).status,
+        )
+        val evadeStore = BattleEffectStore()
+        evadeStore.apply(active(814, target = target, category = EffectCategory.BENEFICIAL))
+        assertTrue(ActionPermissionResolver(evadeStore).canEvade(target))
+
+        val confusionImmunity = BattleEffectStore()
+        confusionImmunity.apply(active(791, target = target, category = EffectCategory.BENEFICIAL))
+        assertEquals(
+            791,
+            assertIs<EffectBlockedChange>(
+                execute(501, confusionImmunity).stateChanges.single(),
+            ).blockingEffectId,
+        )
+        assertTrue(
+            execute(503, confusionImmunity).stateChanges.none { it is EffectBlockedChange },
+        )
+
+        val berserkImmunity = BattleEffectStore()
+        berserkImmunity.apply(active(793, target = target, category = EffectCategory.BENEFICIAL))
+        assertEquals(
+            793,
+            assertIs<EffectBlockedChange>(
+                execute(503, berserkImmunity).stateChanges.single(),
+            ).blockingEffectId,
+        )
+        assertTrue(
+            execute(501, berserkImmunity).stateChanges.none { it is EffectBlockedChange },
+        )
     }
 
     private fun execute(
@@ -477,7 +566,7 @@ class ControlEffectHandlersTest {
     ): SkillEffectRule {
         val beneficial = effectId in setOf(
             504, 506, 511, 513, 514, 515, 542, 544, 545, 546, 551, 571, 581, 594,
-            711, 713, 714, 744, 761, 771,
+            561, 711, 713, 714, 744, 761, 771, 791, 793, 811, 814, 871,
         )
         return SkillEffectRule(
             detailId = 10_000 + effectId,
@@ -578,8 +667,9 @@ class ControlEffectHandlersTest {
     private companion object {
         val controlIds = (
             (501..506) + (511..515) + listOf(542) + (544..546) +
-                listOf(551, 552, 571, 581, 594) + (701..703) + (711..714) +
-                listOf(744, 752, 761, 771) + (901..903) + listOf(952)
+                listOf(551, 552, 561, 571, 581, 594) + (701..703) + (711..714) +
+                listOf(744, 752, 761, 771, 791, 793, 811, 814, 871) +
+                (901..903) + listOf(952)
             ).toSet()
         val preparedIds = setOf(701, 702, 703, 711, 712, 713, 714, 744, 752, 761, 771)
 

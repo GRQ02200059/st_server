@@ -17,6 +17,42 @@ class OfficialPreparationReportDiffTest {
         Path.of("assent/cfg/paper/11/cap_20260311222842345_0000000b_zlib.json")
     private val siegeAttributeSurfaceReport =
         Path.of("assent/cfg/paper/6231/cap_20260312074501252_00001857_zlib.json")
+    private val firstRoundDefenderWinReport =
+        Path.of("assent/cfg/paper/6231/cap_20260311223648438_00001857_zlib.json")
+
+    @Test
+    fun `paper command damage modifiers preserve exact configured values`() {
+        val config = BattleConfigRepository.loadDefault()
+        val officialActions = OfficialReportFixture.read(firstRoundDefenderWinReport)
+        val officialPreparation = OfficialReportFixture.preparation(officialActions)
+        val result = BattleEngine.resolve(
+            OfficialReportFixture.reconstructBattleRequest(officialActions, config),
+            config,
+            FixedBattleRandom(0),
+        )
+        val generatedPreparation = OfficialReportFixture.preparation(
+            OfficialReportFixture.parseText(ClientReportTextEncoder.encode(result)),
+        )
+        fun relevant(actions: List<OfficialReportFixture.Action>) =
+            OfficialReportFixture.jaTuples(actions)
+                .filter { it.sourceId in setOf(200198, 200204) }
+                .map { Triple(it.sourceId, it.effectId, it.amount) }
+                .sortedWith(
+                    compareBy(
+                        Triple<Int, Int, Int>::first,
+                        Triple<Int, Int, Int>::second,
+                        Triple<Int, Int, Int>::third,
+                    ),
+                )
+
+        assertEquals(
+            relevant(officialPreparation),
+            relevant(generatedPreparation),
+            result.events.filterIsInstance<BattleEvent.StatChanged>()
+                .filter { it.round == 0 && it.skillId == 214989 }
+                .joinToString(separator = "\n"),
+        )
+    }
 
     @Test
     fun `all reviewed paper surface stages preserve exact source order envelopes and values`() {

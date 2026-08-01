@@ -16,13 +16,13 @@ class SkillRuleCatalogTest {
             com.stzb.server.game.battle.BattleConfigRepository.loadDefault(),
         )
 
-        assertEquals(668, graph.executionNodeIds.size)
+        assertEquals(666, graph.executionNodeIds.size)
         assertEquals(
-            112,
+            111,
             graph.effectIds.size,
             "unresolved=${graph.details.map { it.effectId }.toSet() - graph.effectIds}",
         )
-        assertEquals(1935, graph.details.size)
+        assertEquals(1933, graph.details.size)
         val diagnostics = graph.validate()
         assertTrue(diagnostics.isEmpty(), diagnostics.joinToString())
     }
@@ -66,7 +66,7 @@ class SkillRuleCatalogTest {
     }
 
     @Test
-    fun `only verified field and effect pairs produce execution dependencies`() {
+    fun `only child execution effects produce execution dependencies`() {
         val graph = SkillRuleCatalog.build(
             SkillScopeCatalog.loadDefault(),
             com.stzb.server.game.battle.BattleConfigRepository.loadDefault(),
@@ -74,7 +74,7 @@ class SkillRuleCatalogTest {
 
         assertEquals(setOf(210006), graph.detail(20000601).childSkillIds)
         assertEquals(setOf(210024), graph.detail(20002402).childSkillIds)
-        assertEquals(setOf(210255), graph.detail(20025501).childSkillIds)
+        assertEquals(emptySet(), graph.detail(20025501).childSkillIds)
         assertEquals(setOf(213828), graph.detail(21082802).childSkillIds)
     }
 

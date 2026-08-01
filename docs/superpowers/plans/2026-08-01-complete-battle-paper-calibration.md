@@ -283,7 +283,7 @@ Expected 剩余集合为 `[407]`，再登记 111、112、125。
 
 - [ ] **Step 2: 写回合滚动与释放 RED 测试**
 
-第二回合开始前把 current 滚入 previous 并清零 current；408 只读取 previous；袁术初始承受 80%，之后每回合由 112 增加 5%。
+第二回合开始前把 current 滚入 previous 并清零 current；408 只读取 previous；袁术初始承受 50%，之后每回合由 112 增加 10%。
 
 - [ ] **Step 3: 实现并验证多次伤害累计**
 

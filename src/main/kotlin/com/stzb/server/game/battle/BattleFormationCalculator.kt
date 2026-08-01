@@ -37,10 +37,25 @@ class BattleFormationCalculator(
                 surfaceEffects(resolvedSpecs)
         val heroes = resolvedSpecs.map { spec ->
             val heroConfig = config.hero(spec.heroId) ?: error("未知武将配置: ${spec.heroId}")
+            val heroType = spec.heroType ?: heroConfig.heroType
             val equipmentModifiers = equipmentModifiers(spec)
             val level = spec.level.coerceAtLeast(1)
             val advance = spec.advanceLevel.coerceAtLeast(0)
-            val skillIds = listOf(heroConfig.initialSkillId).filter { it > 0 } + spec.extraSkillIds
+            val equippedSkillIds =
+                listOf(heroConfig.initialSkillId).filter { it > 0 } + spec.extraSkillIds
+            val equippedSkillLevels =
+                spec.skillLevels.take(equippedSkillIds.size).let { levels ->
+                    levels + List((equippedSkillIds.size - levels.size).coerceAtLeast(0)) {
+                        DEFAULT_SKILL_LEVEL
+                    }
+                }
+            val troopRuntimeSkillIds = troopFeatureSources
+                .filter { it.position == spec.position }
+                .filterNot(::isProjectedIntoFormationSnapshot)
+                .map(TroopFeatureSource::skillId)
+                .filterNot(equippedSkillIds::contains)
+                .distinct()
+            val skillIds = equippedSkillIds + troopRuntimeSkillIds
             val inherentStats = heroConfig.stats +
                 heroConfig.growth.scale(level - 1) +
                 spec.attributePoints
@@ -60,9 +75,9 @@ class BattleFormationCalculator(
                 stats = finalStats,
                 maxTroops = spec.troops + advance * 200,
                 skillIds = skillIds,
-                skillLevels = spec.skillLevels.take(skillIds.size).let { levels ->
-                    levels + List((skillIds.size - levels.size).coerceAtLeast(0)) { DEFAULT_SKILL_LEVEL }
-                },
+                skillLevels =
+                    equippedSkillLevels +
+                        List(troopRuntimeSkillIds.size) { DEFAULT_SKILL_LEVEL },
                 troopFeatureIds = spec.troopFeatureIds.take(2),
                 equipment = spec.equipmentSkillIds.take(3).mapIndexed { index, skillId ->
                     BattleEquipmentSlot(
@@ -72,7 +87,9 @@ class BattleFormationCalculator(
                 },
                 equipmentIds = spec.equipmentIds,
                 modifiers =
-                    equipmentRuntimeModifiers(spec) +
+                    config.troopCounterModifiers(heroType) +
+                        equipmentRuntimeModifiers(spec) +
+                        equipmentFeatureRuntimeModifiers(spec) +
                         troopRuntimeModifiers(troopFeatureSources, spec.position) +
                         surfaceRuntimeModifiers(spec),
                 level = level,
@@ -80,6 +97,7 @@ class BattleFormationCalculator(
                 morale = spec.morale.coerceAtLeast(0),
                 inherentStats = inherentStats,
                 surfaceSkillId = spec.surfaceSkillId,
+                heroType = heroType,
             )
         }
         return BattleTeam(
@@ -160,6 +178,10 @@ class BattleFormationCalculator(
                 else -> emptyList()
             }
         }
+
+    private fun isProjectedIntoFormationSnapshot(source: TroopFeatureSource): Boolean =
+        troopFeatureEffects(listOf(source)).isNotEmpty() ||
+            troopRuntimeModifiers(listOf(source), source.position).isNotEmpty()
 
     private fun troopFeatureModifiers(
         sources: List<TroopFeatureSource>,
@@ -404,6 +426,12 @@ class BattleFormationCalculator(
             config.skillDetails(skillId).mapNotNull { detail ->
                 val amount = detail.constantParam * level
                 when (detail.effectId) {
+                    251 -> specialDamageTag(detail.effectParam)?.let { tag ->
+                        BattleModifier.DamageDealtPercent(
+                            tag = tag,
+                            percent = amount,
+                        )
+                    }
                     321 -> BattleModifier.DamageDealtPercent(
                         origin = DamageOrigin.NORMAL,
                         percent = amount,
@@ -424,6 +452,18 @@ class BattleFormationCalculator(
                         origin = DamageOrigin.ACTIVE,
                         percent = -amount,
                     )
+                    354 -> BattleModifier.DamageTakenPercent(
+                        origin = DamageOrigin.COMMAND,
+                        percent = -amount,
+                    )
+                    421, 422, 423, 424 -> BattleModifier.DamageTakenPercent(
+                        percent = -amount,
+                        requiredStatus = requireNotNull(
+                            conditionalDamageStatus(detail.effectId),
+                        ),
+                    )
+                    271 -> BattleModifier.RecoveryDealtPercent(amount)
+                    281 -> BattleModifier.RecoveryTakenPercent(amount)
                     531 -> BattleModifier.DamageDealtPercent(
                         school = DamageSchool.PHYSICAL,
                         percent = amount,
@@ -442,7 +482,49 @@ class BattleFormationCalculator(
                     )
                     else -> null
                 }
-            }
+            }.distinct()
+        }
+
+    private fun equipmentFeatureRuntimeModifiers(spec: BattleHeroSpec): List<BattleModifier> =
+        spec.equipmentFeatureSkillIds.flatMapIndexed { index, skillId ->
+            val level = spec.equipmentFeatureSkillLevels.getOrElse(index) { 0 }
+            config.skillDetails(skillId).mapNotNull { detail ->
+                val amount = detail.constantParam * level
+                when (detail.effectId) {
+                    251 -> specialDamageTag(detail.effectParam)?.let { tag ->
+                        BattleModifier.DamageDealtPercent(
+                            tag = tag,
+                            percent = amount,
+                        )
+                    }
+                    354 -> BattleModifier.DamageTakenPercent(
+                        origin = DamageOrigin.COMMAND,
+                        percent = -amount,
+                    )
+                    271 -> BattleModifier.RecoveryDealtPercent(amount)
+                    281 -> BattleModifier.RecoveryTakenPercent(amount)
+                    else -> null
+                }
+            }.distinct()
+        }
+
+    private fun specialDamageTag(effectParam: Int): DamageTag? =
+        when (effectParam) {
+            303 -> DamageTag.SHAKE
+            304 -> DamageTag.PANIC
+            305 -> DamageTag.BURN
+            306 -> DamageTag.HEX
+            307 -> DamageTag.FIRE
+            else -> null
+        }
+
+    private fun conditionalDamageStatus(effectId: Int): BattleStatus? =
+        when (effectId) {
+            421 -> BattleStatus.CONFUSION
+            422 -> BattleStatus.HESITATION
+            423 -> BattleStatus.BERSERK
+            424 -> BattleStatus.DISARM
+            else -> null
         }
 
     private fun equipmentPreparationActions(
@@ -577,7 +659,9 @@ class BattleFormationCalculator(
 
     private fun troopTypeEffects(specs: List<BattleHeroSpec>): List<StaticEffect> {
         val typeGroup = specs
-            .groupBy { (config.hero(it.heroId)?.heroType ?: 0) % 10 }
+            .groupBy {
+                (it.heroType ?: config.hero(it.heroId)?.heroType ?: 0) % 10
+            }
             .entries
             .firstOrNull { (type, heroes) -> type in 1..3 && heroes.size >= 2 }
             ?: return emptyList()

@@ -64,6 +64,10 @@ class SkillRuleGraph(
     rules: Map<Int, SkillRule>,
     effectIds: Set<Int>,
     rootSkillIds: Set<Int> = rules.keys,
+    skillEnhancementUnlockIds: Set<Int> = rules.values
+        .flatMap { it.details }
+        .filter { it.effectId == 132 }
+        .mapTo(linkedSetOf()) { it.raw.effectParam },
 ) {
     private val rules: Map<Int, SkillRule> = immutableMap(
         rules.mapValues { (_, rule) ->
@@ -82,6 +86,9 @@ class SkillRuleGraph(
         },
     )
     val rootSkillIds: Set<Int> = immutableSet(rootSkillIds)
+    val skillEnhancementUnlockIds: Set<Int> = immutableSet(
+        skillEnhancementUnlockIds.filter { it > 0 },
+    )
 
     val executionNodeIds: Set<Int> = immutableSet(this.rules.keys)
     val effectIds: Set<Int> = immutableSet(effectIds)

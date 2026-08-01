@@ -115,7 +115,9 @@ object BattleEngine {
                     }
                     permission = engine.permissionFor(actor, actorContext)
                     if (permission.canNormalAttack) {
-                        repeat(permission.normalAttackCount) {
+                        var remainingNormalAttacks = permission.normalAttackCount
+                        while (remainingNormalAttacks > 0) {
+                            remainingNormalAttacks -= 1
                             val currentActor = engine.liveHero(actor)
                             val targetPool = permission.resolvedTargetPool.ifEmpty {
                                 engine.state.view.heroes().filter { ref ->
@@ -124,7 +126,7 @@ object BattleEngine {
                             }
                             val candidates = targetPool.map(engine::liveHero)
                             var selected = actionResolver.selectNormalAttackTarget(currentActor, candidates, random)
-                                ?: return@repeat
+                                ?: break
                             var target = BattleHeroRef(
                                 targetPool.first().side,
                                 selected.position,
@@ -167,7 +169,11 @@ object BattleEngine {
                                         target,
                                         BattleTrigger.DAMAGE_AFTER,
                                     )
-                                    if (engine.permissionFor(target, targetContext).counterattack) {
+                                    if (
+                                        BattleModifier.CounterattackImmunity !in
+                                        engine.liveHero(actor).modifiers &&
+                                        engine.permissionFor(target, targetContext).counterattack
+                                    ) {
                                         events += engine.reactiveAttack(
                                             round,
                                             target,
@@ -186,6 +192,7 @@ object BattleEngine {
                                 BattleTrigger.NORMAL_ATTACK_AFTER,
                                 actorContext.copy(trigger = BattleTrigger.NORMAL_ATTACK_AFTER),
                             )
+                            remainingNormalAttacks += engine.consumePendingExtraNormalAttacks(actor)
                             finishIfDefeated(round, actor)?.let { return it }
                             if (permission.grantsPursuitOpportunityPerNormal) {
                                 events += engine.trigger(

@@ -16,6 +16,7 @@ enum class BattleOutcome {
 
 enum class BattleStatus {
     CONFUSION,
+    BERSERK,
     HESITATION,
     PANIC,
     SHAKE,
@@ -72,9 +73,17 @@ enum class DamageOrigin {
 enum class DamageTag {
     ONGOING,
     FIRE,
+    BURN,
     SHAKE,
     PANIC,
     HEX,
+    IMPERIAL_SEAL_RELEASE,
+}
+
+enum class BattleTargetingKind {
+    NORMAL_ATTACK,
+    ACTIVE_SKILL,
+    PURSUIT_SKILL,
 }
 
 sealed interface BattleModifier {
@@ -90,6 +99,7 @@ sealed interface BattleModifier {
         val origin: DamageOrigin? = null,
         val tag: DamageTag? = null,
         val percent: Int,
+        val requiredStatus: BattleStatus? = null,
     ) : BattleModifier
     data class SkillProbabilityPercent(
         val percent: Int,
@@ -102,11 +112,34 @@ sealed interface BattleModifier {
     ) : BattleModifier
     data class DamageRateMinimumPercent(val percent: Int) : BattleModifier
     data class DamageRateMaximumPercent(val percent: Int) : BattleModifier
+    data class RecoveryDealtPercent(val percent: Int) : BattleModifier
     data class RecoveryTakenPercent(val percent: Int) : BattleModifier
     data class DefenseIgnorePercent(
         val percent: Int,
         val stat: BattleStat = BattleStat.DEFENSE,
     ) : BattleModifier
+    data class TroopCounterDealtPercent(
+        val targetHeroType: Int,
+        val percent: Int,
+    ) : BattleModifier
+    data class TroopCounterTakenPercent(
+        val sourceHeroType: Int,
+        val percent: Int,
+    ) : BattleModifier
+    data object TroopCounterImmunity : BattleModifier
+    data class RangedNormalAttack(
+        val damagePercentPerDistance: Int,
+    ) : BattleModifier
+    data class ControlDurationIncrease(
+        val rounds: Int,
+        val mainSkillOnly: Boolean,
+        val requiredSkillKind: SkillKind? = null,
+    ) : BattleModifier
+    data class SkillEnhancementUnlock(
+        val skillId: Int,
+    ) : BattleModifier
+    data class TargetImmunity(val kind: BattleTargetingKind) : BattleModifier
+    data object CounterattackImmunity : BattleModifier
     data class Unsupported(val sourceId: Int, val rawDescription: String) : BattleModifier
 }
 
@@ -198,6 +231,7 @@ data class BattleHero(
     val morale: Int = 100,
     val inherentStats: BattleStats = stats,
     val surfaceSkillId: Int = 0,
+    val heroType: Int = 0,
 )
 
 data class BattleEquipmentSlot(
@@ -531,11 +565,17 @@ class ActiveSkillEffect(
     init {
         require(sourceSkillType > 0) { "sourceSkillType must preserve a positive raw skill_type" }
         val normalizedKind = SkillKind.fromRawType(sourceSkillType)
-        require(normalizedKind != SkillKind.UNKNOWN) {
-            "Unsupported sourceSkillType=$sourceSkillType cannot produce an active effect"
-        }
-        require(skillKind == normalizedKind) {
-            "skillKind=$skillKind does not match sourceSkillType=$sourceSkillType ($normalizedKind)"
+        if (normalizedKind == SkillKind.UNKNOWN) {
+            require(
+                sourceSkillType in setOf(16, 17, 19) &&
+                    skillKind == SkillKind.PASSIVE,
+            ) {
+                "Unsupported sourceSkillType=$sourceSkillType cannot produce an active effect"
+            }
+        } else {
+            require(skillKind == normalizedKind) {
+                "skillKind=$skillKind does not match sourceSkillType=$sourceSkillType ($normalizedKind)"
+            }
         }
         require(replaceType in 0..3) { "Unsupported replace_type=$replaceType" }
         require(bindFlag >= 0) { "bindFlag must not be negative: $bindFlag" }

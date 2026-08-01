@@ -19,7 +19,7 @@ enum class SkillKind {
     companion object {
         fun fromRawType(rawSkillType: Int): SkillKind =
             when (rawSkillType) {
-                1 -> PASSIVE
+                1, 12, 13 -> PASSIVE
                 2 -> COMMAND
                 3 -> ACTIVE
                 4 -> PURSUIT
@@ -80,6 +80,7 @@ data class SkillDetailConfig(
     val castCondition: Int = 0,
     val precondition: Int = 0,
     val condition: Int = 0,
+    val lockFlag: Int = 0,
     val addCountMax: Int = 0,
     val buffType: Int = 0,
     val attackMax: Int,
@@ -185,6 +186,14 @@ class BattleConfigRepository private constructor(
             .sortedBy { it.detailId }
     }
 
+    fun skillEnhancementUnlockIds(): Set<Int> =
+        details.values
+            .asSequence()
+            .filter { it.effectId == 132 }
+            .map { it.effectParam }
+            .filter { it > 0 }
+            .toSet()
+
     fun skillEffect(effectId: Int): SkillEffectConfig? = effects[effectId]
 
     fun configuredValue(detail: SkillDetailConfig): ConfiguredBattleEffectValue {
@@ -202,6 +211,50 @@ class BattleConfigRepository private constructor(
         )
     }
 
+    fun troopCounterModifiers(heroType: Int): List<BattleModifier> {
+        if (heroType <= 0) return emptyList()
+        return details.values
+            .asSequence()
+            .filter { detail ->
+                detail.effectId in TROOP_COUNTER_EFFECT_IDS &&
+                    detail.targetType == heroType &&
+                    detail.effectParam > 0
+            }
+            .groupBy { detail -> detail.effectId to detail.effectParam }
+            .entries
+            .sortedWith(
+                compareBy<Map.Entry<Pair<Int, Int>, List<SkillDetailConfig>>> {
+                    it.key.first
+                }.thenBy { it.key.second },
+            )
+            .mapNotNull { (key, matchingDetails) ->
+                val strength = matchingDetails.maxOf { detail ->
+                    (
+                        detail.constantParam.toLong() *
+                            detail.initEffectRatio.coerceAtLeast(0) /
+                            100
+                        )
+                        .coerceIn(0, Int.MAX_VALUE.toLong())
+                        .toInt()
+                }
+                if (strength <= 0) {
+                    null
+                } else {
+                    when (key.first) {
+                        98 -> BattleModifier.TroopCounterDealtPercent(
+                            targetHeroType = key.second,
+                            percent = strength,
+                        )
+                        99 -> BattleModifier.TroopCounterTakenPercent(
+                            sourceHeroType = key.second,
+                            percent = -strength,
+                        )
+                        else -> error("Unsupported troop counter effect=${key.first}")
+                    }
+                }
+            }
+    }
+
     fun armyBonusesFor(heroIds: Collection<Int>): List<ArmyBonusConfig> {
         val teamHeroIds = heroIds.toSet()
         return armyBonuses.filter { bonus -> bonus.heroIds.count { it in teamHeroIds } >= 3 }
@@ -215,10 +268,13 @@ class BattleConfigRepository private constructor(
             stats = config.stats,
             troops = troops,
             maxTroops = troops,
+            heroType = config.heroType,
         )
     }
 
     companion object {
+        private val TROOP_COUNTER_EFFECT_IDS = setOf(98, 99)
+
         fun loadDefault(): BattleConfigRepository =
             DefaultBattleConfig.repository
 
@@ -361,6 +417,7 @@ class BattleConfigRepository private constructor(
                 castCondition = row.int("cast_condition"),
                 precondition = row.int("precondition"),
                 condition = row.int("condition"),
+                lockFlag = row.int("lock_flag"),
                 addCountMax = row.int("add_count_max"),
                 buffType = row.int("buff_type"),
                 attackMax = row.int("attack_max"),

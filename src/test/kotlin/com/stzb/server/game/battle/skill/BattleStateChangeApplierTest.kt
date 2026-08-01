@@ -309,6 +309,39 @@ class BattleStateChangeApplierTest {
     }
 
     @Test
+    fun `recovery dealt and taken modifiers share one additive recovery axis`() {
+        val fixture = fixture(targetTroops = 500, targetWounded = 500)
+        fixture.applier.apply(
+            listOf(
+                ModifierEffectChange(
+                    spec = spec(
+                        effectId = 271,
+                        rounds = 2,
+                        potency = TypedBattlePotency.percent(15),
+                    ).copy(target = source),
+                    modifier = BattleModifier.RecoveryDealtPercent(15),
+                ),
+                ModifierEffectChange(
+                    spec = spec(
+                        effectId = 281,
+                        rounds = 2,
+                        potency = TypedBattlePotency.percent(20),
+                    ),
+                    modifier = BattleModifier.RecoveryTakenPercent(20),
+                ),
+            ),
+            round = 0,
+        )
+
+        fixture.applier.apply(
+            listOf(RecoverTroopsChange(source, target, 100, 635, 10, 401)),
+            round = 1,
+        )
+
+        assertEquals(635, fixture.state.view.state(target)?.troops)
+    }
+
+    @Test
     fun `special damage modifier only matches its configured ongoing status`() {
         val fixture = fixture(targetTroops = 1_000)
         fixture.applier.apply(
@@ -342,7 +375,7 @@ class BattleStateChangeApplierTest {
             liveTarget,
             ratePercent = 100,
             ongoing = true,
-            tags = setOf(DamageTag.ONGOING, DamageTag.FIRE),
+            tags = setOf(DamageTag.ONGOING, DamageTag.BURN),
         )
 
         assertTrue(panic > burn)
@@ -401,6 +434,49 @@ class BattleStateChangeApplierTest {
     }
 
     @Test
+    fun `specified ongoing trigger ticks only the requested effect id`() {
+        val fixture = fixture(targetTroops = 1_000)
+        fun ongoing(
+            effectId: Int,
+            status: BattleStatus,
+            tag: DamageTag,
+        ) = ScheduledDamageEffectChange(
+            spec = spec(
+                effectId = effectId,
+                category = EffectCategory.HARMFUL,
+                rounds = 2,
+                potency = TypedBattlePotency.rate(100),
+            ),
+            school = DamageSchool.STRATEGY,
+            origin = DamageOrigin.PASSIVE,
+            tags = setOf(DamageTag.ONGOING, tag),
+            status = status,
+            coefficientSource = BattleCoefficientSource.NONE,
+            rawCoefficient = 0,
+            calculationTypes = emptyList(),
+        )
+        fixture.applier.apply(
+            listOf(
+                ongoing(304, BattleStatus.PANIC, DamageTag.PANIC),
+                ongoing(305, BattleStatus.BURN, DamageTag.BURN),
+            ),
+            round = 0,
+        )
+
+        val result = fixture.applier.triggerSpecifiedOngoingDamage(
+            target = target,
+            effectId = 305,
+            round = 1,
+        )
+
+        assertEquals(
+            listOf(305),
+            result.outputs.filterIsInstance<BattleStateOutput.DamageDealt>()
+                .map { it.effectId },
+        )
+    }
+
+    @Test
     fun `action effects expose double pursuit split counter redirect evade ignore and first`() {
         val fixture = fixture()
         fixture.applier.apply(
@@ -426,6 +502,50 @@ class BattleStateChangeApplierTest {
         assertTrue(sourcePermission.ignoresEvade)
         assertTrue(sourcePermission.firstAction)
         assertEquals(source, targetPermission.damageRedirectTarget)
+    }
+
+    @Test
+    fun `troop counter immunity reaches live damage state and consumes its hit scope`() {
+        val fixture = fixture()
+        val immunity = spec(effectId = 871, rounds = 0).copy(
+            target = source,
+            availableHit = 1,
+        )
+
+        fixture.applier.apply(
+            listOf(
+                ActionEffectChange(
+                    spec = immunity,
+                    kind = ActionEffectKind.IGNORE_TROOP_COUNTER,
+                ),
+            ),
+            round = 0,
+        )
+
+        assertTrue(
+            BattleModifier.TroopCounterImmunity in fixture.state.liveHero(source).modifiers,
+        )
+        fixture.applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source = source,
+                    target = target,
+                    amount = 10,
+                    troopsAfter = 990,
+                    school = DamageSchool.PHYSICAL,
+                    origin = DamageOrigin.NORMAL,
+                    tags = emptySet(),
+                    skillId = 295091,
+                    effectId = 301,
+                ),
+            ),
+            round = 1,
+        )
+
+        assertTrue(fixture.state.effectStore.effectsFor(source).none { it.effectId == 871 })
+        assertTrue(
+            BattleModifier.TroopCounterImmunity !in fixture.state.liveHero(source).modifiers,
+        )
     }
 
     @Test
@@ -826,6 +946,473 @@ class BattleStateChangeApplierTest {
     }
 
     @Test
+    fun `jade seal absorbs protected damage into the current round accumulator`() {
+        val ally = BattleHeroRef(Side.ATTACKER, 1, BattleHeroId(3))
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    BattleHero(
+                        source.heroId,
+                        source.position,
+                        BattleStats(100, 100, 100, 100, 10, 3),
+                        1_000,
+                    ),
+                    BattleHero(
+                        ally.heroId,
+                        ally.position,
+                        BattleStats(100, 100, 100, 100, 10, 3),
+                        1_000,
+                    ),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    BattleHero(
+                        target.heroId,
+                        target.position,
+                        BattleStats(100, 100, 100, 100, 10, 3),
+                        1_000,
+                    ),
+                ),
+            ),
+        )
+        val state = SkillBattleState(request, SkillRuntimeState())
+        val applier = BattleStateChangeApplier(state)
+        applier.apply(
+            listOf(
+                DamageAbsorptionAccumulatorEffectChange(
+                    spec = spec(
+                        effectId = 407,
+                        rounds = 9,
+                        potency = TypedBattlePotency.percent(25),
+                    ).copy(target = source),
+                    protectedTargets = listOf(source, ally),
+                    absorbPercent = 25,
+                ),
+            ),
+            round = 0,
+        )
+
+        val result = applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source = target,
+                    target = ally,
+                    amount = 100,
+                    troopsAfter = 900,
+                    school = DamageSchool.PHYSICAL,
+                    origin = DamageOrigin.ACTIVE,
+                    tags = emptySet(),
+                    skillId = 10,
+                    effectId = 301,
+                ),
+            ),
+            round = 1,
+        )
+
+        assertEquals(925, state.view.state(ally)?.troops)
+        assertEquals(
+            75,
+            result.outputs.filterIsInstance<BattleStateOutput.DamageDealt>().single().amount,
+        )
+        assertEquals(
+            BattleStateOutput.DamageAbsorbed(
+                owner = source,
+                target = ally,
+                amount = 25,
+                currentRoundTotal = 25,
+                percent = 25,
+            ),
+            result.outputs.filterIsInstance<BattleStateOutput.DamageAbsorbed>().single(),
+        )
+        assertTrue(result.outputs.none { it is BattleStateOutput.TroopsRecovered })
+
+        val ongoing = applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source = target,
+                    target = source,
+                    amount = 40,
+                    troopsAfter = 960,
+                    school = DamageSchool.STRATEGY,
+                    origin = DamageOrigin.COMMAND,
+                    tags = setOf(DamageTag.ONGOING),
+                    skillId = 11,
+                    effectId = 304,
+                ),
+            ),
+            round = 1,
+        )
+
+        assertEquals(970, state.view.state(source)?.troops)
+        assertEquals(
+            BattleStateOutput.DamageAbsorbed(
+                owner = source,
+                target = source,
+                amount = 10,
+                currentRoundTotal = 35,
+                percent = 25,
+            ),
+            ongoing.outputs.filterIsInstance<BattleStateOutput.DamageAbsorbed>().single(),
+        )
+    }
+
+    @Test
+    fun `jade seal rolls absorbed damage and releases it without recursive absorption`() {
+        val runtime = SkillRuntimeState()
+        val fixture = fixture(targetTroops = 1_000, runtime = runtime)
+        fixture.applier.apply(
+            listOf(
+                DamageAbsorptionAccumulatorEffectChange(
+                    spec = spec(
+                        effectId = 407,
+                        rounds = 9,
+                        potency = TypedBattlePotency.percent(25),
+                    ).copy(
+                        source = target,
+                        target = target,
+                        rootSkillId = 200262,
+                        skillId = 210262,
+                        detailId = 21026201,
+                    ),
+                    protectedTargets = listOf(target),
+                    absorbPercent = 25,
+                ),
+                DamageReleaseScheduleEffectChange(
+                    spec = spec(
+                        effectId = 408,
+                        rounds = 9,
+                        potency = TypedBattlePotency.percent(50),
+                    ).copy(
+                        source = target,
+                        target = target,
+                        rootSkillId = 200262,
+                        skillId = 211262,
+                        detailId = 21126204,
+                    ),
+                    target = target,
+                    referencedDetailId = 21126202,
+                    referencedEffectId = 302,
+                    baseReleasePercent = 50,
+                    firstReleaseRound = 2,
+                ),
+            ),
+            round = 0,
+        )
+        fixture.applier.onRoundStart(1)
+        fixture.applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source,
+                    target,
+                    200,
+                    800,
+                    DamageSchool.PHYSICAL,
+                    DamageOrigin.ACTIVE,
+                    emptySet(),
+                    10,
+                    301,
+                ),
+            ),
+            round = 1,
+        )
+        fixture.applier.onRoundEnd(1)
+
+        val roundTwo = fixture.applier.onRoundStart(2)
+
+        val roundTwoRelease = roundTwo.outputs
+            .filterIsInstance<BattleStateOutput.DamageDealt>()
+            .single()
+        assertEquals(25, roundTwoRelease.amount)
+        assertEquals(setOf(DamageTag.IMPERIAL_SEAL_RELEASE), roundTwoRelease.tags)
+        assertTrue(roundTwo.outputs.none { it is BattleStateOutput.DamageAbsorbed })
+
+        fixture.applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source,
+                    target,
+                    80,
+                    720,
+                    DamageSchool.STRATEGY,
+                    DamageOrigin.COMMAND,
+                    setOf(DamageTag.ONGOING),
+                    11,
+                    304,
+                ),
+            ),
+            round = 2,
+        )
+        runtime.addReferencedValueDelta(
+            source = target,
+            rootSkillId = 200262,
+            detailId = 21126204,
+            delta = 10,
+        )
+        fixture.applier.onRoundEnd(2)
+
+        val roundThree = fixture.applier.onRoundStart(3)
+
+        val roundThreeRelease = roundThree.outputs
+            .filterIsInstance<BattleStateOutput.DamageDealt>()
+            .single()
+        assertEquals(12, roundThreeRelease.amount)
+        assertEquals(setOf(DamageTag.IMPERIAL_SEAL_RELEASE), roundThreeRelease.tags)
+        assertTrue(roundThree.outputs.none { it is BattleStateOutput.DamageAbsorbed })
+        assertEquals(753, fixture.state.view.state(target)?.troops)
+    }
+
+    @Test
+    fun `jade seal release bypasses linked sharing and damage redirection`() {
+        val ally = BattleHeroRef(Side.ATTACKER, 1, BattleHeroId(3))
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    BattleHero(
+                        source.heroId,
+                        source.position,
+                        BattleStats(100, 100, 100, 100, 10, 3),
+                        1_000,
+                    ),
+                    BattleHero(
+                        ally.heroId,
+                        ally.position,
+                        BattleStats(100, 100, 100, 100, 10, 3),
+                        1_000,
+                    ),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    BattleHero(
+                        target.heroId,
+                        target.position,
+                        BattleStats(100, 100, 100, 100, 10, 3),
+                        1_000,
+                    ),
+                ),
+            ),
+        )
+        val state = SkillBattleState(request, SkillRuntimeState())
+        val applier = BattleStateChangeApplier(state)
+        applier.apply(
+            listOf(
+                LinkedDamageSharingEffectChange(
+                    spec = spec(409).copy(target = source),
+                    members = listOf(source, ally),
+                    sharePercentPerAlly = 15,
+                ),
+                DamageRedirectionEffectChange(
+                    spec = spec(127).copy(target = source),
+                    protectedTargets = listOf(source),
+                    damageBearer = ally,
+                    sharePercent = 50,
+                    school = DamageSchool.STRATEGY,
+                ),
+            ),
+            round = 0,
+        )
+
+        val result = applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source = source,
+                    target = source,
+                    amount = 100,
+                    troopsAfter = 900,
+                    school = DamageSchool.STRATEGY,
+                    origin = DamageOrigin.COMMAND,
+                    tags = setOf(DamageTag.IMPERIAL_SEAL_RELEASE),
+                    skillId = 211262,
+                    effectId = 302,
+                ),
+            ),
+            round = 2,
+        )
+
+        assertEquals(900, state.view.state(source)?.troops)
+        assertEquals(1_000, state.view.state(ally)?.troops)
+        assertEquals(
+            listOf(source to 100),
+            result.outputs.filterIsInstance<BattleStateOutput.DamageDealt>()
+                .map { it.target to it.amount },
+        )
+    }
+
+    @Test
+    fun `multiple jade seal owners accumulate independently and combine absorption`() {
+        val secondOwner = BattleHeroRef(Side.ATTACKER, 1, BattleHeroId(3))
+        val protected = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(4))
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    BattleHero(
+                        source.heroId,
+                        source.position,
+                        BattleStats(100, 100, 100, 100, 10, 3),
+                        1_000,
+                    ),
+                    BattleHero(
+                        secondOwner.heroId,
+                        secondOwner.position,
+                        BattleStats(100, 100, 100, 100, 10, 3),
+                        1_000,
+                    ),
+                    BattleHero(
+                        protected.heroId,
+                        protected.position,
+                        BattleStats(100, 100, 100, 100, 10, 3),
+                        1_000,
+                    ),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    BattleHero(
+                        target.heroId,
+                        target.position,
+                        BattleStats(100, 100, 100, 100, 10, 3),
+                        1_000,
+                    ),
+                ),
+            ),
+        )
+        val state = SkillBattleState(request, SkillRuntimeState())
+        val applier = BattleStateChangeApplier(state)
+        applier.apply(
+            listOf(
+                DamageAbsorptionAccumulatorEffectChange(
+                    spec = spec(
+                        effectId = 407,
+                        rounds = 9,
+                        potency = TypedBattlePotency.percent(25),
+                    ).copy(target = source),
+                    protectedTargets = listOf(protected),
+                    absorbPercent = 25,
+                ),
+                DamageAbsorptionAccumulatorEffectChange(
+                    spec = spec(
+                        effectId = 407,
+                        rounds = 9,
+                        potency = TypedBattlePotency.percent(25),
+                    ).copy(
+                        source = secondOwner,
+                        target = secondOwner,
+                        rootSkillId = 200262,
+                        skillId = 210262,
+                        detailId = 21026201,
+                    ),
+                    protectedTargets = listOf(protected),
+                    absorbPercent = 25,
+                ),
+            ),
+            round = 0,
+        )
+
+        val result = applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source = target,
+                    target = protected,
+                    amount = 100,
+                    troopsAfter = 900,
+                    school = DamageSchool.PHYSICAL,
+                    origin = DamageOrigin.ACTIVE,
+                    tags = emptySet(),
+                    skillId = 10,
+                    effectId = 301,
+                ),
+            ),
+            round = 1,
+        )
+
+        assertEquals(950, state.view.state(protected)?.troops)
+        assertEquals(
+            setOf(source to 25, secondOwner to 25),
+            result.outputs.filterIsInstance<BattleStateOutput.DamageAbsorbed>()
+                .mapTo(linkedSetOf()) { it.owner to it.amount },
+        )
+    }
+
+    @Test
+    fun `jade seal skips release when its owner is already defeated`() {
+        val fixture = fixture(targetTroops = 10)
+        fixture.applier.apply(
+            listOf(
+                DamageAbsorptionAccumulatorEffectChange(
+                    spec = spec(
+                        effectId = 407,
+                        rounds = 9,
+                        potency = TypedBattlePotency.percent(25),
+                    ).copy(
+                        source = target,
+                        target = target,
+                        rootSkillId = 200262,
+                        skillId = 210262,
+                        detailId = 21026201,
+                    ),
+                    protectedTargets = listOf(target),
+                    absorbPercent = 25,
+                ),
+                DamageReleaseScheduleEffectChange(
+                    spec = spec(
+                        effectId = 408,
+                        rounds = 9,
+                        potency = TypedBattlePotency.percent(50),
+                    ).copy(
+                        source = target,
+                        target = target,
+                        rootSkillId = 200262,
+                        skillId = 211262,
+                        detailId = 21126204,
+                    ),
+                    target = target,
+                    referencedDetailId = 21126202,
+                    referencedEffectId = 302,
+                    baseReleasePercent = 50,
+                    firstReleaseRound = 2,
+                ),
+            ),
+            round = 0,
+        )
+        fixture.applier.onRoundStart(1)
+        fixture.applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source,
+                    target,
+                    8,
+                    2,
+                    DamageSchool.PHYSICAL,
+                    DamageOrigin.ACTIVE,
+                    emptySet(),
+                    10,
+                    301,
+                ),
+                TroopDamageChange(
+                    target,
+                    target,
+                    4,
+                    0,
+                    DamageSchool.STRATEGY,
+                    DamageOrigin.COMMAND,
+                    setOf(DamageTag.IMPERIAL_SEAL_RELEASE),
+                    211262,
+                    302,
+                ),
+            ),
+            round = 1,
+        )
+        assertEquals(0, fixture.state.view.state(target)?.troops)
+        fixture.applier.onRoundEnd(1)
+
+        val roundTwo = fixture.applier.onRoundStart(2)
+
+        assertTrue(roundTwo.outputs.none { it is BattleStateOutput.DamageDealt })
+        assertTrue(roundTwo.outputs.none { it is BattleStateOutput.HurtReceived })
+    }
+
+    @Test
     fun `damage creates only actual wounded and paired recovery consumes only actual recovery`() {
         val fixture = fixture(targetTroops = 10, targetWounded = 5)
         fixture.applier.apply(
@@ -928,6 +1515,206 @@ class BattleStateChangeApplierTest {
             fixture.state.liveHero(source).modifiers
                 .filterIsInstance<BattleModifier.DamageDealtPercent>()
                 .none { it.percent == 50 },
+        )
+    }
+
+    @Test
+    fun `damage modifier preserves its required target status in live state`() {
+        val fixture = fixture()
+        fixture.applier.apply(
+            listOf(
+                DamageModifierChange(
+                    source = source,
+                    target = target,
+                    direction = DamageModifierChange.Direction.TAKEN,
+                    school = null,
+                    origin = null,
+                    tag = null,
+                    percent = -30,
+                    durationRounds = 8,
+                    skillId = 296023,
+                    effectId = 421,
+                    requiredTargetStatus = BattleStatus.CONFUSION,
+                ),
+            ),
+            round = 0,
+        )
+
+        assertEquals(
+            BattleStatus.CONFUSION,
+            fixture.state.liveHero(target).modifiers
+                .filterIsInstance<BattleModifier.DamageTakenPercent>()
+                .single()
+                .requiredStatus,
+        )
+    }
+
+    @Test
+    fun `conditional hit scoped modifier consumes only while its required status is active`() {
+        val fixture = fixture()
+        fixture.applier.apply(
+            listOf(
+                DamageModifierChange(
+                    source = source,
+                    target = target,
+                    direction = DamageModifierChange.Direction.TAKEN,
+                    school = null,
+                    origin = null,
+                    tag = null,
+                    percent = -30,
+                    durationRounds = 8,
+                    skillId = 296023,
+                    effectId = 421,
+                    availableHits = 2,
+                    requiredTargetStatus = BattleStatus.CONFUSION,
+                ),
+            ),
+            round = 0,
+        )
+
+        fun applyDamage(troopsAfter: Int) {
+            fixture.applier.apply(
+                listOf(
+                    TroopDamageChange(
+                        source = source,
+                        target = target,
+                        amount = 10,
+                        troopsAfter = troopsAfter,
+                        school = DamageSchool.PHYSICAL,
+                        origin = DamageOrigin.ACTIVE,
+                        tags = emptySet(),
+                        skillId = 10,
+                        effectId = 301,
+                    ),
+                ),
+                round = 1,
+            )
+        }
+
+        applyDamage(troopsAfter = 990)
+        assertEquals(
+            2,
+            fixture.state.effectStore.effectsFor(target)
+                .single { it.effectId == 421 }
+                .remainingHits,
+        )
+
+        fixture.applier.apply(
+            listOf(ActionEffectChange(spec(501), ActionEffectKind.GUARD)),
+            round = 1,
+        )
+        applyDamage(troopsAfter = 980)
+
+        assertEquals(
+            1,
+            fixture.state.effectStore.effectsFor(target)
+                .single { it.effectId == 421 }
+                .remainingHits,
+        )
+    }
+
+    @Test
+    fun `dealt hit scoped modifier consumes on matching source damage`() {
+        val fixture = fixture()
+        fixture.applier.apply(
+            listOf(
+                DamageModifierChange(
+                    source = source,
+                    target = source,
+                    direction = DamageModifierChange.Direction.DEALT,
+                    school = DamageSchool.PHYSICAL,
+                    origin = null,
+                    tag = null,
+                    percent = 50,
+                    durationRounds = 8,
+                    skillId = 200036,
+                    effectId = 531,
+                    detailId = 20003625,
+                    availableHits = 2,
+                ),
+            ),
+            round = 1,
+        )
+
+        fixture.applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source = source,
+                    target = target,
+                    amount = 10,
+                    troopsAfter = 990,
+                    school = DamageSchool.STRATEGY,
+                    origin = DamageOrigin.ACTIVE,
+                    tags = emptySet(),
+                    skillId = 10,
+                    effectId = 302,
+                ),
+            ),
+            round = 1,
+        )
+        assertEquals(
+            2,
+            fixture.state.effectStore.effectsFor(source).single().remainingHits,
+        )
+
+        repeat(2) {
+            fixture.applier.apply(
+                listOf(
+                    TroopDamageChange(
+                        source = source,
+                        target = target,
+                        amount = 10,
+                        troopsAfter = 980 - it * 10,
+                        school = DamageSchool.PHYSICAL,
+                        origin = DamageOrigin.ACTIVE,
+                        tags = emptySet(),
+                        skillId = 10,
+                        effectId = 301,
+                    ),
+                ),
+                round = 1,
+            )
+        }
+
+        assertTrue(fixture.state.effectStore.effectsFor(source).isEmpty())
+        assertTrue(
+            fixture.state.liveHero(source).modifiers
+                .filterIsInstance<BattleModifier.DamageDealtPercent>()
+                .none { it.percent == 50 },
+        )
+    }
+
+    @Test
+    fun `damage modifier stacks up to its configured maximum`() {
+        val fixture = fixture()
+        val layer = DamageModifierChange(
+            source = source,
+            target = source,
+            direction = DamageModifierChange.Direction.DEALT,
+            school = DamageSchool.PHYSICAL,
+            origin = null,
+            tag = null,
+            percent = 8,
+            durationRounds = 8,
+            skillId = 213961,
+            effectId = 531,
+            detailId = 21396101,
+            maxStacks = 5,
+        )
+
+        fixture.applier.apply(List(5) { layer }, round = 1)
+
+        val effect = fixture.state.effectStore.effectsFor(source).single {
+            it.detailId == 21396101
+        }
+        assertEquals(5, effect.stacks)
+        assertEquals(40, effect.effectiveStrength)
+        assertEquals(
+            40,
+            fixture.state.liveHero(source).modifiers
+                .filterIsInstance<BattleModifier.DamageDealtPercent>()
+                .single()
+                .percent,
         )
     }
 

@@ -1,14 +1,20 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleConfigRepository
+import com.stzb.server.game.battle.BattleDamageCalculator
 import com.stzb.server.game.battle.BattleEngine
+import com.stzb.server.game.battle.BattleEquipmentRepository
 import com.stzb.server.game.battle.BattleEvent
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroId
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleHeroSpec
+import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleRequest
+import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.BattleStats
 import com.stzb.server.game.battle.BattleTeam
+import com.stzb.server.game.battle.BattleTeamBuilder
 import com.stzb.server.game.battle.DamageOrigin
 import com.stzb.server.game.battle.DamageSchool
 import com.stzb.server.game.battle.FixedBattleRandom
@@ -16,6 +22,7 @@ import com.stzb.server.game.battle.Side
 import com.stzb.server.game.battle.SkillKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class CompleteSkillEngineIntegrationTest {
@@ -44,6 +51,1125 @@ class CompleteSkillEngineIntegrationTest {
                 country = 3,
             ),
             engine.state.view.metadata(source),
+        )
+    }
+
+    @Test
+    fun `generic meta intents fail closed unless the engine consumes their operation`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(hero(100023, 100, position = 2))),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val graph = SkillRuleCatalog.build(SkillScopeCatalog.loadDefault(), config)
+        val parameters = MetaEffectParameters.from(
+            graph.details.single { it.detailId == 20002316 },
+        )
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 200023,
+            currentSkillId = 200023,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        assertFailsWith<UnsupportedBattleStateChangeException> {
+            engine.applyChanges(
+                listOf(
+                    MetaEffectChange(
+                        source = source,
+                        target = target,
+                        rootSkillId = 200023,
+                        skillId = 200023,
+                        detailId = parameters.detailId,
+                        effectId = 77,
+                        operation = MetaEffectOperation.MARKER,
+                        parameters = parameters,
+                    ),
+                ),
+                context,
+            )
+        }
+    }
+
+    @Test
+    fun `specified effect trigger ticks only the requested ongoing effect`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(hero(100023, 100, position = 2))),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 297173,
+            currentSkillId = 297173,
+            trigger = BattleTrigger.BATTLE_PASSIVE,
+            battleView = engine.state.view,
+        )
+        fun ongoing(
+            effectId: Int,
+            status: com.stzb.server.game.battle.BattleStatus,
+            tag: com.stzb.server.game.battle.DamageTag,
+        ): ScheduledDamageEffectChange {
+            val spec = PersistentEffectSpec(
+                source = source,
+                target = target,
+                rootSkillId = 900000,
+                skillId = 900000,
+                skillKind = SkillKind.PASSIVE,
+                rawSkillType = 1,
+                detailId = 90000000 + effectId,
+                effectId = effectId,
+                category = com.stzb.server.game.battle.EffectCategory.HARMFUL,
+                conflict = 0,
+                replaceType = 0,
+                bindFlag = 0,
+                maxStacks = 1,
+                delayRound = 0,
+                delayHit = 0,
+                availableRounds = 2,
+                availableHit = 0,
+                clearPerHit = false,
+                startBoundary = EffectStartBoundary.IMMEDIATE,
+                potency = TypedBattlePotency.rate(100),
+            )
+            return ScheduledDamageEffectChange(
+                spec = spec,
+                school = DamageSchool.STRATEGY,
+                origin = DamageOrigin.PASSIVE,
+                tags = setOf(com.stzb.server.game.battle.DamageTag.ONGOING, tag),
+                status = status,
+                coefficientSource = BattleCoefficientSource.NONE,
+                rawCoefficient = 0,
+                calculationTypes = emptyList(),
+            )
+        }
+        engine.applyChanges(
+            listOf(
+                ongoing(
+                    304,
+                    com.stzb.server.game.battle.BattleStatus.PANIC,
+                    com.stzb.server.game.battle.DamageTag.PANIC,
+                ),
+                ongoing(
+                    305,
+                    com.stzb.server.game.battle.BattleStatus.BURN,
+                    com.stzb.server.game.battle.DamageTag.BURN,
+                ),
+            ),
+            context,
+        )
+        val graph = SkillRuleCatalog.build(SkillScope(setOf(297173), emptySet()), config)
+        val parameters = MetaEffectParameters.from(
+            graph.details.single { it.detailId == 29717301 },
+        )
+
+        val events = engine.applyChanges(
+            listOf(
+                TriggerSpecifiedEffectChange(
+                    source = source,
+                    target = target,
+                    rootSkillId = 297173,
+                    skillId = 297173,
+                    detailId = 29717301,
+                    triggeredEffectId = 305,
+                    parameters = parameters,
+                ),
+            ),
+            context,
+        )
+
+        assertEquals(
+            com.stzb.server.game.battle.BattleStatus.BURN,
+            events.filterIsInstance<BattleEvent.OngoingDamage>().single().status,
+        )
+    }
+
+    @Test
+    fun `named flag counter intents clamp per target and flag id`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(hero(100001, 100, position = 2))),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 200264,
+            currentSkillId = 213264,
+            trigger = BattleTrigger.ROUND_START,
+            battleView = engine.state.view,
+        )
+        val change = NamedFlagCounterChange(
+            source = source,
+            target = source,
+            rootSkillId = 200264,
+            skillId = 213264,
+            detailId = 21326401,
+            flagId = 210264,
+            delta = 2,
+            maximum = 3,
+        )
+
+        engine.applyChanges(listOf(change, change), context)
+
+        assertEquals(
+            3,
+            engine.state.runtime.counter(source, "skill.named-flag.210264"),
+        )
+    }
+
+    @Test
+    fun `engine applies hit scoped damage modifier without round duration`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(hero(100001, 100, position = 2))),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 200069,
+            currentSkillId = 200069,
+            trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            battleView = engine.state.view,
+        )
+
+        engine.applyChanges(
+            listOf(
+                DamageModifierChange(
+                    source = source,
+                    target = source,
+                    direction = DamageModifierChange.Direction.DEALT,
+                    school = DamageSchool.PHYSICAL,
+                    origin = null,
+                    tag = null,
+                    percent = 90,
+                    durationRounds = 0,
+                    skillId = 200069,
+                    effectId = 531,
+                    detailId = 20006901,
+                    availableHits = 1,
+                ),
+            ),
+            context,
+        )
+
+        val effect = engine.state.effectStore.effectsFor(source).single()
+        assertEquals(20006901, effect.detailId)
+        assertEquals(1, effect.remainingHits)
+        assertTrue(
+            engine.state.liveHero(source).modifiers
+                .filterIsInstance<BattleModifier.DamageDealtPercent>()
+                .any { it.percent == 90 },
+        )
+    }
+
+    @Test
+    fun `engine rejects damage modifier without round or hit lifecycle`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(hero(100001, 100, position = 2))),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 900001,
+            currentSkillId = 900001,
+            trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            battleView = engine.state.view,
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            engine.applyChanges(
+                listOf(
+                    DamageModifierChange(
+                        source = source,
+                        target = source,
+                        direction = DamageModifierChange.Direction.DEALT,
+                        school = DamageSchool.PHYSICAL,
+                        origin = null,
+                        tag = null,
+                        percent = 10,
+                        durationRounds = 0,
+                        skillId = 900001,
+                        effectId = 531,
+                        availableHits = 0,
+                    ),
+                ),
+                context,
+            )
+        }
+    }
+
+    @Test
+    fun `neizhuzhixian official command stat bonus persists through eight rounds`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100001, 100, listOf(300021), position = 2),
+                    hero(100002, 90, position = 1),
+                    hero(100003, 80, position = 0),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 8,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100001) }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        engine.prepareBattle(context)
+
+        val allies = engine.state.view.heroes().filter { it.side == Side.ATTACKER }
+        allies.forEach { ally ->
+            assertTrue(requireNotNull(engine.state.view.state(ally)).stats.strategy > 100)
+            val effect = engine.state.effectStore.effectsFor(ally).single {
+                it.detailId == 30002101
+            }
+            assertEquals(null, effect.remainingRounds)
+            assertEquals(1, effect.remainingHits)
+        }
+
+        (1..8).forEach(engine::finishRound)
+
+        allies.forEach { ally ->
+            assertTrue(requireNotNull(engine.state.view.state(ally)).stats.strategy > 100)
+            assertTrue(engine.state.effectStore.effectsFor(ally).any {
+                it.detailId == 30002101
+            })
+        }
+    }
+
+    @Test
+    fun `skill range meta intent scopes a configured skill without affecting its peers`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(hero(100871, 100, position = 2))),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val graph = SkillRuleCatalog.build(
+            SkillScope(setOf(200871), emptySet()),
+            config,
+        )
+        val parameters = MetaEffectParameters.from(
+            graph.details.single { it.detailId == 20087102 },
+        )
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = source,
+            rootSkillId = 200871,
+            currentSkillId = 200871,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        engine.applyChanges(
+            listOf(
+                MetaEffectChange(
+                    source = source,
+                    target = source,
+                    rootSkillId = 200871,
+                    skillId = 200871,
+                    detailId = parameters.detailId,
+                    effectId = 171,
+                    operation = MetaEffectOperation.SKILL_RANGE_INCREASE,
+                    parameters = parameters,
+                ),
+            ),
+            context,
+        )
+
+        assertEquals(
+            1,
+            engine.state.view.skillRangeBonus(source, SkillKind.ACTIVE, skillId = 200690),
+        )
+        assertEquals(
+            0,
+            engine.state.view.skillRangeBonus(source, SkillKind.ACTIVE, skillId = 200105),
+        )
+    }
+
+    @Test
+    fun `shenshidingji registers resistance for every ally during command setup`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100257, 100, listOf(200257), position = 2),
+                    hero(100001, 90, position = 1),
+                    hero(100002, 80, position = 0),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100257) }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        val events = engine.prepareBattle(context)
+
+        engine.state.view.heroes()
+            .filter { it.side == Side.ATTACKER }
+            .forEach { ally ->
+                assertTrue(
+                    engine.state.effectStore.effectsFor(ally).any {
+                        it.source == owner &&
+                            it.rootSkillId == 200257 &&
+                            it.skillId == 210257 &&
+                            it.effectId == 118
+                    },
+                    "ally=$ally events=$events effects=${engine.state.effectStore.effectsFor(ally)}",
+                )
+            }
+        assertTrue(events.none { it is BattleEvent.SkillDamage || it is BattleEvent.Recovery })
+    }
+
+    @Test
+    fun `shenshidingji reacts before an enemy receives a harmful stat effect`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100257, 100, listOf(200257), position = 2).copy(troops = 9_000),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        engine.state.mutable(owner).woundedTroops = 1_000
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+
+        val events = engine.applyChanges(
+            listOf(statChange(owner, enemy, 201, -10)),
+            context.copy(
+                round = 1,
+                rootSkillId = 900000,
+                currentSkillId = 900000,
+                trigger = BattleTrigger.EFFECT_APPLYING,
+            ),
+        )
+
+        assertTrue(
+            engine.state.effectStore.effectsFor(enemy).any {
+                it.source == owner && it.skillId == 212257 && it.effectId == 521
+            },
+            "events=$events effects=${engine.state.effectStore.effectsFor(enemy)}",
+        )
+        assertTrue(
+            engine.state.effectStore.effectsFor(enemy).any {
+                it.source == owner && it.skillId == 212257 && it.effectId == 523
+            },
+            "events=$events effects=${engine.state.effectStore.effectsFor(enemy)}",
+        )
+        assertTrue(
+            events.filterIsInstance<BattleEvent.Recovery>().any {
+                it.source == owner && it.skillId == 212257 && it.amount > 0
+            },
+            "events=$events",
+        )
+    }
+
+    @Test
+    fun `qiqinqizong shares its first seven damage guards across the allied group`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100298, 100, listOf(200298), position = 2),
+                    hero(100001, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100298) }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100001) }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = enemy,
+            rootSkillId = 900000,
+            currentSkillId = 900000,
+            trigger = BattleTrigger.DAMAGE_BEFORE,
+            battleView = engine.state.view,
+        )
+        val protectedTroops = mapOf(
+            owner to requireNotNull(engine.state.view.state(owner)).troops,
+            ally to requireNotNull(engine.state.view.state(ally)).troops,
+        )
+
+        val firstSeven = (0 until 7).map { index ->
+            val target = if (index % 2 == 0) owner else ally
+            engine.applyChanges(
+                listOf(
+                    TroopDamageChange(
+                        source = enemy,
+                        target = target,
+                        amount = 100,
+                        troopsAfter = requireNotNull(engine.state.view.state(target)).troops - 100,
+                        school = DamageSchool.PHYSICAL,
+                        origin = DamageOrigin.ACTIVE,
+                        tags = emptySet(),
+                        skillId = 900000,
+                        effectId = 301,
+                    ),
+                ),
+                context,
+            )
+        }
+
+        assertTrue(
+            firstSeven.all { events -> events.any { it is BattleEvent.Evaded } },
+            "events=$firstSeven",
+        )
+        assertEquals(
+            protectedTroops,
+            protectedTroops.keys.associateWith {
+                requireNotNull(engine.state.view.state(it)).troops
+            },
+        )
+
+        val eighth = engine.applyChanges(
+            listOf(
+                TroopDamageChange(
+                    source = enemy,
+                    target = ally,
+                    amount = 100,
+                    troopsAfter = protectedTroops.getValue(ally) - 100,
+                    school = DamageSchool.PHYSICAL,
+                    origin = DamageOrigin.ACTIVE,
+                    tags = emptySet(),
+                    skillId = 900000,
+                    effectId = 301,
+                ),
+            ),
+            context,
+        )
+
+        assertTrue(eighth.none { it is BattleEvent.Evaded }, "events=$eighth")
+        assertEquals(
+            protectedTroops.getValue(ally) - 100,
+            requireNotNull(engine.state.view.state(ally)).troops,
+        )
+    }
+
+    @Test
+    fun `qiqinqizong shares one seven event budget between control and damage`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100298, 100, listOf(200298), position = 2)),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = enemy,
+            rootSkillId = 900000,
+            currentSkillId = 900000,
+            trigger = BattleTrigger.EFFECT_APPLYING,
+            battleView = engine.state.view,
+        )
+
+        val control = engine.applyChanges(
+            listOf(controlChange(enemy, owner)),
+            context,
+        )
+        val damageEvents = (0 until 6).map {
+            engine.applyChanges(
+                listOf(
+                    TroopDamageChange(
+                        source = enemy,
+                        target = owner,
+                        amount = 100,
+                        troopsAfter = requireNotNull(engine.state.view.state(owner)).troops - 100,
+                        school = DamageSchool.PHYSICAL,
+                        origin = DamageOrigin.ACTIVE,
+                        tags = emptySet(),
+                        skillId = 900000,
+                        effectId = 301,
+                    ),
+                ),
+                context.copy(trigger = BattleTrigger.DAMAGE_BEFORE),
+            )
+        }
+
+        assertTrue(
+            control.filterIsInstance<BattleEvent.EffectBlocked>()
+                .any { it.target == owner && it.blockingEffectId == 118 },
+            "events=$control",
+        )
+        assertTrue(engine.state.effectStore.effectsFor(owner).none { it.effectId == 501 })
+        assertTrue(
+            damageEvents.all { events -> events.any { it is BattleEvent.Evaded } },
+            "events=$damageEvents",
+        )
+        val troopsBeforeEighth = requireNotNull(engine.state.view.state(owner)).troops
+
+        val eighth = engine.applyChanges(
+            listOf(
+                TroopDamageChange(
+                    source = enemy,
+                    target = owner,
+                    amount = 100,
+                    troopsAfter = troopsBeforeEighth - 100,
+                    school = DamageSchool.PHYSICAL,
+                    origin = DamageOrigin.ACTIVE,
+                    tags = emptySet(),
+                    skillId = 900000,
+                    effectId = 301,
+                ),
+            ),
+            context.copy(trigger = BattleTrigger.DAMAGE_BEFORE),
+        )
+
+        assertTrue(eighth.none { it is BattleEvent.Evaded }, "events=$eighth")
+        assertEquals(
+            troopsBeforeEighth - 100,
+            requireNotNull(engine.state.view.state(owner)).troops,
+        )
+    }
+
+    @Test
+    fun `qiqinqizong shu branch debuffs the highest damage enemy on the next round`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100582, 100, listOf(200298), position = 2)),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 20, position = 2),
+                    hero(200002, 10, position = 1),
+                ),
+            ),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val highestDamageEnemy = engine.state.view.heroes().single {
+            it.side == Side.DEFENDER && it.position == 1
+        }
+        val otherEnemy = engine.state.view.heroes().single {
+            it.side == Side.DEFENDER && it.position == 2
+        }
+        engine.state.recordDamage(highestDamageEnemy, 1_000)
+        engine.state.recordDamage(otherEnemy, 100)
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = highestDamageEnemy,
+            rootSkillId = 900000,
+            currentSkillId = 900000,
+            trigger = BattleTrigger.DAMAGE_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        repeat(7) {
+            engine.applyChanges(
+                listOf(
+                    TroopDamageChange(
+                        source = highestDamageEnemy,
+                        target = owner,
+                        amount = 100,
+                        troopsAfter = requireNotNull(engine.state.view.state(owner)).troops - 100,
+                        school = DamageSchool.PHYSICAL,
+                        origin = DamageOrigin.ACTIVE,
+                        tags = emptySet(),
+                        skillId = 900000,
+                        effectId = 301,
+                    ),
+                ),
+                context,
+            )
+        }
+
+        assertTrue(
+            engine.state.effectStore.effectsFor(highestDamageEnemy)
+                .none { it.skillId == 214298 },
+        )
+
+        engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(
+                round = 2,
+                source = owner,
+                trigger = BattleTrigger.ROUND_START,
+            ),
+        )
+
+        val highestEffects = engine.state.effectStore.effectsFor(highestDamageEnemy)
+            .filter { it.skillId == 214298 }
+        assertTrue(highestEffects.any { it.effectId == 202 }, "effects=$highestEffects")
+        assertTrue(
+            highestEffects.none { it.effectId == 532 || it.effectId == 534 },
+            "effects=$highestEffects",
+        )
+        assertTrue(
+            engine.state.effectStore.effectsFor(otherEnemy)
+                .none { it.skillId == 214298 },
+        )
+    }
+
+    @Test
+    fun `qiqinqizong non shu branch reduces both damage schools on the next round`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100001, 100, listOf(200298), position = 2)),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 20, position = 2),
+                    hero(200002, 10, position = 1),
+                ),
+            ),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val highestDamageEnemy = engine.state.view.heroes().single {
+            it.side == Side.DEFENDER && it.position == 1
+        }
+        val otherEnemy = engine.state.view.heroes().single {
+            it.side == Side.DEFENDER && it.position == 2
+        }
+        engine.state.recordDamage(highestDamageEnemy, 1_000)
+        engine.state.recordDamage(otherEnemy, 100)
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = highestDamageEnemy,
+            rootSkillId = 900000,
+            currentSkillId = 900000,
+            trigger = BattleTrigger.DAMAGE_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        repeat(7) {
+            engine.applyChanges(
+                listOf(
+                    TroopDamageChange(
+                        source = highestDamageEnemy,
+                        target = owner,
+                        amount = 100,
+                        troopsAfter = requireNotNull(engine.state.view.state(owner)).troops - 100,
+                        school = DamageSchool.PHYSICAL,
+                        origin = DamageOrigin.ACTIVE,
+                        tags = emptySet(),
+                        skillId = 900000,
+                        effectId = 301,
+                    ),
+                ),
+                context,
+            )
+        }
+
+        engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(
+                round = 2,
+                source = owner,
+                trigger = BattleTrigger.ROUND_START,
+            ),
+        )
+
+        val highestEffects = engine.state.effectStore.effectsFor(highestDamageEnemy)
+            .filter { it.skillId == 214298 }
+        assertTrue(highestEffects.any { it.effectId == 532 }, "effects=$highestEffects")
+        assertTrue(highestEffects.any { it.effectId == 534 }, "effects=$highestEffects")
+        assertTrue(highestEffects.none { it.effectId == 202 }, "effects=$highestEffects")
+        assertTrue(
+            engine.state.effectStore.effectsFor(otherEnemy)
+                .none { it.skillId == 214298 },
+        )
+    }
+
+    @Test
+    fun `fuboyangsha converts normal attack uplift into layers and queued extra attacks`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100785, 100, listOf(200255), position = 2),
+                    hero(100001, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100785) }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100001) }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+        val normalDamageBonus = engine.state.view.activeEffectStrength(ally, 20025525)
+        assertTrue(normalDamageBonus > 0)
+
+        engine.trigger(
+            BattleTrigger.NORMAL_ATTACK_AFTER,
+            context.copy(
+                round = 1,
+                source = ally,
+                trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+            ),
+        )
+
+        val upliftNamespace = "skill.200255.normal-damage-uplift"
+        val layerNamespace = "skill.200255.yangsha-layers"
+        assertEquals(normalDamageBonus % 40, engine.state.runtime.counter(owner, upliftNamespace))
+        assertEquals(normalDamageBonus / 40, engine.state.runtime.counter(owner, layerNamespace))
+
+        engine.state.runtime.addCounter(
+            owner,
+            layerNamespace,
+            delta = 8 - engine.state.runtime.counter(owner, layerNamespace),
+            maximum = 20,
+        )
+        engine.trigger(
+            BattleTrigger.NORMAL_ATTACK_AFTER,
+            context.copy(
+                round = 1,
+                source = owner,
+                trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+            ),
+        )
+
+        val progressAfterOwner = (normalDamageBonus % 40) + normalDamageBonus
+        val layersBeforeConsumption = 8 + progressAfterOwner / 40
+        assertEquals(progressAfterOwner % 40, engine.state.runtime.counter(owner, upliftNamespace))
+        assertEquals(layersBeforeConsumption % 4, engine.state.runtime.counter(owner, layerNamespace))
+        assertEquals(
+            layersBeforeConsumption / 4,
+            engine.consumePendingExtraNormalAttacks(owner),
+        )
+        assertEquals(0, engine.consumePendingExtraNormalAttacks(owner))
+    }
+
+    @Test
+    fun `fuboyangsha caps accumulated yangsha at twenty layers`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100785, 100, listOf(200255), position = 2),
+                    hero(100001, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100785) }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100001) }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+        val normalDamageBonus = engine.state.view.activeEffectStrength(ally, 20025525)
+        val attacksForTwentyOneLayers =
+            (21 * 40 + normalDamageBonus - 1) / normalDamageBonus
+
+        repeat(attacksForTwentyOneLayers) {
+            engine.trigger(
+                BattleTrigger.NORMAL_ATTACK_AFTER,
+                context.copy(
+                    round = 1,
+                    source = ally,
+                    trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+                ),
+            )
+        }
+
+        assertEquals(
+            20,
+            engine.state.runtime.counter(owner, "skill.200255.yangsha-layers"),
+        )
+    }
+
+    @Test
+    fun `configured battle consumes fuboyangsha queue as repeated normal attacks`() {
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(
+                    listOf(
+                        hero(100785, 300, listOf(200255), position = 2),
+                        hero(100001, 200, position = 1),
+                        hero(100002, 100, position = 0),
+                    ),
+                ),
+                defender = BattleTeam(
+                    listOf(
+                        hero(200001, 10, position = 2).copy(
+                            troops = 100_000,
+                            maxTroops = 100_000,
+                        ),
+                    ),
+                ),
+                maxRounds = 8,
+            ),
+            config,
+            FixedBattleRandom(0),
+        )
+
+        val ownerNormalAttacks = result.events
+            .filterIsInstance<BattleEvent.NormalAttack>()
+            .count { it.source.heroId == BattleHeroId(100785) }
+        assertTrue(
+            ownerNormalAttacks > 8,
+            "normalAttacks=$ownerNormalAttacks",
+        )
+    }
+
+    @Test
+    fun `pibingjuyi grants two birui layers and consumes one before each damage`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100791, 100, listOf(200264), position = 2),
+                    hero(100001, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100791) }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100001) }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(99),
+            round = 1,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.ROUND_START,
+            battleView = engine.state.view,
+        )
+
+        engine.trigger(BattleTrigger.ROUND_START, context)
+
+        val layerNamespace = "skill.200264.birui-layers"
+        assertEquals(2, engine.state.runtime.counter(owner, layerNamespace))
+        assertEquals(2, engine.state.runtime.counter(ally, layerNamespace))
+        val losses = (0 until 3).map {
+            val troopsBefore = requireNotNull(engine.state.view.state(ally)).troops
+            engine.applyChanges(
+                listOf(
+                    TroopDamageChange(
+                        source = enemy,
+                        target = ally,
+                        amount = 100,
+                        troopsAfter = troopsBefore - 100,
+                        school = DamageSchool.PHYSICAL,
+                        origin = DamageOrigin.NORMAL,
+                        tags = emptySet(),
+                        skillId = 0,
+                        effectId = 0,
+                    ),
+                ),
+                context.copy(
+                    source = enemy,
+                    trigger = BattleTrigger.DAMAGE_BEFORE,
+                ),
+            )
+            troopsBefore - requireNotNull(engine.state.view.state(ally)).troops
+        }
+
+        assertTrue(losses[0] in 1 until 100, "losses=$losses")
+        assertTrue(losses[1] in 1 until 100, "losses=$losses")
+        assertEquals(100, losses[2], "losses=$losses")
+        assertEquals(0, engine.state.runtime.counter(ally, layerNamespace))
+    }
+
+    @Test
+    fun `pibingjuyi burn uses fifty percent chance and grows for the same enemy`() {
+        fun fixture(randomValue: Int): Pair<DefaultCompleteSkillEngine, SkillBattleContext> {
+            val request = BattleRequest(
+                attacker = BattleTeam(
+                    listOf(
+                        hero(100791, 100, listOf(200264), position = 2),
+                        hero(100001, 90, position = 1),
+                    ),
+                ),
+                defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+                maxRounds = 2,
+            )
+            val engine = DefaultCompleteSkillEngine.create(request, config)
+            val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100791) }
+            val context = SkillBattleContext(
+                request = request,
+                runtime = engine.state.runtime,
+                random = FixedBattleRandom(randomValue),
+                round = 1,
+                source = owner,
+                rootSkillId = 0,
+                currentSkillId = 0,
+                trigger = BattleTrigger.ROUND_START,
+                battleView = engine.state.view,
+            )
+            engine.trigger(BattleTrigger.ROUND_START, context)
+            return engine to context
+        }
+
+        fun applyHit(
+            engine: DefaultCompleteSkillEngine,
+            context: SkillBattleContext,
+        ) {
+            val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100001) }
+            val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+            val troopsBefore = requireNotNull(engine.state.view.state(ally)).troops
+            engine.applyChanges(
+                listOf(
+                    TroopDamageChange(
+                        source = enemy,
+                        target = ally,
+                        amount = 100,
+                        troopsAfter = troopsBefore - 100,
+                        school = DamageSchool.PHYSICAL,
+                        origin = DamageOrigin.NORMAL,
+                        tags = emptySet(),
+                        skillId = 0,
+                        effectId = 0,
+                    ),
+                ),
+                context.copy(
+                    source = enemy,
+                    trigger = BattleTrigger.DAMAGE_BEFORE,
+                ),
+            )
+        }
+
+        val (successEngine, successContext) = fixture(0)
+        val successOwner = successEngine.state.view.heroes()
+            .single { it.heroId == BattleHeroId(100791) }
+        val successEnemy = successEngine.state.view.heroes().single { it.side == Side.DEFENDER }
+        applyHit(successEngine, successContext)
+        val firstBurn = successEngine.state.effectStore.effectsFor(successEnemy)
+            .single { it.skillId == 216264 && it.effectId == 305 }
+        val growthAfterFirst = successEngine.state.runtime.counter(
+            successEnemy,
+            "skill.200264.burn-growth",
+        )
+        assertTrue(growthAfterFirst > 0, "growth=$growthAfterFirst")
+
+        successEngine.trigger(
+            BattleTrigger.ROUND_START,
+            successContext.copy(
+                round = 2,
+                source = successOwner,
+                trigger = BattleTrigger.ROUND_START,
+            ),
+        )
+        applyHit(successEngine, successContext.copy(round = 2))
+        val secondBurn = successEngine.state.effectStore.effectsFor(successEnemy)
+            .single { it.skillId == 216264 && it.effectId == 305 }
+        assertTrue(
+            secondBurn.effectiveStrength > firstBurn.effectiveStrength,
+            "first=${firstBurn.effectiveStrength} second=${secondBurn.effectiveStrength}",
+        )
+
+        val (failedEngine, failedContext) = fixture(99)
+        val failedEnemy = failedEngine.state.view.heroes().single { it.side == Side.DEFENDER }
+        applyHit(failedEngine, failedContext)
+        assertTrue(
+            failedEngine.state.effectStore.effectsFor(failedEnemy)
+                .none { it.skillId == 216264 && it.effectId == 305 },
         )
     }
 
@@ -106,7 +1232,7 @@ class CompleteSkillEngineIntegrationTest {
         val context = SkillBattleContext(
             request = request,
             runtime = engine.state.runtime,
-            random = FixedBattleRandom(0),
+            random = FixedBattleRandom(99),
             round = 0,
             source = source,
             rootSkillId = 0,
@@ -230,6 +1356,141 @@ class CompleteSkillEngineIntegrationTest {
             2,
             events.filterIsInstance<BattleEvent.SkillTriggered>().count { it.skillId == 211016 },
         )
+    }
+
+    @Test
+    fun `baizhan spends one initial stack for round start recovery`() {
+        val ownerHero = hero(100252, 200, listOf(200252), position = 1).copy(
+            troops = 9_000,
+            maxTroops = 10_000,
+            skillLevels = listOf(10),
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(ownerHero)),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_PASSIVE,
+            battleView = engine.state.view,
+        )
+
+        engine.prepareBattle(context)
+        engine.state.mutable(owner).woundedTroops = 1_000
+        val events = engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(round = 1, trigger = BattleTrigger.ROUND_START),
+        )
+
+        assertEquals(2, engine.state.runtime.counter(owner, "skill.200252.stacks"))
+        assertTrue(events.any {
+            it is BattleEvent.Recovery &&
+                it.source == owner &&
+                it.target == owner &&
+                it.skillId == 214252 &&
+                it.amount > 0
+        })
+    }
+
+    @Test
+    fun `baizhan spends one stack and recovers after receiving damage`() {
+        val ownerHero = hero(100252, 200, listOf(200252), position = 1).copy(
+            troops = 9_000,
+            maxTroops = 10_000,
+            skillLevels = listOf(10),
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(ownerHero)),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_PASSIVE,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+
+        val events = engine.applyNormalDamage(
+            round = 1,
+            source = enemy,
+            target = owner,
+            amount = 100,
+            context = context.copy(round = 1, source = enemy),
+        )
+
+        assertEquals(2, engine.state.runtime.counter(owner, "skill.200252.stacks"))
+        assertTrue(events.any {
+            it is BattleEvent.Recovery &&
+                it.source == owner &&
+                it.target == owner &&
+                it.skillId == 214252 &&
+                it.amount > 0
+        })
+    }
+
+    @Test
+    fun `baizhan replenishes one stack after dealing damage up to three`() {
+        val ownerHero = hero(100252, 200, listOf(200252), position = 1).copy(
+            troops = 9_000,
+            maxTroops = 10_000,
+            skillLevels = listOf(10),
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(ownerHero)),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_PASSIVE,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+        engine.state.mutable(owner).woundedTroops = 1_000
+        engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(round = 1, trigger = BattleTrigger.ROUND_START),
+        )
+
+        repeat(2) {
+            engine.applyNormalDamage(
+                round = 1,
+                source = owner,
+                target = enemy,
+                amount = 1,
+                context = context.copy(round = 1, source = owner),
+            )
+        }
+
+        assertEquals(3, engine.state.runtime.counter(owner, "skill.200252.stacks"))
     }
 
     @Test
@@ -508,6 +1769,84 @@ class CompleteSkillEngineIntegrationTest {
 
         assertEquals(1, fifth.filterIsInstance<BattleEvent.SkillTriggered>().count { it.skillId == 211297 })
         assertTrue(sixth.none { it is BattleEvent.SkillTriggered && it.skillId == 211297 })
+    }
+
+    @Test
+    fun `sanjunduoshuai registers at preparation and responds once after a normal attack`() {
+        val owner = hero(100705, 100, listOf(200987), position = 2)
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(listOf(owner)),
+                defender = BattleTeam(
+                    listOf(
+                        hero(200001, 10, position = 2).copy(
+                            troops = 100_000,
+                            maxTroops = 100_000,
+                        ),
+                    ),
+                ),
+                maxRounds = 1,
+            ),
+            config,
+            FixedBattleRandom(0),
+        )
+        val ownerRef = BattleHeroRef(Side.ATTACKER, owner.position, owner.id)
+
+        assertEquals(
+            1,
+            result.events.filterIsInstance<BattleEvent.SkillTriggered>()
+                .count { it.round == 0 && it.source == ownerRef && it.skillId == 200987 },
+        )
+        assertTrue(result.events.filterIsInstance<BattleEvent.SkillDamage>().none {
+            it.round == 0 && it.source == ownerRef && it.skillId == 211987
+        })
+        assertEquals(
+            1,
+            result.events.filterIsInstance<BattleEvent.SkillTriggered>()
+                .count { it.round == 1 && it.source == ownerRef && it.skillId == 211987 },
+        )
+        assertTrue(result.events.filterIsInstance<BattleEvent.SkillDamage>().any {
+            it.round == 1 && it.source == ownerRef && it.skillId == 211987
+        })
+    }
+
+    @Test
+    fun `prepared command control registers its per round probability without rolling at setup`() {
+        val owner = hero(100001, 100, listOf(200228), position = 2).copy(
+            skillLevels = listOf(10),
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(owner)),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 30, position = 2),
+                    hero(200002, 20, position = 1),
+                    hero(200003, 10, position = 0),
+                ),
+            ),
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val ownerRef = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(99),
+            round = 0,
+            source = ownerRef,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        engine.prepareBattle(context)
+
+        val registrations = engine.state.view.heroes()
+            .filter { it.side == Side.DEFENDER }
+            .flatMap(engine.state.effectStore::effectsFor)
+            .filter { it.detailId == 20022801 }
+        assertEquals(2, registrations.size)
+        assertTrue(registrations.all { it.strength == 90 })
     }
 
     @Test
@@ -852,6 +2191,321 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `qixurulin command setup does not execute its conditional damage template`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100282, 100, listOf(200282), position = 2),
+                    hero(100017, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 30, position = 1),
+                    hero(200002, 20, position = 0),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single {
+            it.heroId == BattleHeroId(100282)
+        }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        val troopsBefore = engine.state.view.heroes().associateWith {
+            requireNotNull(engine.state.view.state(it)).troops
+        }
+
+        val events = engine.prepareBattle(context)
+
+        assertEquals(
+            troopsBefore,
+            engine.state.view.heroes().associateWith {
+                requireNotNull(engine.state.view.state(it)).troops
+            },
+            events.joinToString(separator = "\n"),
+        )
+    }
+
+    @Test
+    fun `jade seal releases the previous round absorption at its progressing percentage`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100262, 200, listOf(200262), position = 2),
+                    hero(100001, 100, position = 1),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(hero(200001, 10, position = 2)),
+            ),
+            maxRounds = 3,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 2
+        }
+        val ally = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 1
+        }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        val prepareEvents = engine.prepareBattle(context)
+
+        assertTrue(
+            prepareEvents.filterIsInstance<BattleEvent.SkillDamage>()
+                .none { it.skillId == 211262 },
+            "events=$prepareEvents",
+        )
+        engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(round = 1, trigger = BattleTrigger.ROUND_START),
+        )
+        val allyBeforeRoundOneDamage = requireNotNull(engine.state.view.state(ally)).troops
+        engine.applyNormalDamage(
+            round = 1,
+            source = enemy,
+            target = ally,
+            amount = 100,
+            context = context.copy(round = 1, source = enemy),
+        )
+        val allyAfterRoundOneDamage = requireNotNull(engine.state.view.state(ally)).troops
+        val roundOneAbsorbed = 100 - (allyBeforeRoundOneDamage - allyAfterRoundOneDamage)
+        assertTrue(roundOneAbsorbed > 0)
+        engine.finishRound(1)
+        assertEquals(
+            0,
+            engine.state.runtime.referencedValueDelta(owner, 200262, 21126204),
+        )
+
+        val roundTwo = engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(round = 2, trigger = BattleTrigger.ROUND_START),
+        )
+
+        assertEquals(
+            roundOneAbsorbed * 50 / 100,
+            roundTwo.filterIsInstance<BattleEvent.SkillDamage>()
+                .single { it.skillId == 211262 }
+                .damage,
+        )
+        val allyBeforeRoundTwoDamage = requireNotNull(engine.state.view.state(ally)).troops
+        engine.applyNormalDamage(
+            round = 2,
+            source = enemy,
+            target = ally,
+            amount = 100,
+            context = context.copy(round = 2, source = enemy),
+        )
+        val allyAfterRoundTwoDamage = requireNotNull(engine.state.view.state(ally)).troops
+        val roundTwoAbsorbed = 100 - (allyBeforeRoundTwoDamage - allyAfterRoundTwoDamage)
+        engine.finishRound(2)
+        assertEquals(
+            10,
+            engine.state.runtime.referencedValueDelta(owner, 200262, 21126204),
+        )
+
+        val roundThree = engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(round = 3, trigger = BattleTrigger.ROUND_START),
+        )
+
+        assertEquals(
+            roundTwoAbsorbed * 60 / 100,
+            roundThree.filterIsInstance<BattleEvent.SkillDamage>()
+                .single { it.skillId == 211262 }
+                .damage,
+        )
+    }
+
+    @Test
+    fun `jade seal release does not trigger qixurulin splash onto adjacent allies`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100262, 200, listOf(200262), position = 2),
+                    hero(100282, 100, listOf(200282), position = 1),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(hero(200001, 10, position = 2)),
+            ),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val jadeSealOwner = engine.state.view.heroes().single {
+            it.heroId == BattleHeroId(100262)
+        }
+        val qixurulinOwner = engine.state.view.heroes().single {
+            it.heroId == BattleHeroId(100282)
+        }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = jadeSealOwner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+        engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(round = 1, trigger = BattleTrigger.ROUND_START),
+        )
+        engine.applyNormalDamage(
+            round = 1,
+            source = enemy,
+            target = qixurulinOwner,
+            amount = 100,
+            context = context.copy(round = 1, source = enemy),
+        )
+        engine.finishRound(1)
+        val qixurulinTroopsBeforeRelease =
+            requireNotNull(engine.state.view.state(qixurulinOwner)).troops
+
+        val roundTwo = engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(round = 2, trigger = BattleTrigger.ROUND_START),
+        )
+
+        assertEquals(
+            1,
+            roundTwo.filterIsInstance<BattleEvent.SkillDamage>()
+                .count { it.skillId == 211262 },
+            "events=$roundTwo",
+        )
+        assertTrue(
+            roundTwo.filterIsInstance<BattleEvent.SkillDamage>()
+                .none { it.skillId == 210282 },
+            "events=$roundTwo",
+        )
+        assertEquals(
+            qixurulinTroopsBeforeRelease,
+            requireNotNull(engine.state.view.state(qixurulinOwner)).troops,
+            "events=$roundTwo",
+        )
+    }
+
+    @Test
+    fun `jade seal does not release damage that activates in the current round start`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100262, 200, listOf(200262), position = 2),
+                    hero(100001, 100, position = 1),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(hero(200001, 10, position = 2)),
+            ),
+            maxRounds = 3,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 2
+        }
+        val ally = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 1
+        }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+        engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(round = 1, trigger = BattleTrigger.ROUND_START),
+        )
+        engine.schedule(
+            ScheduledTimingChange(
+                snapshot = DelayedEffect(
+                    source = enemy,
+                    rootSkillId = 10,
+                    skillId = 10,
+                    detailId = 1001,
+                    dueRound = 0,
+                ),
+                delayRound = 1,
+                delayHit = 0,
+                change = TroopDamageChange(
+                    source = enemy,
+                    target = ally,
+                    amount = 100,
+                    troopsAfter = 9_900,
+                    school = DamageSchool.PHYSICAL,
+                    origin = DamageOrigin.ACTIVE,
+                    tags = emptySet(),
+                    skillId = 10,
+                    effectId = 301,
+                ),
+            ),
+            round = 1,
+        )
+        engine.finishRound(1)
+        val allyBefore = requireNotNull(engine.state.view.state(ally)).troops
+
+        val roundTwo = engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(round = 2, trigger = BattleTrigger.ROUND_START),
+        )
+
+        assertTrue(
+            roundTwo.filterIsInstance<BattleEvent.SkillDamage>()
+                .none { it.skillId == 211262 },
+            "events=$roundTwo",
+        )
+        val allyAfter = requireNotNull(engine.state.view.state(ally)).troops
+        val absorbed = 100 - (allyBefore - allyAfter)
+        assertTrue(absorbed > 0)
+        engine.finishRound(2)
+
+        val roundThree = engine.trigger(
+            BattleTrigger.ROUND_START,
+            context.copy(round = 3, trigger = BattleTrigger.ROUND_START),
+        )
+
+        assertEquals(
+            absorbed * 60 / 100,
+            roundThree.filterIsInstance<BattleEvent.SkillDamage>()
+                .single { it.skillId == 211262 }
+                .damage,
+        )
+    }
+
+    @Test
     fun `qixurulin splash consumes its current referenced value`() {
         val request = BattleRequest(
             attacker = BattleTeam(
@@ -1062,6 +2716,189 @@ class CompleteSkillEngineIntegrationTest {
         assertTrue(statIndices.all { it < damageIndex })
         assertTrue(requireNotNull(engine.state.view.state(source)).stats.strategy > sourceBefore.strategy)
         assertTrue(requireNotNull(engine.state.view.state(target)).stats.defense > targetBefore.defense)
+    }
+
+    @Test
+    fun `chijie attack increase uses its configured owner attack coefficient`() {
+        val ownerHero = hero(100989, 100, listOf(200989), position = 2).copy(
+            stats = BattleStats.fromHundredths(
+                attack = 28_690,
+                defense = 20_000,
+                strategy = 29_840,
+                speed = 10_000,
+                siege = 0,
+                hitRange = 5,
+            ),
+            skillLevels = listOf(10),
+        )
+        val sourceHero = hero(100705, 90, position = 1).copy(
+            stats = BattleStats.fromHundredths(
+                attack = 19_260,
+                defense = 19_160,
+                strategy = 26_930,
+                speed = 12_980,
+                siege = 2_720,
+                hitRange = 4,
+            ),
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(ownerHero, sourceHero)),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.heroId == sourceHero.id }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.DAMAGE_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        val events = engine.applyChanges(
+            listOf(physicalDamage(source, target, 1)),
+            context,
+        )
+
+        val increase = events.filterIsInstance<BattleEvent.StatChanged>().single {
+            it.target == source && it.skillId == 213989
+        }
+        assertEquals(
+            53.035,
+            engine.state.effectStore.effectsFor(source)
+                .single { it.detailId == 21398901 }
+                .effectiveStrengthExact,
+            0.001,
+        )
+        assertEquals(53.04, increase.deltaExact, 0.001)
+    }
+
+    @Test
+    fun `chijie configured add count allows four total stat stacks`() {
+        val ownerHero = hero(100989, 100, listOf(200989), position = 2).copy(
+            stats = BattleStats.fromHundredths(
+                attack = 28_690,
+                defense = 20_000,
+                strategy = 29_840,
+                speed = 10_000,
+                siege = 0,
+                hitRange = 5,
+            ),
+            skillLevels = listOf(10),
+        )
+        val sourceHero = hero(100705, 90, position = 1).copy(
+            stats = BattleStats.fromHundredths(
+                attack = 19_260,
+                defense = 19_160,
+                strategy = 26_930,
+                speed = 12_980,
+                siege = 2_720,
+                hitRange = 4,
+            ),
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(ownerHero, sourceHero)),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.heroId == sourceHero.id }
+        val target = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.DAMAGE_BEFORE,
+            battleView = engine.state.view,
+        )
+
+        repeat(5) {
+            engine.applyChanges(
+                listOf(physicalDamage(source, target, 1)),
+                context,
+            )
+        }
+
+        assertEquals(
+            404.74,
+            requireNotNull(engine.state.view.state(source)).stats.precise(BattleStat.ATTACK),
+            0.001,
+        )
+        assertEquals(
+            4,
+            engine.state.effectStore.effectsFor(source)
+                .single { it.detailId == 21398901 }
+                .stacks,
+        )
+    }
+
+    @Test
+    fun `chijie source increase affects the skill damage being applied`() {
+        val ownerHero = hero(100989, 100, listOf(200989), position = 2).copy(
+            stats = BattleStats(attack = 200, defense = 100, strategy = 100, speed = 100, siege = 0, hitRange = 5),
+            skillLevels = listOf(10),
+        )
+        val actorHero = hero(100705, 90, listOf(200987), position = 1).copy(
+            skillLevels = listOf(10),
+        )
+        val targetHero = hero(200001, 10, position = 2)
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(ownerHero, actorHero)),
+            defender = BattleTeam(listOf(targetHero)),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val actor = engine.state.view.heroes().single { it.heroId == actorHero.id }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = actor,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+            battleView = engine.state.view,
+        )
+
+        val events = engine.trigger(BattleTrigger.NORMAL_ATTACK_AFTER, context)
+
+        val increaseIndex = events.indexOfFirst {
+            it is BattleEvent.StatChanged && it.skillId == 213989 && it.target == actor
+        }
+        val damageIndex = events.indexOfFirst {
+            it is BattleEvent.SkillDamage && it.skillId == 211987
+        }
+        assertTrue(increaseIndex in 0 until damageIndex)
+        assertEquals(
+            BattleDamageCalculator.physical(
+                source = actorHero.copy(
+                    stats = BattleStats(
+                        attack = 140,
+                        defense = 100,
+                        strategy = 100,
+                        speed = 90,
+                        siege = 0,
+                        hitRange = 5,
+                    ),
+                ),
+                target = targetHero,
+                ratePercent = 180,
+                attributeRandomTenths = 30,
+                origin = DamageOrigin.PASSIVE,
+            ),
+            (events[damageIndex] as BattleEvent.SkillDamage).damage,
+        )
     }
 
     @Test
@@ -1366,11 +3203,80 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `fenji command setup emits its root trigger without executing its action chain`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100961, 200, listOf(200961), position = 2).copy(
+                        skillLevels = listOf(10),
+                    ),
+                    hero(100001, 20, position = 1),
+                    hero(100002, 10, position = 0),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 30, position = 2),
+                    hero(200002, 25, position = 1),
+                    hero(200003, 15, position = 0),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == BattleHeroId(100961) }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        val troopsBefore = engine.state.view.heroes().associateWith {
+            requireNotNull(engine.state.view.state(it)).troops
+        }
+
+        val events = engine.prepareBattle(context)
+
+        assertEquals(
+            1,
+            events.filterIsInstance<BattleEvent.SkillTriggered>().count {
+                it.round == 0 &&
+                    it.source == owner &&
+                    it.rootSkillId == 200961 &&
+                    it.skillId == 200961 &&
+                    it.trigger == BattleTrigger.BATTLE_COMMAND
+            },
+            "events=$events",
+        )
+        assertTrue(
+            engine.state.effectStore.effectsFor(owner).none { it.detailId == 21396101 },
+            "events=$events effects=${engine.state.effectStore.effectsFor(owner)}",
+        )
+        assertEquals(
+            troopsBefore,
+            engine.state.view.heroes().associateWith {
+                requireNotNull(engine.state.view.state(it)).troops
+            },
+            "events=$events",
+        )
+        assertTrue(events.filterIsInstance<BattleEvent.SkillTriggered>().none {
+            it.skillId in setOf(212961, 210961, 213961, 211961)
+        })
+    }
+
+    @Test
     fun `fenji attacks at forty percent then starts a new damage stack`() {
         val request = BattleRequest(
             attacker = BattleTeam(
                 listOf(
-                    hero(100961, 200, listOf(200961), position = 2),
+                    hero(100961, 200, listOf(200961), position = 2).copy(
+                        skillLevels = listOf(10),
+                    ),
                     hero(100001, 20, position = 1),
                     hero(100002, 10, position = 0),
                 ),
@@ -1400,7 +3306,55 @@ class CompleteSkillEngineIntegrationTest {
 
         val events = engine.trigger(BattleTrigger.ACTION_BEFORE, context)
 
-        assertTrue(events.any { it is BattleEvent.SkillTriggered && it.skillId == 211961 })
+        val configuredSkillSequence = buildList {
+            events.forEach { event ->
+                when {
+                    event is BattleEvent.SkillTriggered &&
+                        event.skillId in setOf(212961, 210961) -> add(event.skillId)
+                    event is BattleEvent.ModifierApplied &&
+                        event.skillId == 213961 -> add(event.skillId)
+                    event is BattleEvent.SkillDamage &&
+                        event.skillId == 211961 &&
+                        lastOrNull() != event.skillId -> add(event.skillId)
+                }
+            }
+        }
+        assertEquals(
+            listOf(
+                212961,
+                210961, 213961,
+                210961, 213961,
+                210961, 213961,
+                210961, 213961,
+                210961, 213961, 211961,
+                210961, 213961,
+            ),
+            configuredSkillSequence,
+            "events=$events effects=${engine.state.effectStore.effectsFor(owner).map {
+                listOf(it.detailId, it.stacks, it.maxStacks, it.effectiveStrength)
+            }}",
+        )
+        val expectedDamage = BattleDamageCalculator.physical(
+            source = request.attacker.heroes.first().copy(
+                modifiers = listOf(
+                    BattleModifier.DamageDealtPercent(
+                        school = DamageSchool.PHYSICAL,
+                        percent = 40,
+                    ),
+                ),
+            ),
+            target = request.defender.heroes.first(),
+            ratePercent = 190,
+            attributeRandomTenths = 30,
+            origin = DamageOrigin.ACTIVE,
+        )
+        val attackEvents = events.filterIsInstance<BattleEvent.SkillDamage>()
+            .filter { it.skillId == 211961 }
+        assertTrue(attackEvents.isNotEmpty(), "events=$events")
+        assertTrue(
+            attackEvents.all { it.damage == expectedDamage },
+            "expectedDamage=$expectedDamage attackEvents=$attackEvents",
+        )
         val remaining = engine.state.effectStore.effectsFor(owner)
             .filter { it.detailId == 21396101 }
         assertEquals(1, remaining.size)
@@ -1655,6 +3609,84 @@ class CompleteSkillEngineIntegrationTest {
             1,
             engine.state.runtime.count(actor, BattleTrigger.ACTIVE_SKILL_ATTEMPT, 200031),
         )
+    }
+
+    @Test
+    fun `prepared active response applies after fenji resolution`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    hero(100036, 100, listOf(200036), position = 0),
+                    hero(100961, 200, listOf(200031, 200961), position = 2).copy(
+                        skillLevels = listOf(1, 10),
+                    ),
+                    hero(100001, 20, position = 1),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 30, position = 2),
+                    hero(200002, 25, position = 1),
+                    hero(200003, 15, position = 0),
+                ),
+            ),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val actor = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 2
+        }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = actor,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+        engine.trigger(
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context.copy(
+                round = 1,
+                rootSkillId = 200031,
+                currentSkillId = 200031,
+                trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            ),
+        )
+        val attackBeforeCompletion = engine.liveHero(actor).stats.attack
+
+        val events = engine.trigger(
+            BattleTrigger.ACTION_BEFORE,
+            context.copy(
+                round = 2,
+                rootSkillId = 200031,
+                currentSkillId = 200031,
+                trigger = BattleTrigger.ACTION_BEFORE,
+            ),
+        )
+
+        val expectedFenjiDamage = BattleDamageCalculator.physical(
+            source = request.attacker.heroes.single { it.position == 2 }.copy(
+                modifiers = listOf(
+                    BattleModifier.DamageDealtPercent(
+                        school = DamageSchool.PHYSICAL,
+                        percent = 40,
+                    ),
+                ),
+            ),
+            target = request.defender.heroes.first(),
+            ratePercent = 190,
+            attributeRandomTenths = 30,
+            origin = DamageOrigin.ACTIVE,
+        )
+        val fenjiDamage = events.filterIsInstance<BattleEvent.SkillDamage>()
+            .first { it.skillId == 211961 }
+        assertEquals(expectedFenjiDamage, fenjiDamage.damage, "events=$events")
+        assertEquals(attackBeforeCompletion + 11, engine.liveHero(actor).stats.attack)
     }
 
     @Test
@@ -1989,6 +4021,122 @@ class CompleteSkillEngineIntegrationTest {
         assertEquals(Side.DEFENDER, counter.source.side)
         assertEquals(Side.ATTACKER, counter.target.side)
         assertTrue(counter.damage > split.damage, "200% counter must exceed 75% secondary damage")
+    }
+
+    @Test
+    fun `counterattack immunity prevents the defender counterattack`() {
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(
+                    listOf(
+                        hero(100479, 200, position = 2).copy(
+                            modifiers = listOf(BattleModifier.CounterattackImmunity),
+                        ),
+                        hero(100017, 10, position = 0),
+                    ),
+                ),
+                defender = BattleTeam(
+                    listOf(
+                        hero(100010, 100, listOf(200010), position = 2),
+                        hero(2, 20, position = 1),
+                    ),
+                ),
+                maxRounds = 1,
+            ),
+            config,
+            FixedBattleRandom(0),
+        )
+
+        assertTrue(
+            result.events.filterIsInstance<BattleEvent.NormalAttack>()
+                .any { it.source.side == Side.ATTACKER },
+        )
+        assertTrue(
+            result.events.filterIsInstance<BattleEvent.SkillDamage>()
+                .none {
+                    it.effectId == 551 &&
+                        it.source.side == Side.DEFENDER &&
+                        it.target.heroId == BattleHeroId(100479)
+                },
+        )
+    }
+
+    @Test
+    fun `troop scatter performs one secondary attack on the first normal attack`() {
+        val attacker = BattleTeamBuilder(
+            config,
+            BattleEquipmentRepository.loadDefault(),
+        ).build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100017,
+                    position = 2,
+                    troops = 10_000,
+                    extraSkillIds = listOf(200233),
+                    skillLevels = listOf(10, 1),
+                    troopFeatureIds = listOf(3108),
+                ),
+            ),
+        )
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = attacker,
+                defender = BattleTeam(
+                    listOf(
+                        hero(200001, 30, position = 0),
+                        hero(200002, 20, position = 1),
+                        hero(200003, 10, position = 2),
+                    ),
+                ),
+                maxRounds = 1,
+            ),
+            config,
+            FixedBattleRandom(0),
+        )
+
+        val splits = result.events.filterIsInstance<BattleEvent.SkillDamage>()
+            .filter { it.skillId == 297108 && it.effectId == 545 }
+        assertEquals(1, splits.size)
+    }
+
+    @Test
+    fun `secondary attack runs damage before hooks before calculating damage`() {
+        val actorHero = hero(100017, 190, listOf(200225), position = 1)
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(
+                    listOf(
+                        hero(100989, 200, listOf(200989), position = 2)
+                            .copy(skillLevels = listOf(10)),
+                        actorHero,
+                    ),
+                ),
+                defender = BattleTeam(
+                    listOf(
+                        hero(200001, 30, position = 1),
+                        hero(200002, 20, position = 2),
+                    ),
+                ),
+                maxRounds = 1,
+            ),
+            config,
+            FixedBattleRandom(0),
+        )
+        val actor = BattleHeroRef(Side.ATTACKER, actorHero.position, actorHero.id)
+        val splitIndex = result.events.indexOfFirst {
+            it is BattleEvent.SkillDamage && it.effectId == 545 && it.source == actor
+        }
+        val increases = result.events.mapIndexedNotNull { index, event ->
+            index.takeIf {
+                event is BattleEvent.StatChanged &&
+                    event.skillId == 213989 &&
+                    event.target == actor
+            }
+        }
+
+        assertTrue(splitIndex >= 0)
+        assertEquals(2, increases.size)
+        assertTrue(increases.all { it < splitIndex })
     }
 
     @Test
@@ -2360,6 +4508,331 @@ class CompleteSkillEngineIntegrationTest {
         assertTrue(engine.state.effectStore.effectsFor(actor).none { it.effectId == 81 })
     }
 
+    @Test
+    fun `next control duration modifier extends one successful control and then expires`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(hero(100001, 100, listOf(200049)))),
+            defender = BattleTeam(listOf(hero(200001, 10))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val actor = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = actor,
+            rootSkillId = 200049,
+            currentSkillId = 200049,
+            trigger = BattleTrigger.EFFECT_APPLYING,
+            battleView = engine.state.view,
+        )
+        engine.applyChanges(
+            listOf(
+                ModifierEffectChange(
+                    spec = PersistentEffectSpec(
+                        source = actor,
+                        target = actor,
+                        rootSkillId = 470044,
+                        skillId = 471044,
+                        skillKind = SkillKind.PASSIVE,
+                        rawSkillType = 19,
+                        detailId = 47104401,
+                        effectId = 312,
+                        category = com.stzb.server.game.battle.EffectCategory.BENEFICIAL,
+                        conflict = 0,
+                        replaceType = 0,
+                        bindFlag = 0,
+                        maxStacks = 1,
+                        delayRound = 0,
+                        delayHit = 0,
+                        availableRounds = 0,
+                        availableHit = 1,
+                        clearPerHit = false,
+                        startBoundary = EffectStartBoundary.IMMEDIATE,
+                        potency = TypedBattlePotency.flat(1),
+                    ),
+                    modifier = BattleModifier.ControlDurationIncrease(
+                        rounds = 1,
+                        mainSkillOnly = false,
+                    ),
+                ),
+            ),
+            context,
+        )
+
+        engine.applyChanges(
+            listOf(controlChange(actor, enemy).copy(spec = controlChange(actor, enemy).spec.copy(
+                rootSkillId = 200049,
+                skillId = 200049,
+                detailId = 20004991,
+            ))),
+            context,
+        )
+
+        assertEquals(
+            2,
+            engine.state.effectStore.effectsFor(enemy)
+                .single { it.detailId == 20004991 }
+                .remainingRounds,
+        )
+        assertTrue(engine.state.effectStore.effectsFor(actor).none { it.effectId == 312 })
+
+        engine.applyChanges(
+            listOf(controlChange(actor, enemy).copy(spec = controlChange(actor, enemy).spec.copy(
+                rootSkillId = 200049,
+                skillId = 200049,
+                detailId = 20004992,
+                effectId = 502,
+                conflict = 502,
+            ))),
+            context,
+        )
+        assertEquals(
+            1,
+            engine.state.effectStore.effectsFor(enemy)
+                .single { it.detailId == 20004992 }
+                .remainingRounds,
+        )
+    }
+
+    @Test
+    fun `main skill control duration modifier ignores non main controls without consuming`() {
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100001, 100, listOf(200049, 200001))),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val actor = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = actor,
+            rootSkillId = 200049,
+            currentSkillId = 200049,
+            trigger = BattleTrigger.EFFECT_APPLYING,
+            battleView = engine.state.view,
+        )
+        engine.applyChanges(
+            listOf(
+                controlDurationModifier(
+                    source = actor,
+                    effectId = 311,
+                    detailId = 46106101,
+                    modifier = BattleModifier.ControlDurationIncrease(
+                        rounds = 1,
+                        mainSkillOnly = true,
+                    ),
+                ),
+            ),
+            context,
+        )
+
+        engine.applyChanges(
+            listOf(controlChange(actor, enemy).copy(spec = controlChange(actor, enemy).spec.copy(
+                rootSkillId = 200001,
+                skillId = 200001,
+                detailId = 20000191,
+            ))),
+            context,
+        )
+
+        assertEquals(
+            1,
+            engine.state.effectStore.effectsFor(enemy)
+                .single { it.detailId == 20000191 }
+                .remainingRounds,
+        )
+        assertTrue(engine.state.effectStore.effectsFor(actor).any { it.effectId == 311 })
+
+        engine.applyChanges(
+            listOf(controlChange(actor, enemy).copy(spec = controlChange(actor, enemy).spec.copy(
+                rootSkillId = 200049,
+                skillId = 200049,
+                detailId = 20004992,
+                effectId = 502,
+                conflict = 502,
+            ))),
+            context,
+        )
+        assertEquals(
+            2,
+            engine.state.effectStore.effectsFor(enemy)
+                .single { it.detailId == 20004992 }
+                .remainingRounds,
+        )
+        assertTrue(engine.state.effectStore.effectsFor(actor).none { it.effectId == 311 })
+    }
+
+    @Test
+    fun `simulated normal attacks reuse range targeting and normal attack hooks`() {
+        val attacker = hero(100001, 100, position = 2).copy(
+            stats = BattleStats(
+                attack = 100,
+                defense = 100,
+                strategy = 100,
+                speed = 100,
+                siege = 0,
+                hitRange = 2,
+            ),
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(attacker)),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 30, position = 2),
+                    hero(200002, 20, position = 1),
+                    hero(200003, 10, position = 0),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val actor = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = actor,
+            rootSkillId = 410113,
+            currentSkillId = 410113,
+            trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+            battleView = engine.state.view,
+        )
+
+        val allEvents = engine.applyChanges(
+            listOf(
+                SimulatedNormalAttackChange(
+                    source = actor,
+                    mode = SimulatedNormalAttackMode.ALL_IN_RANGE,
+                    skillId = 410113,
+                    effectId = 80,
+                    detailId = 41011321,
+                ),
+            ),
+            context,
+        )
+        val allAttacks = allEvents.filterIsInstance<BattleEvent.NormalAttack>()
+        assertEquals(setOf(2, 1), allAttacks.mapTo(mutableSetOf()) { it.target.position })
+        assertEquals(
+            2,
+            allEvents.filterIsInstance<BattleEvent.TriggerPoint>()
+                .count { it.trigger == BattleTrigger.NORMAL_ATTACK_BEFORE },
+        )
+        assertEquals(
+            2,
+            allEvents.filterIsInstance<BattleEvent.TriggerPoint>()
+                .count { it.trigger == BattleTrigger.NORMAL_ATTACK_AFTER },
+        )
+
+        val singleEvents = engine.applyChanges(
+            listOf(
+                SimulatedNormalAttackChange(
+                    source = actor,
+                    mode = SimulatedNormalAttackMode.SINGLE,
+                    skillId = 411112,
+                    effectId = 79,
+                    detailId = 41111211,
+                ),
+            ),
+            context,
+        )
+        assertEquals(1, singleEvents.filterIsInstance<BattleEvent.NormalAttack>().size)
+    }
+
+    @Test
+    fun `real advisor unlock enables the configured locked skill detail`() {
+        val lockedRequest = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100001, 100, listOf(200126))),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10))),
+            maxRounds = 1,
+        )
+        val lockedEngine = DefaultCompleteSkillEngine.create(lockedRequest, config)
+        val lockedActor = lockedEngine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val lockedContext = SkillBattleContext(
+            request = lockedRequest,
+            runtime = lockedEngine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = lockedActor,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_PASSIVE,
+            battleView = lockedEngine.state.view,
+        )
+        lockedEngine.prepareBattle(lockedContext)
+        val lockedEvents = lockedEngine.trigger(
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            lockedContext.copy(
+                round = 1,
+                rootSkillId = 200126,
+                currentSkillId = 200126,
+                trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            ),
+        )
+        assertEquals(
+            1,
+            lockedEvents.filterIsInstance<BattleEvent.SkillDamage>()
+                .count { it.skillId == 200126 && it.effectId == 302 },
+            "events=$lockedEvents",
+        )
+
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(hero(100001, 100, listOf(200870, 200126))),
+            ),
+            defender = BattleTeam(listOf(hero(200001, 10))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val actor = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = actor,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_PASSIVE,
+            battleView = engine.state.view,
+        )
+
+        engine.prepareBattle(context)
+
+        assertTrue(
+            engine.liveHero(actor).modifiers.contains(
+                BattleModifier.SkillEnhancementUnlock(200870),
+            ),
+        )
+        val events = engine.trigger(
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context.copy(
+                round = 1,
+                rootSkillId = 200126,
+                currentSkillId = 200126,
+                trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            ),
+        )
+        assertEquals(
+            2,
+            events.filterIsInstance<BattleEvent.SkillDamage>()
+                .count { it.skillId == 200126 && it.effectId == 302 },
+            "events=$events",
+        )
+    }
+
     private fun requestHeroRefs(team: BattleTeam, side: Side): List<BattleHeroRef> =
         team.heroes.map { BattleHeroRef(side, it.position, it.id) }
 
@@ -2440,6 +4913,81 @@ class CompleteSkillEngineIntegrationTest {
         tags = setOf(com.stzb.server.game.battle.DamageTag.ONGOING),
         skillId = 900000,
         effectId = 305,
+    )
+
+    private fun physicalDamage(
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+        amount: Int,
+    ) = TroopDamageChange(
+        source = source,
+        target = target,
+        amount = amount,
+        troopsAfter = 10_000 - amount,
+        school = DamageSchool.PHYSICAL,
+        origin = DamageOrigin.NORMAL,
+        tags = emptySet(),
+        skillId = 0,
+        effectId = 0,
+    )
+
+    private fun controlDurationModifier(
+        source: BattleHeroRef,
+        effectId: Int,
+        detailId: Int,
+        modifier: BattleModifier.ControlDurationIncrease,
+    ) = ModifierEffectChange(
+        spec = PersistentEffectSpec(
+            source = source,
+            target = source,
+            rootSkillId = detailId / 100,
+            skillId = detailId / 100,
+            skillKind = SkillKind.PASSIVE,
+            rawSkillType = 17,
+            detailId = detailId,
+            effectId = effectId,
+            category = com.stzb.server.game.battle.EffectCategory.BENEFICIAL,
+            conflict = 0,
+            replaceType = 0,
+            bindFlag = 0,
+            maxStacks = 1,
+            delayRound = 0,
+            delayHit = 0,
+            availableRounds = 0,
+            availableHit = 1,
+            clearPerHit = false,
+            startBoundary = EffectStartBoundary.IMMEDIATE,
+            potency = TypedBattlePotency.flat(modifier.rounds),
+        ),
+        modifier = modifier,
+    )
+
+    private fun controlChange(
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+    ) = ApplyBattleEffectChange(
+        PersistentEffectSpec(
+            source = source,
+            target = target,
+            rootSkillId = 900000,
+            skillId = 900000,
+            skillKind = SkillKind.ACTIVE,
+            rawSkillType = 3,
+            detailId = 90000001,
+            effectId = 501,
+            category = com.stzb.server.game.battle.EffectCategory.HARMFUL,
+            conflict = 501,
+            replaceType = 0,
+            bindFlag = 0,
+            maxStacks = 1,
+            delayRound = 0,
+            delayHit = 0,
+            availableRounds = 1,
+            availableHit = 0,
+            clearPerHit = false,
+            startBoundary = EffectStartBoundary.IMMEDIATE,
+            potency = TypedBattlePotency.flat(1),
+        ),
     )
 
     private fun statChange(

@@ -1,6 +1,7 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleRandom
 import com.stzb.server.game.battle.Side
 
 data class SkillExecutionFrame(
@@ -18,8 +19,10 @@ class SkillRuntimeState {
     private val sideTriggerCounts = mutableMapOf<SideTriggerKey, Int>()
     private val consumedThresholdGenerations = mutableMapOf<ThresholdKey, Int>()
     private val limitedOccurrences = mutableMapOf<OccurrenceKey, Int>()
+    private val counters = mutableMapOf<CounterKey, Int>()
     private val roundHurtCounts = mutableMapOf<RoundHurtKey, Int>()
     private val pendingSignals = mutableMapOf<SignalKey, Int>()
+    private val preparedEffectRounds = mutableMapOf<PreparedEffectRoundKey, Boolean>()
     private val markers = mutableMapOf<MarkerKey, MarkerValue>()
     private val referencedValueDeltas = mutableMapOf<ReferencedValueKey, Int>()
     private val referencedValueProgressions =
@@ -91,6 +94,31 @@ class SkillRuntimeState {
     fun sideCount(side: Side, trigger: BattleTrigger): Int =
         sideTriggerCounts[SideTriggerKey(side, trigger)] ?: 0
 
+    fun preparedEffectActive(
+        target: BattleHeroRef,
+        source: BattleHeroRef,
+        detailId: Int,
+        effectId: Int,
+        round: Int,
+        probability: Int,
+        random: BattleRandom,
+    ): Boolean {
+        require(round > 0) { "Prepared effect round must be positive: $round" }
+        require(probability in 0..100) {
+            "Prepared effect probability must be within 0..100: $probability"
+        }
+        val key = PreparedEffectRoundKey(
+            target = target,
+            source = source,
+            detailId = detailId,
+            effectId = effectId,
+            round = round,
+        )
+        return preparedEffectRounds.getOrPut(key) {
+            probability >= 100 || random.nextInt(100) < probability
+        }
+    }
+
     fun consumeThreshold(
         owner: BattleHeroRef,
         namespace: String,
@@ -121,6 +149,41 @@ class SkillRuntimeState {
         if (consumed >= limit) return false
         limitedOccurrences[key] = consumed + 1
         return true
+    }
+
+    fun limitedOccurrenceCount(
+        owner: BattleHeroRef,
+        namespace: String,
+    ): Int {
+        require(namespace.isNotBlank()) { "Occurrence namespace must not be blank" }
+        return limitedOccurrences[OccurrenceKey(owner, namespace)] ?: 0
+    }
+
+    fun counter(
+        owner: BattleHeroRef,
+        namespace: String,
+    ): Int {
+        require(namespace.isNotBlank()) { "Counter namespace must not be blank" }
+        return counters[CounterKey(owner, namespace)] ?: 0
+    }
+
+    fun addCounter(
+        owner: BattleHeroRef,
+        namespace: String,
+        delta: Int,
+        minimum: Int = 0,
+        maximum: Int = Int.MAX_VALUE,
+    ): Int {
+        require(namespace.isNotBlank()) { "Counter namespace must not be blank" }
+        require(minimum <= maximum) {
+            "Counter minimum must not exceed maximum: minimum=$minimum maximum=$maximum"
+        }
+        val key = CounterKey(owner, namespace)
+        val updated = ((counters[key] ?: 0).toLong() + delta)
+            .coerceIn(minimum.toLong(), maximum.toLong())
+            .toInt()
+        counters[key] = updated
+        return updated
     }
 
     fun recordRoundHurt(target: BattleHeroRef, round: Int): Int {
@@ -418,6 +481,19 @@ class SkillRuntimeState {
     private data class OccurrenceKey(
         val owner: BattleHeroRef,
         val namespace: String,
+    )
+
+    private data class CounterKey(
+        val owner: BattleHeroRef,
+        val namespace: String,
+    )
+
+    private data class PreparedEffectRoundKey(
+        val target: BattleHeroRef,
+        val source: BattleHeroRef,
+        val detailId: Int,
+        val effectId: Int,
+        val round: Int,
     )
 
     private data class RoundHurtKey(

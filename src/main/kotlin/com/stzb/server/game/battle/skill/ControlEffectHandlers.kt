@@ -23,6 +23,8 @@ enum class ActionEffectKind {
 }
 
 private val PREPARATION_CANCELLING_IDS = setOf(501, 502, 701, 702, 901, 902)
+internal val PER_ROUND_PREPARED_EFFECT_IDS =
+    setOf(701, 702, 703, 711, 714, 744, 752, 761, 771)
 
 data class ActionEffectChange(
     val spec: PersistentEffectSpec,
@@ -100,8 +102,13 @@ class ActionPermissionResolver(
     fun permissionFor(
         actor: BattleHeroRef,
         intendedTarget: BattleHeroRef? = null,
+    ): ActionPermission =
+        permissionFor(intendedTarget, effectStore.effectsFor(actor))
+
+    private fun permissionFor(
+        intendedTarget: BattleHeroRef?,
+        effects: List<com.stzb.server.game.battle.ActiveSkillEffect>,
     ): ActionPermission {
-        val effects = effectStore.effectsFor(actor)
         val cannotAct = effects.any { it.effectId in CONFUSION_IDS }
         val cannotCast = cannotAct || effects.any { it.effectId in HESITATION_IDS }
         val cannotNormal = cannotAct || effects.any { it.effectId in DISARM_IDS }
@@ -122,7 +129,7 @@ class ActionPermissionResolver(
             grantsPursuitOpportunityPerNormal = !cannotAct && !cannotNormal,
             counterattack = effects.any { it.effectId == COUNTERATTACK_ID },
             secondaryAttack = effects.any { it.effectId == SECONDARY_ATTACK_ID },
-            firstAction = effects.any { it.effectId == FIRST_ACTION_ID },
+            firstAction = effects.any { it.effectId in FIRST_ACTION_IDS },
         )
     }
 
@@ -136,8 +143,20 @@ class ActionPermissionResolver(
             } else {
                 null
             }
-        val permission = permissionFor(actor, intendedTarget)
-        if (effectStore.effectsFor(actor).none { it.effectId in BERSERK_IDS }) return permission
+        val effects = effectStore.effectsFor(actor).filter { effect ->
+            effect.effectId !in PER_ROUND_PREPARED_EFFECT_IDS ||
+                context.runtime.preparedEffectActive(
+                    target = actor,
+                    source = effect.source,
+                    detailId = effect.detailId,
+                    effectId = effect.effectId,
+                    round = context.round,
+                    probability = effect.effectiveStrength.coerceIn(0, 100),
+                    random = context.random,
+                )
+        }
+        val permission = permissionFor(intendedTarget, effects)
+        if (effects.none { it.effectId in BERSERK_IDS }) return permission
         val resolvedSide = if (context.random.nextInt(2) == 0) actor.side else actor.side.opposite()
         val candidates = context.battleView.heroes()
             .filter { it.side == resolvedSide }
@@ -163,13 +182,13 @@ class ActionPermissionResolver(
         val BERSERK_IDS = setOf(503, 703, 903)
         val GUARD_IDS = setOf(504)
         const val TAUNT_ID = 505
-        val EVADE_IDS = setOf(514, 714)
+        val EVADE_IDS = setOf(514, 714, 814)
         const val IGNORE_EVADE_ID = 515
         val DOUBLE_ATTACK_IDS = setOf(200, 544, 744)
         val DISARM_IDS = setOf(552, 752, 952)
         const val SECONDARY_ATTACK_ID = 545
         const val COUNTERATTACK_ID = 551
-        const val FIRST_ACTION_ID = 761
+        val FIRST_ACTION_IDS = setOf(561, 761)
     }
 }
 
@@ -177,8 +196,9 @@ object ControlEffectHandlers {
     val effectIds: Set<Int> =
         (
             (501..506) + (511..515) + listOf(542) + (544..546) +
-                listOf(551, 552, 571, 581, 594) + (701..703) + (711..714) +
-                listOf(744, 752, 761, 771) + (901..903) + listOf(952)
+                listOf(551, 552, 561, 571, 581, 594) + (701..703) + (711..714) +
+                listOf(744, 752, 761, 771, 791, 793, 811, 814, 871) +
+                (901..903) + listOf(952)
             ).toSet()
 
     fun registrations(
@@ -336,11 +356,17 @@ private class ControlEffectHandler(
     ): PersistentEffectSpec {
         requireSupportedSkillOrigin(invocation)
         val raw = invocation.rule.raw
-        val potency = when (val value = calculator.effectValue(
-            invocation.rule,
-            invocation.liveSourceHero(),
-            invocation.rootSkillLevel(invocation.liveSourceHero()),
-        )) {
+        val source = invocation.liveSourceHero()
+        val level = invocation.rootSkillLevel(source)
+        val potency = if (ownedEffectId in PER_ROUND_PREPARED_EFFECT_IDS) {
+            TypedBattlePotency.percent(
+                (
+                    raw.probabilityInit +
+                        (level - 1) * (raw.probabilityMax - raw.probabilityInit) / 9.0
+                    ).toInt().coerceIn(0, 100),
+            )
+        } else {
+            when (val value = calculator.effectValue(invocation.rule, source, level)) {
             is TypedBattlePotency.Resolved -> value
             is TypedBattlePotency.Deferred -> throw UnsupportedConfiguredBattleValueException(
                 BattleEffectDiagnostic(
@@ -353,6 +379,7 @@ private class ControlEffectHandler(
                     value.diagnostic,
                 ),
             )
+            }
         }
         return PersistentEffectSpec(
             source = invocation.context.source,
@@ -400,6 +427,10 @@ private class ControlEffectHandler(
         val activeIds = active.mapTo(mutableSetOf()) { it.effectId }
         return when {
             activeIds.any { it in INSIGHT_IDS } -> activeIds.first { it in INSIGHT_IDS }
+            ownedEffectId in CONFUSION_IDS && CONFUSION_IMMUNITY_ID in activeIds ->
+                CONFUSION_IMMUNITY_ID
+            ownedEffectId in BERSERK_IDS && BERSERK_IMMUNITY_ID in activeIds ->
+                BERSERK_IMMUNITY_ID
             ownedEffectId in DISARM_IDS && DISARM_IMMUNITY_ID in activeIds -> DISARM_IMMUNITY_ID
             active.lastOrNull { it.effectId == RESISTANCE_ID }?.let { resistance ->
                 invocation.context.random.nextInt(100) < resistance.effectiveStrength.coerceIn(0, 100)
@@ -411,10 +442,14 @@ private class ControlEffectHandler(
     private companion object {
         val CONTROL_IDS =
             setOf(501, 502, 503, 505, 552, 701, 702, 703, 752, 901, 902, 903, 952)
-        val INSIGHT_IDS = setOf(511, 711)
+        val CONFUSION_IDS = setOf(501, 701, 901)
+        val BERSERK_IDS = setOf(503, 703, 903)
+        val INSIGHT_IDS = setOf(511, 711, 811)
         val DISARM_IDS = setOf(552, 752, 952)
         val INSIGHT_BLOCKED_IDS = CONTROL_IDS
         const val DISARM_IMMUNITY_ID = 594
+        const val CONFUSION_IMMUNITY_ID = 791
+        const val BERSERK_IMMUNITY_ID = 793
         val CLEANSE_IDS = setOf(513, 713)
         val DISPEL_IDS = setOf(512, 712)
         const val DAMAGE_REDIRECTION_ID = 506
@@ -451,22 +486,23 @@ private fun actionKindFor(effectId: Int): ActionEffectKind? =
         545 -> ActionEffectKind.SECONDARY_ATTACK
         546 -> ActionEffectKind.EXECUTION_ATTACK
         551 -> ActionEffectKind.COUNTERATTACK
-        571, 771 -> ActionEffectKind.IGNORE_TROOP_COUNTER
+        571, 771, 871 -> ActionEffectKind.IGNORE_TROOP_COUNTER
         581 -> ActionEffectKind.REDUCE_INHERENT_PREPARATION
-        761 -> ActionEffectKind.FIRST_ACTION
+        561, 761 -> ActionEffectKind.FIRST_ACTION
         else -> null
     }
 
 private fun statusFor(effectId: Int): BattleStatus? =
     when (effectId) {
         501, 701, 901 -> BattleStatus.CONFUSION
+        503, 703, 903 -> BattleStatus.BERSERK
         502, 702, 902 -> BattleStatus.HESITATION
-        511, 711 -> BattleStatus.INSIGHT
-        514, 714 -> BattleStatus.EVADE
+        511, 711, 811 -> BattleStatus.INSIGHT
+        514, 714, 814 -> BattleStatus.EVADE
         515 -> BattleStatus.IGNORE_EVADE
         544, 744 -> BattleStatus.DOUBLE_ATTACK
         552, 752, 952 -> BattleStatus.DISARM
-        761 -> BattleStatus.FIRST_ACTION
+        561, 761 -> BattleStatus.FIRST_ACTION
         else -> null
     }
 

@@ -1,6 +1,7 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleEquipmentRepository
 import com.stzb.server.game.battle.BattleStatus
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
@@ -20,6 +21,15 @@ data class SkillConditionCode(
 enum class Subject {
     SOURCE,
     CURRENT_TARGET,
+}
+
+enum class SkillTreasureType {
+    SWORD,
+    BLADE,
+    POLEARM,
+    BOW,
+    FAN,
+    OTHER,
 }
 
 enum class Comparison {
@@ -147,6 +157,11 @@ sealed interface SkillCondition {
         val enabled: Boolean,
     ) : SkillCondition
 
+    data class TreasureType(
+        val subject: Subject,
+        val expected: SkillTreasureType?,
+    ) : SkillCondition
+
     data class HasEffect(
         val subject: Subject,
         val effectId: Int,
@@ -162,6 +177,13 @@ sealed interface SkillCondition {
             require(effectIds.isNotEmpty()) { "Effect set must not be empty" }
         }
     }
+
+    data class EffectStrength(
+        val subject: Subject,
+        val detailId: Int,
+        val comparison: Comparison,
+        val value: Int,
+    ) : SkillCondition
 
     data class HasStatus(
         val subject: Subject,
@@ -198,6 +220,17 @@ sealed interface SkillCondition {
         val detailId: Int,
         val negated: Boolean = false,
     ) : SkillCondition
+
+    data class RuntimeCounter(
+        val subject: Subject,
+        val namespace: String,
+        val comparison: Comparison,
+        val value: Int,
+    ) : SkillCondition {
+        init {
+            require(namespace.isNotBlank()) { "Runtime counter namespace must not be blank" }
+        }
+    }
 
     data class EventTrigger(
         val trigger: BattleTrigger,
@@ -236,6 +269,7 @@ interface SpecialSkillPlugin {
 class CompiledSkillCondition internal constructor(
     val detailId: Int,
     conditions: Collection<SkillCondition>,
+    private val treasureTypeResolver: (Int) -> SkillTreasureType?,
 ) {
     val conditions: List<SkillCondition> =
         Collections.unmodifiableList(ArrayList(conditions))
@@ -252,19 +286,37 @@ class CompiledSkillCondition internal constructor(
                 is SkillCondition.FormationRoster -> matchesFormationRoster(condition, context)
                 is SkillCondition.StatComparison -> matchesStatComparison(condition, context)
                 is SkillCondition.ConfigBranch -> condition.enabled
+                is SkillCondition.TreasureType -> matchesTreasureType(condition, context)
                 is SkillCondition.HasEffect -> matchesEffect(condition, context)
                 is SkillCondition.HasAnyEffect -> matchesAnyEffect(condition, context)
+                is SkillCondition.EffectStrength -> matchesEffectStrength(condition, context)
                 is SkillCondition.HasStatus -> matchesStatus(condition, context)
                 is SkillCondition.TriggerCount -> matchesTriggerCount(condition, context)
                 is SkillCondition.HeroId -> matchesHeroId(condition, context)
                 is SkillCondition.Country -> matchesCountry(condition, context)
                 is SkillCondition.RuntimeMarker -> matchesRuntimeMarker(condition, context)
+                is SkillCondition.RuntimeCounter -> matchesRuntimeCounter(condition, context)
                 is SkillCondition.EventTrigger -> trigger == condition.trigger
                 is SkillCondition.EventTriggerSet -> trigger in condition.triggers
                 is SkillCondition.TargetPredicate -> true
                 is SpecialConditionRequirement -> throw unresolved(condition, trigger)
             }
         }
+
+    private fun matchesTreasureType(
+        condition: SkillCondition.TreasureType,
+        context: SkillBattleContext,
+    ): Boolean {
+        val ref = subject(condition.subject, context) ?: return false
+        val hero = when (ref.side) {
+            com.stzb.server.game.battle.Side.ATTACKER -> context.request.attacker
+            com.stzb.server.game.battle.Side.DEFENDER -> context.request.defender
+        }.heroes.singleOrNull { it.position == ref.position && it.id == ref.heroId } ?: return false
+        val equipmentId = hero.equipmentIds.firstOrNull()
+            ?: return condition.expected == null
+        val actual = treasureTypeResolver(equipmentId) ?: return false
+        return actual == condition.expected
+    }
 
     private fun matchesTroopRatio(
         condition: SkillCondition.TroopRatio,
@@ -391,6 +443,20 @@ class CompiledSkillCondition internal constructor(
         return if (condition.negated) !present else present
     }
 
+    private fun matchesEffectStrength(
+        condition: SkillCondition.EffectStrength,
+        context: SkillBattleContext,
+    ): Boolean {
+        val ref = subject(condition.subject, context) ?: return false
+        if (SkillBattleViewCapability.ACTIVE_EFFECTS !in context.battleView.capabilities) {
+            return false
+        }
+        return condition.comparison.matches(
+            context.battleView.activeEffectStrength(ref, condition.detailId).toLong(),
+            condition.value.toLong(),
+        )
+    }
+
     private fun matchesStatus(
         condition: SkillCondition.HasStatus,
         context: SkillBattleContext,
@@ -441,6 +507,17 @@ class CompiledSkillCondition internal constructor(
         return if (condition.negated) !present else present
     }
 
+    private fun matchesRuntimeCounter(
+        condition: SkillCondition.RuntimeCounter,
+        context: SkillBattleContext,
+    ): Boolean {
+        val ref = subject(condition.subject, context) ?: return false
+        return condition.comparison.matches(
+            context.runtime.counter(ref, condition.namespace).toLong(),
+            condition.value.toLong(),
+        )
+    }
+
     private fun subject(
         subject: Subject,
         context: SkillBattleContext,
@@ -472,6 +549,8 @@ class CompiledSkillCondition internal constructor(
 class SkillConditionInterpreter(
     private val graph: SkillRuleGraph,
     plugins: List<SpecialSkillPlugin> = emptyList(),
+    private val treasureTypeResolver: (Int) -> SkillTreasureType? =
+        DEFAULT_TREASURE_TYPE_RESOLVER,
 ) : PendingSkillConditionInterpreter {
     private val cache = ConcurrentHashMap<CacheKey, CompiledSkillCondition>()
     private val unknown = Collections.synchronizedSet(linkedSetOf<SkillConditionCode>())
@@ -525,6 +604,9 @@ class SkillConditionInterpreter(
         builtInClientBranchConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInTreasureTypeConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         builtInCountryConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -555,6 +637,15 @@ class SkillConditionInterpreter(
         builtInQibuActionConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
+        builtInQiqinqizongConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
+        builtInFuboyangshaConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
+        builtInPibingjuyiConditionPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
         builtInHuangtianDamageConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
@@ -565,6 +656,9 @@ class SkillConditionInterpreter(
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
         builtInJuxianStatApplyingPlugins(graph, all.keys).forEach { plugin ->
+            plugin.ownedConditions.forEach { code -> all[code] = plugin }
+        }
+        builtInShenshidingjiConditionPlugins(graph, all.keys).forEach { plugin ->
             plugin.ownedConditions.forEach { code -> all[code] = plugin }
         }
         builtInChijieDamageBeforePlugins(graph, all.keys).forEach { plugin ->
@@ -652,7 +746,7 @@ class SkillConditionInterpreter(
             compiled
             } + implicitDetailConditions(rule)
             ).distinct()
-        return CompiledSkillCondition(rule.detailId, conditions)
+        return CompiledSkillCondition(rule.detailId, conditions, treasureTypeResolver)
     }
 
     private data class CacheKey(
@@ -661,6 +755,54 @@ class SkillConditionInterpreter(
         val precondition: Int,
         val condition: Int,
     )
+}
+
+private class BuiltInTreasureTypeConditionPlugin(
+    ownedConditions: Set<SkillConditionCode>,
+) : SpecialSkillPlugin {
+    override val id: String = "builtin.treasure-type"
+    override val ownedConditions: Set<SkillConditionCode> =
+        Collections.unmodifiableSet(LinkedHashSet(ownedConditions))
+
+    override fun compile(
+        code: SkillConditionCode,
+        rule: SkillEffectRule,
+    ): List<SkillCondition> =
+        listOf(
+            SkillCondition.TreasureType(
+                subject = Subject.SOURCE,
+                expected = when (code.value) {
+                    400 -> null
+                    401 -> SkillTreasureType.SWORD
+                    402 -> SkillTreasureType.BLADE
+                    403 -> SkillTreasureType.POLEARM
+                    404 -> SkillTreasureType.BOW
+                    405 -> SkillTreasureType.FAN
+                    406 -> SkillTreasureType.OTHER
+                    else -> error("Unsupported treasure type condition $code")
+                },
+            ),
+        )
+}
+
+private fun builtInTreasureTypeConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = graph.details
+        .flatMap(::conditionCodes)
+        .filter {
+            it.skillId == 200957 &&
+                it.field == SkillConditionField.CAST_CONDITION &&
+                it.value in 400..406
+        }
+        .filterNot(overridden::contains)
+        .toSet()
+    return if (codes.isEmpty()) {
+        emptyList()
+    } else {
+        listOf(BuiltInTreasureTypeConditionPlugin(codes))
+    }
 }
 
 private fun implicitDetailConditions(rule: SkillEffectRule): List<SkillCondition> =
@@ -796,6 +938,10 @@ private class BuiltInMarkerConditionPlugin(
                 SkillCondition.TargetPredicate.Kind.LACKS_DETAIL_MARKER,
                 value = 20024302,
             )
+            420026421 -> SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.LACKS_DETAIL_MARKER,
+                value = 20026421,
+            )
             121079601 -> SkillCondition.RuntimeMarker(
                 Subject.SOURCE,
                 detailId = 21079601,
@@ -843,6 +989,10 @@ private class BuiltInMarkerConditionPlugin(
             320026811 -> SkillCondition.RuntimeMarker(
                 Subject.SOURCE,
                 detailId = 20026811,
+            )
+            320026412 -> SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
+                value = 20026412,
             )
             320024411 -> SkillCondition.RuntimeMarker(
                 Subject.SOURCE,
@@ -969,12 +1119,14 @@ private fun builtInMarkerConditionPlugins(
                 it.value in setOf(
                     320000301, 121002401, 321001701, 421001701,
                     420024301, 420024302, 121079601, 321098402,
+                    420026421,
                     321024601, 320024601, 321324601,
                     320025101, 321525101,
                     321226402, 321126401,
                     321125401,
                     321025601,
                     320026811,
+                    320026412,
                     320024411, 320024421,
                     321325201,
                     421325701,
@@ -1186,6 +1338,94 @@ private fun builtInQibuActionConditionPlugins(
     )
 }
 
+private fun builtInQiqinqizongConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = setOf(
+        SkillConditionCode(210298, SkillConditionField.CONDITION, 5007),
+        SkillConditionCode(210298, SkillConditionField.CONDITION, 33005),
+    ).filterTo(linkedSetOf()) { it !in overridden }
+    if (codes.isEmpty() || graph.details.none { it.detailId == 21029801 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.qiqinqizong-harmful-event-boundaries"
+            override val ownedConditions: Set<SkillConditionCode> = codes
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(
+                    SkillCondition.EventTriggerSet(
+                        setOf(
+                            BattleTrigger.DAMAGE_BEFORE,
+                            BattleTrigger.EFFECT_APPLYING,
+                        ),
+                    ),
+                )
+        },
+    )
+}
+
+private fun builtInFuboyangshaConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val normalAttackCodes = setOf(
+        SkillConditionCode(200255, SkillConditionField.CONDITION, 29004),
+        SkillConditionCode(200255, SkillConditionField.CONDITION, 30000),
+    )
+    val thresholdCode =
+        SkillConditionCode(212255, SkillConditionField.PRECONDITION, 4040)
+    val codes = (normalAttackCodes + thresholdCode)
+        .filterTo(linkedSetOf()) { it !in overridden }
+    if (codes.isEmpty() || graph.details.none { it.detailId == 20025502 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.fuboyangsha-normal-attack-progress"
+            override val ownedConditions: Set<SkillConditionCode> = codes
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(
+                    if (code == thresholdCode) {
+                        SkillCondition.RuntimeCounter(
+                            subject = Subject.SOURCE,
+                            namespace = "skill.200255.normal-damage-uplift",
+                            comparison = Comparison.GREATER_THAN_OR_EQUAL,
+                            value = 40,
+                        )
+                    } else {
+                        SkillCondition.EventTrigger(BattleTrigger.NORMAL_ATTACK_AFTER)
+                    },
+                )
+        },
+    )
+}
+
+private fun builtInPibingjuyiConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val code = SkillConditionCode(200264, SkillConditionField.CONDITION, 29001)
+    if (code in overridden || graph.details.none { it.detailId == 20026402 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.pibingjuyi-damage-before"
+            override val ownedConditions: Set<SkillConditionCode> = setOf(code)
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(SkillCondition.EventTrigger(BattleTrigger.DAMAGE_BEFORE))
+        },
+    )
+}
+
 private fun builtInHuangtianDamageConditionPlugins(
     graph: SkillRuleGraph,
     overridden: Set<SkillConditionCode>,
@@ -1271,6 +1511,36 @@ private fun builtInJuxianStatApplyingPlugins(
                 rule: SkillEffectRule,
             ): List<SkillCondition> =
                 listOf(SkillCondition.EventTrigger(BattleTrigger.EFFECT_APPLYING))
+        },
+    )
+}
+
+private fun builtInShenshidingjiConditionPlugins(
+    graph: SkillRuleGraph,
+    overridden: Set<SkillConditionCode>,
+): List<SpecialSkillPlugin> {
+    val codes = setOf(
+        SkillConditionCode(210257, SkillConditionField.CONDITION, 33003),
+        SkillConditionCode(210257, SkillConditionField.CONDITION, 24001),
+        SkillConditionCode(210257, SkillConditionField.CONDITION, 33004),
+    ).filterTo(linkedSetOf()) { it !in overridden }
+    if (codes.isEmpty() || graph.details.none { it.detailId == 21025714 }) return emptyList()
+    return listOf(
+        object : SpecialSkillPlugin {
+            override val id: String = "builtin.shenshidingji-effect-applying"
+            override val ownedConditions: Set<SkillConditionCode> = codes
+
+            override fun compile(
+                code: SkillConditionCode,
+                rule: SkillEffectRule,
+            ): List<SkillCondition> =
+                listOf(
+                    if (code.value == 33004) {
+                        SkillCondition.ConfigBranch(true)
+                    } else {
+                        SkillCondition.EventTrigger(BattleTrigger.EFFECT_APPLYING)
+                    },
+                )
         },
     )
 }
@@ -1447,7 +1717,14 @@ private fun builtInFenjiActionPlugins(
                 code: SkillConditionCode,
                 rule: SkillEffectRule,
             ): List<SkillCondition> =
-                listOf(SkillCondition.EventTrigger(BattleTrigger.ACTION_BEFORE))
+                listOf(
+                    SkillCondition.EffectStrength(
+                        subject = Subject.SOURCE,
+                        detailId = 21396101,
+                        comparison = Comparison.GREATER_THAN_OR_EQUAL,
+                        value = 40,
+                    ),
+                )
         },
     )
 }
@@ -1937,6 +2214,22 @@ private val ATTRIBUTE_CAST_CONDITIONS =
 private const val FORMATION_HERO_COUNT = 3
 private const val CURRENT_CLIENT_BRANCH_PREFIX = "127"
 private const val LEGACY_CLIENT_BRANCH_PREFIX = "227"
+private val DEFAULT_TREASURE_TYPE_RESOLVER: (Int) -> SkillTreasureType? by lazy {
+    val equipment = BattleEquipmentRepository.loadDefault()
+    val resolver: (Int) -> SkillTreasureType? = { equipmentId ->
+        equipment.equipment(equipmentId)?.type?.let { type ->
+            when (type) {
+                "剑" -> SkillTreasureType.SWORD
+                "刀" -> SkillTreasureType.BLADE
+                "长兵" -> SkillTreasureType.POLEARM
+                "弓" -> SkillTreasureType.BOW
+                "扇" -> SkillTreasureType.FAN
+                else -> SkillTreasureType.OTHER
+            }
+        }
+    }
+    resolver
+}
 private val CURRENT_PARAMETER_BRANCHES =
     setOf(230001912, 230005101, 130005205, 230005301)
 private val LEGACY_PARAMETER_BRANCHES =

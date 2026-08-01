@@ -114,6 +114,7 @@ internal object ClientBattleTextReplayProtocol {
 
     fun effectId(status: BattleStatus): Int = when (status) {
         BattleStatus.CONFUSION -> 501
+        BattleStatus.BERSERK -> 503
         BattleStatus.HESITATION -> 502
         BattleStatus.DISARM -> 552
         BattleStatus.SHAKE -> 303
@@ -154,6 +155,7 @@ internal object ClientBattleTextReplayProtocol {
 
     fun statusAppliedAction(status: BattleStatus): Int = when (status) {
         BattleStatus.CONFUSION -> 65
+        BattleStatus.BERSERK -> 67
         BattleStatus.HESITATION -> 66
         BattleStatus.INSIGHT -> 70
         BattleStatus.EVADE -> 73

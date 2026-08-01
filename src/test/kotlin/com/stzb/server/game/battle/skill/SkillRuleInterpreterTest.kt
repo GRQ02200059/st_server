@@ -11,6 +11,7 @@ import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleStats
 import com.stzb.server.game.battle.BattleStat
 import com.stzb.server.game.battle.BattleTeam
+import com.stzb.server.game.battle.BattleTargetingKind
 import com.stzb.server.game.battle.BattleConfigRepository
 import com.stzb.server.game.battle.DamageOrigin
 import com.stzb.server.game.battle.DamageSchool
@@ -25,6 +26,62 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class SkillRuleInterpreterTest {
+    @Test
+    fun `details with the same target signature reuse one random selection`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 521,
+                    attackType = 43,
+                    attackMax = 2,
+                ),
+                effectRule(
+                    detailId = 102,
+                    effectId = 523,
+                    attackType = 43,
+                    attackMax = 2,
+                ),
+                kind = SkillKind.COMMAND,
+            ),
+        )
+        val sourceHero = hero(1, 0, skillIds = listOf(1))
+        val enemies = (0..2).map { position ->
+            hero(10 + position, position)
+        }
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(sourceHero)),
+            defender = BattleTeam(enemies),
+        )
+        val random = CountingRandom(0)
+        val runtime = SkillRuntimeState()
+        val state = SkillBattleState(request, runtime)
+        val context = SkillBattleContext(
+            request = request,
+            runtime = runtime,
+            random = random,
+            round = 0,
+            source = ref(Side.ATTACKER, sourceHero.position, sourceHero.id.value),
+            rootSkillId = 1,
+            currentSkillId = 1,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = state.view,
+        )
+
+        val changes = interpreter(graph)
+            .execute(1, BattleTrigger.BATTLE_COMMAND, context)
+            .stateChanges
+            .filterIsInstance<DamageModifierChange>()
+            .groupBy(DamageModifierChange::effectId)
+
+        assertEquals(
+            changes.getValue(521).map(DamageModifierChange::target),
+            changes.getValue(523).map(DamageModifierChange::target),
+        )
+        assertEquals(3, random.calls)
+    }
+
     @Test
     fun `real child ids inherit root source and preserve execution order`() {
         val graph = graph(
@@ -278,6 +335,41 @@ class SkillRuleInterpreterTest {
     }
 
     @Test
+    fun `fenji comparison child rolls detail probability for each selected hero`() {
+        val graph = graph(
+            rule(
+                212961,
+                effectRule(
+                    detailId = 21296113,
+                    effectId = 122,
+                    childSkillIds = setOf(210961),
+                    attackType = 113,
+                    attackMax = 6,
+                    probabilityInit = 50,
+                    probabilityMax = 50,
+                ),
+            ),
+            rule(210961, effectRule(21096101, 77, constantParam = 1)),
+        )
+        val random = SequenceRandom(
+            0,
+            0, 0,
+            0, 0,
+            99,
+        )
+
+        val result = interpreter(graph).execute(
+            212961,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context(skillId = 212961, random = random),
+        )
+
+        assertEquals(listOf(210961), result.executedSkillIds.filter { it != 212961 })
+        assertEquals(1, result.stateChanges.filterIsInstance<MarkerEffectChange>().size)
+        assertEquals(6, random.calls)
+    }
+
+    @Test
     fun `detail probability interpolates from initial to maximum by root skill level`() {
         val detail = effectRule(
             detailId = 101,
@@ -390,7 +482,7 @@ class SkillRuleInterpreterTest {
         )
         val registry = BattleEffectRegistry.strict(graph).registerMetaEffects()
 
-        assertEquals(38, EXPECTED_META_EFFECT_IDS.size)
+        assertEquals(51, EXPECTED_META_EFFECT_IDS.size)
         assertEquals(EXPECTED_META_EFFECT_IDS, MetaEffectHandlers.effectIds)
         assertEquals(EXPECTED_META_EFFECT_IDS, registry.implementedEffectIds())
         EXPECTED_META_EFFECT_IDS.forEach { effectId ->
@@ -415,6 +507,495 @@ class SkillRuleInterpreterTest {
             .implementedEffectIds()
 
         assertEquals(EXPECTED_META_EFFECT_IDS intersect realGraph.effectIds, implemented)
+    }
+
+    @Test
+    fun `effect 271 emits an executable recovery dealt modifier`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 271,
+                    constantParam = 15,
+                    attackType = 13,
+                ),
+            ),
+        )
+
+        val result = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context(skillId = 1),
+        )
+
+        assertTrue(result.stateChanges.single() is ModifierEffectChange)
+    }
+
+    @Test
+    fun `target immunity effects emit typed one round modifiers`() {
+        val graph = graph(
+            rule(
+                200931,
+                effectRule(20093101, 193, availableRounds = 1),
+                effectRule(20093102, 194, availableRounds = 1),
+                effectRule(20093103, 190, availableRounds = 1),
+                kind = SkillKind.PURSUIT,
+            ),
+        )
+
+        val result = interpreter(graph).execute(
+            200931,
+            BattleTrigger.PURSUIT_ATTEMPT,
+            context(skillId = 200931),
+        )
+
+        val modifiers = result.stateChanges.filterIsInstance<ModifierEffectChange>()
+        assertEquals(
+            setOf(
+                190 to BattleTargetingKind.NORMAL_ATTACK,
+                193 to BattleTargetingKind.ACTIVE_SKILL,
+                194 to BattleTargetingKind.PURSUIT_SKILL,
+            ),
+            modifiers.mapTo(mutableSetOf()) { change ->
+                change.spec.effectId to
+                    (change.modifier as BattleModifier.TargetImmunity).kind
+            },
+        )
+        assertTrue(modifiers.all { it.spec.availableRounds == 1 })
+    }
+
+    @Test
+    fun `effect 553 emits a typed counterattack immunity modifier`() {
+        val graph = graph(
+            rule(
+                460001,
+                effectRule(
+                    detailId = 46000101,
+                    effectId = 553,
+                    constantParam = 100,
+                    availableRounds = 1,
+                ),
+                kind = SkillKind.PASSIVE,
+            ),
+        )
+
+        val result = interpreter(graph).execute(
+            460001,
+            BattleTrigger.BATTLE_PASSIVE,
+            context(skillId = 460001),
+        )
+
+        val change = result.stateChanges.filterIsInstance<ModifierEffectChange>().single()
+        assertEquals(BattleModifier.CounterattackImmunity, change.modifier)
+        assertEquals(1, change.spec.availableRounds)
+    }
+
+    @Test
+    fun `effect 150 emits a typed specified effect trigger`() {
+        val graph = graph(
+            rule(
+                297173,
+                effectRule(
+                    detailId = 29717301,
+                    effectId = 150,
+                    effectParam = 305,
+                    availableHit = 1,
+                ),
+                kind = SkillKind.PASSIVE,
+            ),
+        )
+        val context = context(skillId = 297173)
+
+        val result = interpreter(graph).execute(
+            297173,
+            BattleTrigger.BATTLE_PASSIVE,
+            context,
+        )
+
+        val change = result.stateChanges.filterIsInstance<TriggerSpecifiedEffectChange>().single()
+        assertEquals(context.source, change.source)
+        assertEquals(context.source, change.target)
+        assertEquals(29717301, change.detailId)
+        assertEquals(305, change.triggeredEffectId)
+    }
+
+    @Test
+    fun `effect 220 emits persistent siege immunity for selected allies`() {
+        val graph = graph(
+            rule(
+                210267,
+                effectRule(
+                    detailId = 21026701,
+                    effectId = 220,
+                    attackType = 23,
+                    attackMax = 3,
+                    availableRounds = 2,
+                ),
+            ),
+        )
+
+        val result = interpreter(graph).execute(
+            210267,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context(skillId = 210267),
+        )
+
+        val changes = result.stateChanges.filterIsInstance<ApplyBattleEffectChange>()
+        assertEquals(2, changes.size)
+        assertTrue(changes.all { it.spec.effectId == 220 && it.spec.availableRounds == 2 })
+    }
+
+    @Test
+    fun `real ranged attack effect carries its referenced per distance bonus`() {
+        val repository = BattleConfigRepository.loadDefault()
+        val graph = SkillRuleCatalog.build(
+            SkillScope(setOf(300055), emptySet()),
+            repository,
+        )
+
+        val entryContext = context(
+            skillId = 300055,
+            sourceSkillLevel = 10,
+        )
+        val context = entryContext.copy(
+            battleView = SkillBattleState(
+                entryContext.request,
+                entryContext.runtime,
+            ).view,
+        )
+        val result = interpreter(graph).execute(
+            300055,
+            BattleTrigger.BATTLE_PASSIVE,
+            context,
+        )
+
+        val change = result.stateChanges
+            .filterIsInstance<ModifierEffectChange>()
+            .single { it.spec.effectId == 128 }
+        assertEquals(
+            BattleModifier.RangedNormalAttack(
+                damagePercentPerDistance = 25,
+            ),
+            change.modifier,
+        )
+        assertEquals(10, change.spec.availableRounds)
+    }
+
+    @Test
+    fun `control duration effects emit typed main skill and one shot modifiers`() {
+        val mainSkillOnly = effectRule(
+            detailId = 40009101,
+            effectId = 311,
+            effectParam = 1000001004,
+            constantParam = 1,
+            availableRounds = 10,
+        ).copy(skillKind = SkillKind.PASSIVE, rawSkillType = 16)
+        val nextControl = effectRule(
+            detailId = 47104401,
+            effectId = 312,
+            constantParam = 1,
+            availableHit = 1,
+            availableRounds = 0,
+        ).copy(skillKind = SkillKind.PASSIVE, rawSkillType = 19)
+
+        val mainChange = interpreter(graph(rule(400091, mainSkillOnly, kind = SkillKind.PASSIVE)))
+            .execute(400091, BattleTrigger.BATTLE_PASSIVE, context(400091))
+            .stateChanges
+            .filterIsInstance<ModifierEffectChange>()
+            .single()
+        val nextChange = interpreter(graph(rule(471044, nextControl, kind = SkillKind.PASSIVE)))
+            .execute(471044, BattleTrigger.BATTLE_PASSIVE, context(471044))
+            .stateChanges
+            .filterIsInstance<ModifierEffectChange>()
+            .single()
+
+        assertEquals(
+            BattleModifier.ControlDurationIncrease(
+                rounds = 1,
+                mainSkillOnly = true,
+                requiredSkillKind = SkillKind.PURSUIT,
+            ),
+            mainChange.modifier,
+        )
+        assertEquals(10, mainChange.spec.availableRounds)
+        assertEquals(
+            BattleModifier.ControlDurationIncrease(
+                rounds = 1,
+                mainSkillOnly = false,
+            ),
+            nextChange.modifier,
+        )
+        assertEquals(1, nextChange.spec.availableHit)
+    }
+
+    @Test
+    fun `normal attack simulation effects emit typed single and in range intents`() {
+        val single = effectRule(
+            detailId = 41111211,
+            effectId = 79,
+            availableHit = 2,
+            availableRounds = 0,
+        )
+        val allInRange = effectRule(
+            detailId = 41011321,
+            effectId = 80,
+            availableHit = 1,
+            availableRounds = 0,
+        )
+
+        val singleChange = interpreter(graph(rule(411112, single)))
+            .execute(411112, BattleTrigger.ACTIVE_SKILL_ATTEMPT, context(411112))
+            .stateChanges
+            .filterIsInstance<SimulatedNormalAttackChange>()
+            .single()
+        val allChange = interpreter(graph(rule(410113, allInRange)))
+            .execute(410113, BattleTrigger.ACTIVE_SKILL_ATTEMPT, context(410113))
+            .stateChanges
+            .filterIsInstance<SimulatedNormalAttackChange>()
+            .single()
+
+        assertEquals(SimulatedNormalAttackMode.SINGLE, singleChange.mode)
+        assertEquals(SimulatedNormalAttackMode.ALL_IN_RANGE, allChange.mode)
+        assertEquals(41111211, singleChange.detailId)
+        assertEquals(41011321, allChange.detailId)
+    }
+
+    @Test
+    fun `skill enhancement unlock emits typed allied modifiers`() {
+        val unlock = effectRule(
+            detailId = 20087001,
+            effectId = 132,
+            effectParam = 200870,
+            attackType = 23,
+            attackMax = 3,
+            availableRounds = 10,
+        ).copy(skillKind = SkillKind.PASSIVE, rawSkillType = 13)
+
+        val changes = interpreter(graph(rule(200870, unlock, kind = SkillKind.PASSIVE)))
+            .execute(200870, BattleTrigger.BATTLE_PASSIVE, context(200870))
+            .stateChanges
+            .filterIsInstance<ModifierEffectChange>()
+
+        assertEquals(2, changes.size)
+        assertTrue(changes.all {
+            it.modifier == BattleModifier.SkillEnhancementUnlock(200870) &&
+                it.spec.availableRounds == 10
+        })
+    }
+
+    @Test
+    fun `locked details execute only while their skill enhancement is unlocked`() {
+        val lockedMarker = effectRule(
+            detailId = 100,
+            effectId = 77,
+            constantParam = 7,
+            rawBuffType = 900001,
+        )
+        val unlockDeclaration = effectRule(
+            detailId = 200,
+            effectId = 132,
+            effectParam = 900001,
+        )
+        val graph = graph(
+            rule(1, lockedMarker),
+            rule(2, unlockDeclaration),
+        )
+        val interpreter = interpreter(graph)
+
+        val locked = interpreter.execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context(1),
+        )
+        val unlocked = interpreter.execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context(
+                skillId = 1,
+                sourceModifiers = listOf(
+                    BattleModifier.SkillEnhancementUnlock(900001),
+                ),
+            ),
+        )
+
+        assertTrue(locked.stateChanges.none { it is MarkerEffectChange })
+        assertEquals(
+            1,
+            unlocked.stateChanges.filterIsInstance<MarkerEffectChange>().size,
+        )
+    }
+
+    @Test
+    fun `all real advisor enhancements gate every configured locked detail`() {
+        val config = BattleConfigRepository.loadDefault()
+        val catalog = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = config.allSkillIds(),
+                learnableSaSkillIds = emptySet(),
+            ),
+            config,
+        )
+        val unlockDetails = catalog.details.filter { it.effectId == 132 }
+        val unlockIds = unlockDetails.mapTo(linkedSetOf()) { it.raw.effectParam }
+        val lockedDetails = catalog.details.filter { it.raw.lockFlag in unlockIds }
+
+        assertEquals(
+            mapOf(
+                200806 to 2,
+                200807 to 3,
+                200808 to 6,
+                200809 to 6,
+                200870 to 6,
+                200873 to 3,
+                200874 to 3,
+                200875 to 2,
+                200878 to 7,
+                200879 to 4,
+                200901 to 3,
+            ),
+            lockedDetails.groupingBy { it.raw.lockFlag }.eachCount().toSortedMap(),
+        )
+
+        lockedDetails.forEach { detail ->
+            val skillId = detail.detailId / 100
+            val requiredUnlockId = detail.raw.lockFlag
+            val isolatedRule = requireNotNull(catalog.rule(skillId)).copy(
+                details = listOf(detail),
+            )
+            val unlockDetail = unlockDetails.single {
+                it.raw.effectParam == requiredUnlockId
+            }
+            val isolatedUnlockRule = requireNotNull(
+                catalog.rule(unlockDetail.detailId / 100),
+            ).copy(
+                details = listOf(unlockDetail),
+            )
+            val isolatedGraph = SkillRuleGraph(
+                rules = listOf(isolatedRule, isolatedUnlockRule)
+                    .associateBy(SkillRule::skillId),
+                effectIds = setOf(detail.effectId, 132),
+                rootSkillIds = setOf(skillId),
+            )
+            val isolatedInterpreter = SkillRuleInterpreter(
+                graph = isolatedGraph,
+                registry = BattleEffectRegistry.strict(isolatedGraph)
+                    .registerCoreEffects(BattleEffectStore())
+                    .registerControlEffects(BattleEffectStore())
+                    .registerMetaEffects(),
+            )
+            val trigger = isolatedRule.kind.toTrigger()
+
+            fun liveContext(sourceModifiers: List<BattleModifier>): SkillBattleContext {
+                val source = hero(
+                    id = 1,
+                    position = 2,
+                    skillIds = listOf(skillId),
+                    skillLevels = listOf(10),
+                    modifiers = sourceModifiers,
+                ).copy(
+                    troops = 500,
+                    maxTroops = 1_000,
+                )
+                val request = BattleRequest(
+                    attacker = BattleTeam(
+                        listOf(
+                            source,
+                            hero(2, position = 1),
+                        ),
+                    ),
+                    defender = BattleTeam(
+                        listOf(hero(3, position = 2)),
+                    ),
+                )
+                val runtime = SkillRuntimeState()
+                val sourceRef = ref(Side.ATTACKER, source.position, source.id.value)
+                val enemyRef = ref(Side.DEFENDER, 2, 3)
+                val entryContext = SkillBattleContext(
+                    request = request,
+                    runtime = runtime,
+                    random = FixedBattleRandom(0),
+                    round = 3,
+                    source = sourceRef,
+                    rootSkillId = skillId,
+                    currentSkillId = skillId,
+                    trigger = trigger,
+                )
+                return entryContext.copy(
+                    battleView = SkillBattleState(
+                        request = request,
+                        runtime = runtime,
+                        initialWoundedTroops = mapOf(sourceRef to 500),
+                        historyAdapter = object : SkillBattleHistoryAdapter {
+                            override fun linkedTarget(source: BattleHeroRef): BattleHeroRef =
+                                enemyRef
+
+                            override fun currentTarget(source: BattleHeroRef): BattleHeroRef =
+                                enemyRef
+
+                            override fun previousTarget(source: BattleHeroRef): BattleHeroRef =
+                                enemyRef
+                        },
+                    ).view,
+                )
+            }
+
+            val locked = isolatedInterpreter.execute(
+                skillId,
+                trigger,
+                liveContext(emptyList()),
+            )
+            val unlocked = isolatedInterpreter.execute(
+                skillId,
+                trigger,
+                liveContext(
+                    listOf(BattleModifier.SkillEnhancementUnlock(requiredUnlockId)),
+                ),
+            )
+
+            assertTrue(
+                locked.stateChanges.isEmpty(),
+                "detail=${detail.detailId} unlock=$requiredUnlockId changes=${locked.stateChanges}",
+            )
+            assertTrue(
+                unlocked.stateChanges.isNotEmpty(),
+                "detail=${detail.detailId} unlock=$requiredUnlockId trigger=$trigger",
+            )
+        }
+    }
+
+    @Test
+    fun `effect 210 emits typed named flag counter changes instead of child execution`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 210,
+                    effectParam = 210255,
+                    constantParam = 1,
+                    attackType = 23,
+                    attackMax = 2,
+                    addCountMax = 20,
+                ),
+            ),
+        )
+
+        val result = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context(skillId = 1),
+        )
+        val changes = result.stateChanges.filterIsInstance<NamedFlagCounterChange>()
+
+        assertEquals(
+            listOf(ref(Side.ATTACKER, 0, 1), ref(Side.ATTACKER, 1, 2)),
+            changes.map { it.target },
+        )
+        assertTrue(changes.all { it.flagId == 210255 })
+        assertTrue(changes.all { it.delta == 1 })
+        assertTrue(changes.all { it.maximum == 20 })
+        assertTrue(result.stateChanges.none { it is ExecuteChildSkillChange })
     }
 
     @Test
@@ -857,6 +1438,45 @@ class SkillRuleInterpreterTest {
                 it.potency == TypedBattlePotency.flat(9) &&
                 it.durationRounds == 10
         })
+    }
+
+    @Test
+    fun `puppet template is not executed again as a regular sibling detail`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 125,
+                    effectParam = 102,
+                    constantParam = 9,
+                    attackType = 0,
+                ),
+                effectRule(
+                    detailId = 102,
+                    effectId = 101,
+                    constantParam = 999,
+                    attackType = 0,
+                ),
+            ),
+        )
+        val entryContext = context(skillId = 1)
+        val context = entryContext.copy(
+            battleView = SkillBattleState(
+                entryContext.request,
+                entryContext.runtime,
+            ).view,
+        )
+
+        val changes = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context,
+        ).stateChanges.filterIsInstance<BattleStatChange>()
+
+        assertEquals(1, changes.size)
+        assertEquals(102, changes.single().detailId)
+        assertEquals(TypedBattlePotency.flat(9), changes.single().potency)
     }
 
     @Test
@@ -1529,6 +2149,83 @@ class SkillRuleInterpreterTest {
     }
 
     @Test
+    fun `real jade seal row emits one typed team damage accumulator`() {
+        val repository = BattleConfigRepository.loadDefault()
+        val catalogGraph = SkillRuleCatalog.build(
+            SkillScope(setOf(210262), emptySet()),
+            repository,
+        )
+        val realRule = catalogGraph.rule(210262)!!
+        val detail = catalogGraph.details.single { it.detailId == 21026201 }
+        val realGraph = graph(realRule.copy(details = listOf(detail)))
+        val context = context(skillId = 210262)
+
+        val result = interpreter(realGraph).execute(
+            210262,
+            realRule.kind.toTrigger(),
+            context,
+        )
+
+        val accumulator = result.stateChanges
+            .filterIsInstance<DamageAbsorptionAccumulatorEffectChange>()
+            .single()
+        val expectedPercent = (
+            DefaultBattleValueCalculator().effectValue(
+                detail,
+                context.request.attacker.heroes.first(),
+            ) as TypedBattlePotency.Resolved
+            ).value
+        assertEquals(context.source, accumulator.spec.source)
+        assertEquals(context.source, accumulator.spec.target)
+        assertEquals(
+            context.request.attacker.heroes.mapTo(linkedSetOf()) {
+                ref(Side.ATTACKER, it.position, it.id.value)
+            },
+            accumulator.protectedTargets.toSet(),
+        )
+        assertEquals(expectedPercent, accumulator.absorbPercent)
+        assertEquals(TypedBattlePotency.percent(expectedPercent), accumulator.spec.potency)
+        assertEquals(9, accumulator.spec.availableRounds)
+    }
+
+    @Test
+    fun `real jade seal release row registers a delayed schedule without executing its template`() {
+        val repository = BattleConfigRepository.loadDefault()
+        val catalogGraph = SkillRuleCatalog.build(
+            SkillScope(setOf(211262), emptySet()),
+            repository,
+        )
+        val realRule = catalogGraph.rule(211262)!!
+        val release = catalogGraph.details.single { it.detailId == 21126204 }
+        val template = catalogGraph.details.single { it.detailId == 21126202 }
+        val realGraph = graph(realRule.copy(details = listOf(release, template)))
+        val context = context(skillId = 211262).copy(
+            round = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+        )
+
+        val result = interpreter(realGraph).execute(
+            211262,
+            realRule.kind.toTrigger(),
+            context,
+        )
+
+        val schedule = result.stateChanges
+            .filterIsInstance<DamageReleaseScheduleEffectChange>()
+            .single()
+        assertEquals(context.source, schedule.spec.source)
+        assertEquals(context.source, schedule.spec.target)
+        assertEquals(context.source, schedule.target)
+        assertEquals(21126202, schedule.referencedDetailId)
+        assertEquals(302, schedule.referencedEffectId)
+        assertEquals(50, schedule.baseReleasePercent)
+        assertEquals(2, schedule.firstReleaseRound)
+        assertEquals(0, schedule.spec.delayRound)
+        assertEquals(EffectStartBoundary.IMMEDIATE, schedule.spec.startBoundary)
+        assertTrue(result.stateChanges.none { it is TroopDamageChange })
+    }
+
+    @Test
     fun `trigger last applied effect emits a typed target intent`() {
         val repository = BattleConfigRepository.loadDefault()
         val catalogGraph = SkillRuleCatalog.build(SkillScope(setOf(214254), emptySet()), repository)
@@ -1653,6 +2350,8 @@ class SkillRuleInterpreterTest {
         calcPos: Int = 0,
         calcParam: Int = 0,
         delayRound: Int = 0,
+        addCountMax: Int = 0,
+        rawBuffType: Int = 0,
     ): SkillEffectRule =
         SkillEffectRule(
             detailId = detailId,
@@ -1677,6 +2376,8 @@ class SkillRuleInterpreterTest {
                 attackMax = attackMax,
                 delayRound = delayRound,
                 availableRounds = availableRounds,
+                addCountMax = addCountMax,
+                buffType = rawBuffType,
                 attributeType = attributeType,
                 effectName = "fixture-$effectId",
             ),
@@ -1821,17 +2522,18 @@ class SkillRuleInterpreterTest {
     private companion object {
         val EXPECTED_META_EFFECT_IDS = setOf(
             0,
-            77,
+            77, 79, 80,
             81, 82, 83,
             88,
             111, 112, 113, 114,
             118,
             121, 122, 123,
-            125, 127, 129, 130, 131,
-            141, 149,
+            125, 127, 128, 129, 130, 131, 132,
+            141, 149, 150,
             151, 152, 153,
-            161, 171, 181, 199, 200, 210, 231, 261, 281, 313,
+            161, 171, 181, 190, 193, 194, 199, 200, 210, 220, 231, 261, 271, 281, 311, 312, 313,
             404, 407, 408, 409,
+            553,
         )
     }
 }

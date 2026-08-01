@@ -48,6 +48,7 @@ data class BattleStatChange(
     val skillId: Int,
     val effectId: Int,
     val detailId: Int = skillId * 10_000 + effectId,
+    val availableHits: Int = 0,
     val maxStacks: Int = 1,
 ) : BattleStateChange {
     enum class Kind {
@@ -77,6 +78,38 @@ data class ConsumeWoundedTroopsChange(
     val effectId: Int,
 ) : BattleStateChange
 
+data class DirectDamageCalculation(
+    val ratePercent: Int,
+    val attributeRandomTenths: Int? = null,
+    val ongoing: Boolean = false,
+) {
+    fun calculate(
+        source: BattleHero,
+        target: BattleHero,
+        school: DamageSchool,
+        origin: DamageOrigin,
+        tags: Set<DamageTag>,
+    ): Int =
+        when (school) {
+            DamageSchool.PHYSICAL -> BattleDamageCalculator.physical(
+                source = source,
+                target = target,
+                ratePercent = ratePercent,
+                attributeRandomTenths = attributeRandomTenths ?: 35,
+                origin = origin,
+                tags = tags,
+            )
+            DamageSchool.STRATEGY -> BattleDamageCalculator.strategy(
+                source = source,
+                target = target,
+                ratePercent = ratePercent,
+                ongoing = ongoing,
+                origin = origin,
+                tags = tags,
+            )
+        }
+}
+
 data class TroopDamageChange(
     val source: BattleHeroRef,
     val target: BattleHeroRef,
@@ -87,6 +120,8 @@ data class TroopDamageChange(
     val tags: Set<DamageTag>,
     val skillId: Int,
     val effectId: Int,
+    val calculation: DirectDamageCalculation? = null,
+    val sourceSnapshot: BattleHero? = null,
 ) : BattleStateChange
 
 data class TroopRecoveryChange(
@@ -331,7 +366,9 @@ data class DamageModifierChange(
     val effectId: Int,
     val detailId: Int = skillId * 10_000 + effectId,
     val availableHits: Int = 0,
+    val maxStacks: Int = 1,
     val extraParameters: Map<Int, Int> = emptyMap(),
+    val requiredTargetStatus: BattleStatus? = null,
 ) : BattleStateChange {
     enum class Direction {
         DEALT,
@@ -365,6 +402,12 @@ interface BattleValueCalculator {
         target: BattleHeroRef,
         ongoing: Boolean,
     ): Int = strategyDamage(invocation, ongoing)
+
+    fun directDamageCalculation(
+        invocation: EffectInvocation,
+        target: BattleHeroRef,
+        school: DamageSchool,
+    ): DirectDamageCalculation? = null
 }
 
 class DefaultBattleValueCalculator(
@@ -406,16 +449,26 @@ class DefaultBattleValueCalculator(
         if (rule.effectId in FLAT_ATTRIBUTE_EFFECT_IDS &&
             configured.unit == BattleEffectValueUnit.PERCENT &&
             configured.rawCalcPosition == 0 &&
-            configured.rawCoefficient == 0 &&
             configured.rawAttributeType == 0 &&
-            kotlin.math.abs(configured.rawConstant) < PERCENT_ATTRIBUTE_SCALE_THRESHOLD
+            kotlin.math.abs(configured.rawConstant) < PERCENT_ATTRIBUTE_SCALE_THRESHOLD &&
+            kotlin.math.abs(configured.rawCoefficient) < PERCENT_ATTRIBUTE_SCALE_THRESHOLD
         ) {
             val level = skillLevel.coerceIn(1, 10)
             val ratio = rule.raw.initEffectRatio +
                 (level - 1) * (100 - rule.raw.initEffectRatio) / 9.0
+            val attribute = when (rule.coefficientSource) {
+                BattleCoefficientSource.ATTACK -> source.stats.precise(BattleStat.ATTACK)
+                BattleCoefficientSource.DEFENSE -> source.stats.precise(BattleStat.DEFENSE)
+                BattleCoefficientSource.STRATEGY -> source.stats.precise(BattleStat.STRATEGY)
+                BattleCoefficientSource.SPEED -> source.stats.precise(BattleStat.SPEED)
+                BattleCoefficientSource.NONE -> 0.0
+            }
+            val raw = configured.rawConstant / FLAT_ATTRIBUTE_SCALE +
+                configured.rawCoefficient / FLAT_ATTRIBUTE_SCALE * attribute / 200.0
+            val exactValue = raw * ratio / 100.0
             return TypedBattlePotency.flat(
-                (configured.rawConstant / FLAT_ATTRIBUTE_SCALE * ratio / 100.0).roundToInt(),
-                configured.rawConstant / FLAT_ATTRIBUTE_SCALE * ratio / 100.0,
+                exactValue.roundToInt(),
+                exactValue,
             )
         }
         val scale = when (configured.unit) {
@@ -474,6 +527,23 @@ class DefaultBattleValueCalculator(
     override fun physicalDamage(invocation: EffectInvocation): Int =
         physicalDamage(invocation, selectedTarget(invocation))
 
+    override fun directDamageCalculation(
+        invocation: EffectInvocation,
+        target: BattleHeroRef,
+        school: DamageSchool,
+    ): DirectDamageCalculation {
+        val source = invocation.liveHero(invocation.context.source)
+        return DirectDamageCalculation(
+            ratePercent = damageRate(invocation, source),
+            attributeRandomTenths =
+                if (school == DamageSchool.PHYSICAL) {
+                    30 + invocation.context.random.nextInt(10)
+                } else {
+                    null
+                },
+        )
+    }
+
     override fun physicalDamage(invocation: EffectInvocation, target: BattleHeroRef): Int {
         val source = invocation.liveHero(invocation.context.source)
         val targetHero = invocation.liveHero(target)
@@ -512,9 +582,53 @@ class DefaultBattleValueCalculator(
 
     override fun recovery(invocation: EffectInvocation): Int {
         val source = invocation.liveHero(invocation.context.source)
-        val base = (source.troops * 300.0 / (3_500 + source.troops)).roundToInt()
-        val rate = damageRate(invocation, source) / 100.0
+        val entryTroops = invocation.context.battleView
+            .entryState(invocation.context.source)
+            ?.troops
+            ?: source.troops
+        val base = (entryTroops * 300.0 / (3_500 + entryTroops)).roundToInt()
+        val rate = recoveryRate(invocation, source) / 100.0
         return (base * rate).toInt().coerceAtLeast(0)
+    }
+
+    private fun recoveryRate(
+        invocation: EffectInvocation,
+        source: BattleHero,
+    ): Int =
+        scaleEffectValue(configuredRate(invocation, source), invocation)
+
+    private fun configuredRate(
+        invocation: EffectInvocation,
+        source: BattleHero,
+    ): Int {
+        invocation.valueOverride?.let {
+            return invocation.withValueDelta(it).value.coerceAtLeast(1)
+        }
+        val raw = invocation.rule.raw
+        val attribute = when (invocation.rule.coefficientSource) {
+            BattleCoefficientSource.ATTACK -> source.stats.precise(BattleStat.ATTACK)
+            BattleCoefficientSource.DEFENSE -> source.stats.precise(BattleStat.DEFENSE)
+            BattleCoefficientSource.STRATEGY -> source.stats.precise(BattleStat.STRATEGY)
+            BattleCoefficientSource.SPEED -> source.stats.precise(BattleStat.SPEED)
+            BattleCoefficientSource.NONE -> BASE_STRATEGY
+        }
+        val level = invocation.rootSkillLevel(source)
+        val levelRatio =
+            raw.initEffectRatio + (level - 1) * (100 - raw.initEffectRatio) / 9.0
+        val rawRate = raw.constantParam + raw.intelParam * attribute / 200.0
+        val calculationMultiplier = if (raw.calculationTypes.isEmpty()) {
+            1
+        } else {
+            raw.calculationTypes[
+                source.advanceLevel.coerceIn(0, raw.calculationTypes.lastIndex)
+            ]
+        }
+        val configuredRate = invocation.withValueDelta(
+            TypedBattlePotency.rate(
+                (levelRatio * rawRate / 100.0 * calculationMultiplier).roundToInt(),
+            ),
+        ).value.coerceAtLeast(1)
+        return configuredRate
     }
 
     private fun selectedTarget(invocation: EffectInvocation): BattleHeroRef =
@@ -522,27 +636,7 @@ class DefaultBattleValueCalculator(
             ?: error("No live target for detail=${invocation.rule.detailId}")
 
     private fun damageRate(invocation: EffectInvocation, source: BattleHero): Int {
-        invocation.valueOverride?.let {
-            return invocation.withValueDelta(it).value.coerceAtLeast(1)
-        }
-        val rule = invocation.rule
-        val raw = rule.raw
-        val base = raw.constantParam.toDouble()
-        val rate = if (raw.intelParam == 0) {
-            base
-        } else if (source.stats.strategy < BASE_STRATEGY) {
-            base * 0.4 + base * 0.6 * source.stats.strategy / BASE_STRATEGY
-        } else {
-            base + raw.intelParam / 1_000.0 * (source.stats.strategy - BASE_STRATEGY)
-        }
-        val multiplier = if (raw.calculationTypes.isEmpty()) {
-            1
-        } else {
-            raw.calculationTypes[source.advanceLevel.coerceIn(0, raw.calculationTypes.lastIndex)]
-        }
-        val configuredRate = invocation.withValueDelta(
-            TypedBattlePotency.rate((rate * multiplier).roundToInt()),
-        ).value.coerceAtLeast(1)
+        val configuredRate = configuredRate(invocation, source)
         if (invocation.rule.effectId !in STRATEGY_DAMAGE_EFFECT_IDS) {
             return scaleEffectValue(configuredRate, invocation)
         }
@@ -586,8 +680,15 @@ class DefaultBattleValueCalculator(
 
 object CoreEffectHandlers {
     val effectIds: Set<Int> =
-        ((101..106) + (201..207) + (301..307) +
-            listOf(321, 322, 325, 331, 332, 335, 342, 351, 352, 355, 401, 402) +
+        (listOf(98, 99) + (101..106) + (201..207) + (301..307) +
+            listOf(
+                251, 262,
+                321, 322, 323, 324, 325,
+                331, 332, 335, 341, 342,
+                351, 352, 354, 355,
+                411, 413, 421, 422, 423, 424,
+                401, 402,
+            ) +
             (521..524) + (531..534)).toSet()
 
     fun registrations(
@@ -615,7 +716,11 @@ private class CoreEffectHandler(
         check(invocation.rule.effectId == ownedEffectId) {
             "Handler $ownedEffectId cannot execute effect=${invocation.rule.effectId}"
         }
-        val targets = invocation.selectTargets(targetSelector)
+        val targets = if (ownedEffectId in TROOP_COUNTER_EFFECT_IDS) {
+            listOf(invocation.context.source)
+        } else {
+            invocation.selectTargets(targetSelector)
+        }
         val changes = targets.flatMap { target ->
             blockedChange(invocation, target)?.let(::listOf)
                 ?: changesForTarget(invocation, target)
@@ -638,6 +743,24 @@ private class CoreEffectHandler(
             ).requireResolved(invocation),
         )
         return when (effectId) {
+            98 -> listOf(
+                ModifierEffectChange(
+                    spec = persistentSpec(invocation, target, potency),
+                    modifier = BattleModifier.TroopCounterDealtPercent(
+                        targetHeroType = invocation.rule.raw.effectParam,
+                        percent = kotlin.math.abs(potency.value),
+                    ),
+                ),
+            )
+            99 -> listOf(
+                ModifierEffectChange(
+                    spec = persistentSpec(invocation, target, potency),
+                    modifier = BattleModifier.TroopCounterTakenPercent(
+                        sourceHeroType = invocation.rule.raw.effectParam,
+                        percent = -kotlin.math.abs(potency.value),
+                    ),
+                ),
+            )
             in 101..106 -> listOf(statChange(invocation, target, potency, increase = true))
             in 201..206 -> listOf(statChange(invocation, target, potency, increase = false))
             207 -> listOf(appliedEffect(invocation, target, potency))
@@ -690,6 +813,8 @@ private class CoreEffectHandler(
             skillId = invocation.context.currentSkillId,
             effectId = invocation.rule.effectId,
             detailId = invocation.rule.detailId,
+            availableHits = invocation.lifecycle().availableHit,
+            maxStacks = invocation.rule.raw.addCountMax + 1,
         )
     }
 
@@ -700,20 +825,31 @@ private class CoreEffectHandler(
         tags: Set<DamageTag> = emptySet(),
     ): BattleStateChange {
         val targetState = invocation.targetState(target)
-        val damage = when (school) {
-            DamageSchool.PHYSICAL -> calculator.physicalDamage(invocation, target)
-            DamageSchool.STRATEGY -> calculator.strategyDamage(invocation, target, ongoing = false)
-        }.coerceAtMost(targetState.troops)
+        val origin = invocation.damageOrigin()
+        val calculation = calculator.directDamageCalculation(invocation, target, school)
+        val damage = (
+            calculation?.calculate(
+                source = invocation.liveHero(invocation.context.source),
+                target = invocation.liveHero(target),
+                school = school,
+                origin = origin,
+                tags = tags,
+            ) ?: when (school) {
+                DamageSchool.PHYSICAL -> calculator.physicalDamage(invocation, target)
+                DamageSchool.STRATEGY -> calculator.strategyDamage(invocation, target, ongoing = false)
+            }
+            ).coerceAtMost(targetState.troops)
         val damageChange = TroopDamageChange(
             source = invocation.context.source,
             target = target,
             amount = damage,
             troopsAfter = (targetState.troops - damage).coerceAtLeast(0),
             school = school,
-            origin = invocation.damageOrigin(),
+            origin = origin,
             tags = tags,
             skillId = invocation.context.currentSkillId,
             effectId = invocation.rule.effectId,
+            calculation = calculation,
         )
         val lifecycle = invocation.lifecycle()
         if (lifecycle.delayRound <= 0 && lifecycle.delayHit <= 0) return damageChange
@@ -753,7 +889,7 @@ private class CoreEffectHandler(
                 when (status) {
                     BattleStatus.SHAKE -> add(DamageTag.SHAKE)
                     BattleStatus.PANIC -> add(DamageTag.PANIC)
-                    BattleStatus.BURN -> add(DamageTag.FIRE)
+                    BattleStatus.BURN -> add(DamageTag.BURN)
                     BattleStatus.HEX -> add(DamageTag.HEX)
                     else -> Unit
                 }
@@ -824,8 +960,10 @@ private class CoreEffectHandler(
         }
         val sign = if (effectId in REDUCTION_EFFECT_IDS) -1 else 1
         val origin = when (effectId) {
-            321, 331, 351 -> DamageOrigin.NORMAL
+            321, 331, 341, 351 -> DamageOrigin.NORMAL
             322, 332, 342, 352 -> DamageOrigin.ACTIVE
+            323 -> DamageOrigin.PASSIVE
+            324, 354 -> DamageOrigin.COMMAND
             325, 335, 355 -> DamageOrigin.PURSUIT
             else -> null
         }
@@ -834,19 +972,41 @@ private class CoreEffectHandler(
             523, 524, 533, 534 -> DamageSchool.STRATEGY
             else -> null
         }
+        val tag = if (effectId in SPECIAL_DAMAGE_MODIFIER_EFFECT_IDS) {
+            when (invocation.rule.raw.effectParam) {
+                303 -> DamageTag.SHAKE
+                304 -> DamageTag.PANIC
+                305 -> DamageTag.BURN
+                306 -> DamageTag.HEX
+                307 -> DamageTag.FIRE
+                else -> null
+            }
+        } else {
+            null
+        }
+        val requiredTargetStatus = when (effectId) {
+            411, 421 -> BattleStatus.CONFUSION
+            413, 423 -> BattleStatus.BERSERK
+            422 -> BattleStatus.HESITATION
+            424 -> BattleStatus.DISARM
+            else -> null
+        }
         return DamageModifierChange(
             source = invocation.context.source,
             target = target,
             direction = direction,
             school = school,
             origin = origin,
-            tag = null,
+            tag = tag,
             percent = sign * potency.value,
             durationRounds = invocation.lifecycle().availableRounds,
             skillId = invocation.context.currentSkillId,
             effectId = effectId,
             detailId = invocation.rule.detailId,
+            availableHits = invocation.lifecycle().availableHit,
+            maxStacks = invocation.rule.raw.addCountMax.coerceAtLeast(1),
             extraParameters = invocation.executionOverride?.extraParameters.orEmpty(),
+            requiredTargetStatus = requiredTargetStatus,
         )
     }
 
@@ -897,6 +1057,18 @@ private class CoreEffectHandler(
         invocation: EffectInvocation,
         target: BattleHeroRef,
     ): EffectBlockedChange? {
+        if (
+            invocation.rule.effectId == UNRECOVERABLE_EFFECT_ID &&
+            effectStore.effectsFor(target).any { it.effectId == SIEGE_IMMUNITY_EFFECT_ID }
+        ) {
+            return EffectBlockedChange(
+                skillId = invocation.context.currentSkillId,
+                effectId = invocation.rule.effectId,
+                source = invocation.context.source,
+                target = target,
+                blockingEffectId = SIEGE_IMMUNITY_EFFECT_ID,
+            )
+        }
         if (invocation.rule.effectId !in RECOVERY_EFFECT_IDS || !isRecoveryBlocked(target)) return null
         return EffectBlockedChange(
             skillId = invocation.context.currentSkillId,
@@ -913,13 +1085,30 @@ private class CoreEffectHandler(
     private companion object {
         const val EMERGENCY_RECOVERY_CALC_POSITION = 995
         const val UNRECOVERABLE_EFFECT_ID = 207
+        const val SIEGE_IMMUNITY_EFFECT_ID = 220
+        val TROOP_COUNTER_EFFECT_IDS = setOf(98, 99)
         val RECOVERY_EFFECT_IDS = setOf(401, 402)
         val DAMAGE_MODIFIER_EFFECT_IDS =
-            setOf(321, 322, 325, 331, 332, 335, 342, 351, 352, 355) +
+            setOf(
+                251, 262,
+                321, 322, 323, 324, 325,
+                331, 332, 335, 341, 342,
+                351, 352, 354, 355,
+                411, 413, 421, 422, 423, 424,
+            ) +
                 (521..524) + (531..534)
-        val TAKEN_EFFECT_IDS = setOf(342, 351, 352, 355) + (521..524)
+        val SPECIAL_DAMAGE_MODIFIER_EFFECT_IDS = setOf(251, 262)
+        val TAKEN_EFFECT_IDS =
+            setOf(
+                262, 341, 342, 351, 352, 354, 355,
+                411, 413, 421, 422, 423, 424,
+            ) + (521..524)
         val REDUCTION_EFFECT_IDS =
-            setOf(331, 332, 335, 351, 352, 355, 522, 524, 532, 534)
+            setOf(
+                262, 331, 332, 335, 351, 352, 354, 355,
+                421, 422, 423, 424,
+                522, 524, 532, 534,
+            )
     }
 }
 

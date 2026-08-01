@@ -87,6 +87,9 @@ class SkillConditionInterpreterTest {
                 1103, 1123, 2313, 2414, 2434, 3103, 3123, 4003, 4013, 5300,
                 6207, 6306, 11079, 11099, 12080, 12100, 14100,
             ) ||
+            code.skillId == 200957 &&
+            code.field == SkillConditionField.CAST_CONDITION &&
+            code.value in 400..406 ||
             code.field == SkillConditionField.CAST_CONDITION &&
             (
                     code.value.toString().startsWith("127") ||
@@ -159,6 +162,25 @@ class SkillConditionInterpreterTest {
             || code == SkillConditionCode(210269, SkillConditionField.CONDITION, 25002)
             || code == SkillConditionCode(210269, SkillConditionField.CONDITION, 25003)
             || code == SkillConditionCode(200989, SkillConditionField.CONDITION, 24001)
+            || code == SkillConditionCode(210257, SkillConditionField.CONDITION, 33003)
+            || code == SkillConditionCode(210257, SkillConditionField.CONDITION, 24001)
+            || code == SkillConditionCode(210257, SkillConditionField.CONDITION, 33004)
+            || code == SkillConditionCode(210298, SkillConditionField.CONDITION, 5007)
+            || code == SkillConditionCode(210298, SkillConditionField.CONDITION, 33005)
+            || code == SkillConditionCode(200255, SkillConditionField.CONDITION, 29004)
+            || code == SkillConditionCode(200255, SkillConditionField.CONDITION, 30000)
+            || code == SkillConditionCode(212255, SkillConditionField.PRECONDITION, 4040)
+            || code == SkillConditionCode(200264, SkillConditionField.CONDITION, 29001)
+            || code == SkillConditionCode(
+                200264,
+                SkillConditionField.CAST_CONDITION,
+                420026421,
+            )
+            || code == SkillConditionCode(
+                211264,
+                SkillConditionField.CAST_CONDITION,
+                320026412,
+            )
             || code == SkillConditionCode(
                 200968,
                 SkillConditionField.CAST_CONDITION,
@@ -196,6 +218,61 @@ class SkillConditionInterpreterTest {
                 (predicate as SkillCondition.TargetPredicate).value
             },
         )
+    }
+
+    @Test
+    fun `qixurulin damage template is restricted to strategy damage events`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+        val detail = graph.detail(21028202)
+
+        assertEquals(
+            SkillCondition.EventTrigger(BattleTrigger.DAMAGE_AFTER),
+            interpreter.compile(detail).conditions.single(),
+        )
+        assertFalse(interpreter.matches(detail, BattleTrigger.BATTLE_COMMAND, context()))
+        assertTrue(interpreter.matches(detail, BattleTrigger.DAMAGE_AFTER, context()))
+    }
+
+    @Test
+    fun `wubingzhilie selects exactly one branch for each treasure type`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+        val detailByCondition = graph.details
+            .filter { it.detailId / 100 == 200957 }
+            .filter { it.raw.castCondition in 400..406 }
+            .groupBy { it.raw.castCondition }
+        val equipmentByCondition = linkedMapOf(
+            400 to null,
+            401 to 1040,
+            402 to 1025,
+            403 to 1034,
+            404 to 1058,
+            405 to 1049,
+            406 to 1024,
+        )
+
+        assertEquals(equipmentByCondition.keys, detailByCondition.keys)
+        equipmentByCondition.forEach { (expectedCondition, equipmentId) ->
+            val request = request(equipmentId)
+            detailByCondition.forEach { (condition, details) ->
+                details.forEach { detail ->
+                    assertEquals(
+                        condition == expectedCondition,
+                        interpreter.matches(
+                            detail,
+                            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+                            context(
+                                skillId = 200957,
+                                view = SkillBattleView.entrySnapshot(request),
+                                request = request,
+                            ),
+                        ),
+                        "equipment=$equipmentId condition=$condition detail=${detail.detailId}",
+                    )
+                }
+            }
+        }
     }
 
     @Test
@@ -261,6 +338,77 @@ class SkillConditionInterpreterTest {
             ),
             interpreter.compile(graph.detail(20095002)).conditions.single(),
         )
+    }
+
+    @Test
+    fun `qiqinqizong conditions bind its seventh boundary and guards to harmful events`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+        val harmfulEvents = SkillCondition.EventTriggerSet(
+            setOf(
+                BattleTrigger.DAMAGE_BEFORE,
+                BattleTrigger.EFFECT_APPLYING,
+            ),
+        )
+
+        assertEquals(
+            harmfulEvents,
+            interpreter.compile(graph.detail(21029801)).conditions.single(),
+        )
+        listOf(21029812, 21029813).forEach { detailId ->
+            assertEquals(
+                harmfulEvents,
+                interpreter.compile(graph.detail(detailId)).conditions.single(),
+            )
+        }
+    }
+
+    @Test
+    fun `fuboyangsha conditions bind normal attacks and forty percent progress`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        listOf(20025502, 20025503, 20025514).forEach { detailId ->
+            assertEquals(
+                SkillCondition.EventTrigger(BattleTrigger.NORMAL_ATTACK_AFTER),
+                interpreter.compile(graph.detail(detailId)).conditions.single(),
+            )
+        }
+        assertEquals(
+            SkillCondition.RuntimeCounter(
+                subject = Subject.SOURCE,
+                namespace = "skill.200255.normal-damage-uplift",
+                comparison = Comparison.GREATER_THAN_OR_EQUAL,
+                value = 40,
+            ),
+            interpreter.compile(graph.detail(21225501)).conditions.single(),
+        )
+    }
+
+    @Test
+    fun `pibingjuyi conditions bind damage before and burn progression markers`() {
+        val graph = realGraph()
+        val interpreter = SkillConditionInterpreter(graph)
+
+        assertEquals(
+            SkillCondition.EventTrigger(BattleTrigger.DAMAGE_BEFORE),
+            interpreter.compile(graph.detail(20026402)).conditions.single(),
+        )
+        assertEquals(
+            SkillCondition.TargetPredicate(
+                SkillCondition.TargetPredicate.Kind.LACKS_DETAIL_MARKER,
+                20026421,
+            ),
+            interpreter.compile(graph.detail(20026421)).conditions.single(),
+        )
+        listOf(21126401, 21126402).forEach { detailId ->
+            assertTrue(
+                SkillCondition.TargetPredicate(
+                    SkillCondition.TargetPredicate.Kind.HAS_DETAIL_MARKER,
+                    20026412,
+                ) in interpreter.compile(graph.detail(detailId)).conditions,
+            )
+        }
     }
 
     @Test
@@ -737,13 +885,31 @@ class SkillConditionInterpreterTest {
     }
 
     @Test
-    fun `fenji threshold branch binds to owner action before`() {
+    fun `fenji threshold branch requires forty percent inside its command chain`() {
         val graph = realGraph()
         val interpreter = SkillConditionInterpreter(graph)
+        val compiled = interpreter.compile(graph.detail(20096101))
 
         assertEquals(
-            SkillCondition.EventTrigger(BattleTrigger.ACTION_BEFORE),
-            interpreter.compile(graph.detail(20096101)).conditions.single(),
+            SkillCondition.EffectStrength(
+                subject = Subject.SOURCE,
+                detailId = 21396101,
+                comparison = Comparison.GREATER_THAN_OR_EQUAL,
+                value = 40,
+            ),
+            compiled.conditions.single(),
+        )
+        assertFalse(
+            compiled.matches(
+                BattleTrigger.BATTLE_COMMAND,
+                context(view = view(effectStrengths = mapOf(SOURCE to mapOf(21396101 to 32)))),
+            ),
+        )
+        assertTrue(
+            compiled.matches(
+                BattleTrigger.BATTLE_COMMAND,
+                context(view = view(effectStrengths = mapOf(SOURCE to mapOf(21396101 to 40)))),
+            ),
         )
     }
 
@@ -1757,9 +1923,10 @@ class SkillConditionInterpreterTest {
         runtime: SkillRuntimeState = SkillRuntimeState(),
         random: BattleRandom = FixedBattleRandom(0),
         view: SkillBattleView = view(),
+        request: BattleRequest = request(),
     ): SkillBattleContext =
         SkillBattleContext(
-            request = request(),
+            request = request,
             runtime = runtime,
             random = random,
             round = round,
@@ -1770,7 +1937,7 @@ class SkillConditionInterpreterTest {
             battleView = view,
         )
 
-    private fun request(): BattleRequest =
+    private fun request(equipmentId: Int? = null): BattleRequest =
         BattleRequest(
             attacker = BattleTeam(
                 listOf(
@@ -1780,6 +1947,7 @@ class SkillConditionInterpreterTest {
                         stats = STATS,
                         troops = 100,
                         maxTroops = 100,
+                        equipmentIds = listOfNotNull(equipmentId),
                     ),
                 ),
             ),
@@ -1815,6 +1983,7 @@ class SkillConditionInterpreterTest {
         sourceState: SkillBattleHeroState = state(),
         targetState: SkillBattleHeroState = state(),
         effects: Map<BattleHeroRef, Set<Int>> = emptyMap(),
+        effectStrengths: Map<BattleHeroRef, Map<Int, Int>> = emptyMap(),
         additionalStates: Map<BattleHeroRef, SkillBattleHeroState> = emptyMap(),
         metadata: Map<BattleHeroRef, SkillBattleHeroMetadata> = emptyMap(),
     ): SkillBattleView =
@@ -1822,6 +1991,7 @@ class SkillConditionInterpreterTest {
             states = mapOf(SOURCE to sourceState, TARGET to targetState) + additionalStates,
             currentTargets = mapOf(SOURCE to TARGET),
             effects = effects,
+            effectStrengths = effectStrengths,
             metadata = metadata,
         )
 
@@ -1838,6 +2008,7 @@ class SkillConditionInterpreterTest {
         private val states: Map<BattleHeroRef, SkillBattleHeroState>,
         private val currentTargets: Map<BattleHeroRef, BattleHeroRef>,
         private val effects: Map<BattleHeroRef, Set<Int>>,
+        private val effectStrengths: Map<BattleHeroRef, Map<Int, Int>>,
         private val metadata: Map<BattleHeroRef, SkillBattleHeroMetadata>,
     ) : SkillBattleView {
         override val capabilities: Set<SkillBattleViewCapability> = buildSet {
@@ -1877,6 +2048,9 @@ class SkillConditionInterpreterTest {
         ): Boolean = false
 
         override fun activeEffectIds(ref: BattleHeroRef): Set<Int> = effects[ref].orEmpty()
+
+        override fun activeEffectStrength(ref: BattleHeroRef, detailId: Int): Int =
+            effectStrengths[ref]?.get(detailId) ?: 0
     }
 
     private class CountingRandom : BattleRandom {

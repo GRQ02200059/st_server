@@ -98,6 +98,12 @@ interface SkillBattleView {
 
     fun skillRangeBonus(ref: BattleHeroRef, kind: SkillKind): Int = 0
 
+    fun skillRangeBonus(
+        ref: BattleHeroRef,
+        kind: SkillKind,
+        skillId: Int,
+    ): Int = skillRangeBonus(ref, kind)
+
     fun linkedTarget(source: BattleHeroRef): BattleHeroRef?
 
     fun currentTarget(source: BattleHeroRef): BattleHeroRef?
@@ -114,6 +120,12 @@ interface SkillBattleView {
         throw MissingLiveBattleViewData(
             SkillBattleViewCapability.ACTIVE_EFFECTS,
             "activeEffectIds",
+        )
+
+    fun activeEffectStrength(ref: BattleHeroRef, detailId: Int): Int =
+        throw MissingLiveBattleViewData(
+            SkillBattleViewCapability.ACTIVE_EFFECTS,
+            "activeEffectStrength",
         )
 
     companion object {

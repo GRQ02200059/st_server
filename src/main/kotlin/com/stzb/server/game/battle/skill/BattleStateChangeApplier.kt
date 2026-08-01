@@ -74,6 +74,14 @@ sealed interface BattleStateOutput {
     data class ModifierApplied(
         val change: DamageModifierChange,
     ) : BattleStateOutput
+
+    data class DamageAbsorbed(
+        val owner: BattleHeroRef,
+        val target: BattleHeroRef,
+        val amount: Int,
+        val currentRoundTotal: Int,
+        val percent: Int,
+    ) : BattleStateOutput
 }
 
 data class BattleStateApplyResult(
@@ -112,6 +120,11 @@ internal data class EffectKey(
     val clearable: Boolean,
 )
 
+internal data class ControlDurationExtensionMatch(
+    val rounds: Int,
+    val effectKeys: List<EffectKey>,
+)
+
 interface SkillBattleHistoryAdapter {
     fun linkedTarget(source: BattleHeroRef): BattleHeroRef?
     fun currentTarget(source: BattleHeroRef): BattleHeroRef?
@@ -139,7 +152,13 @@ class SkillBattleState(
 
     private val states = mutableMapOf<BattleHeroRef, MutableHeroState>()
     private val damageDealt = mutableMapOf<BattleHeroRef, Int>()
-    private val skillRangeBonuses = mutableMapOf<Pair<BattleHeroRef, SkillKind>, Int>()
+    private data class SkillRangeBonusKey(
+        val target: BattleHeroRef,
+        val kind: SkillKind,
+        val skillId: Int?,
+    )
+
+    private val skillRangeBonuses = mutableMapOf<SkillRangeBonusKey, Int>()
     internal val effectStatuses = mutableMapOf<EffectKey, BattleStatus>()
     internal val effectModifiers = mutableMapOf<EffectKey, BattleModifier>()
 
@@ -185,7 +204,15 @@ class SkillBattleState(
         override fun currentAttackRange(ref: BattleHeroRef): Int? = states[ref]?.stats?.hitRange
 
         override fun skillRangeBonus(ref: BattleHeroRef, kind: SkillKind): Int =
-            skillRangeBonuses[ref to kind] ?: 0
+            skillRangeBonuses[SkillRangeBonusKey(ref, kind, null)] ?: 0
+
+        override fun skillRangeBonus(
+            ref: BattleHeroRef,
+            kind: SkillKind,
+            skillId: Int,
+        ): Int =
+            skillRangeBonus(ref, kind) +
+                (skillRangeBonuses[SkillRangeBonusKey(ref, kind, skillId)] ?: 0)
 
         override fun linkedTarget(source: BattleHeroRef): BattleHeroRef? =
             historyAdapter?.linkedTarget(source)
@@ -221,6 +248,11 @@ class SkillBattleState(
 
         override fun activeEffectIds(ref: BattleHeroRef): Set<Int> =
             effectStore.effectsFor(ref).mapTo(mutableSetOf()) { it.effectId }
+
+        override fun activeEffectStrength(ref: BattleHeroRef, detailId: Int): Int =
+            effectStore.effectsFor(ref)
+                .filter { it.detailId == detailId }
+                .sumOf { it.effectiveStrength }
 
         private fun <T> missing(
             capability: SkillBattleViewCapability,
@@ -274,7 +306,8 @@ class SkillBattleState(
         delta: Int,
         round: Int,
     ): BattleEvent.SkillRangeChanged {
-        val key = change.target to kind
+        val affectedSkillId = change.parameters.effectParam.takeIf { it > 0 }
+        val key = SkillRangeBonusKey(change.target, kind, affectedSkillId)
         val total = (skillRangeBonuses[key] ?: 0) + delta
         skillRangeBonuses[key] = total
         return BattleEvent.SkillRangeChanged(
@@ -284,7 +317,12 @@ class SkillBattleState(
             skillId = change.skillId,
             skillKind = kind,
             delta = delta,
-            displayRangeAfter = liveHero(change.target).stats.hitRange + total,
+            displayRangeAfter = liveHero(change.target).stats.hitRange +
+                view.skillRangeBonus(
+                    change.target,
+                    kind,
+                    affectedSkillId ?: change.skillId,
+                ),
         )
     }
 
@@ -380,12 +418,21 @@ class BattleStateChangeApplier(
         val origin: DamageOrigin?,
         val tag: DamageTag?,
         val sign: Int,
+        val requiredTargetStatus: BattleStatus?,
     ) {
-        fun matches(change: TroopDamageChange): Boolean =
-            direction == DamageModifierChange.Direction.TAKEN &&
+        fun matches(
+            owner: BattleHeroRef,
+            change: TroopDamageChange,
+            ownerStatuses: Set<BattleStatus>,
+        ): Boolean =
+            owner == when (direction) {
+                DamageModifierChange.Direction.DEALT -> change.source
+                DamageModifierChange.Direction.TAKEN -> change.target
+            } &&
                 (school == null || school == change.school) &&
                 (origin == null || origin == change.origin) &&
-                (tag == null || tag in change.tags)
+                (tag == null || tag in change.tags) &&
+                (requiredTargetStatus == null || requiredTargetStatus in ownerStatuses)
     }
 
     private data class Redirection(
@@ -398,6 +445,21 @@ class BattleStateChangeApplier(
     private data class LinkedSharing(
         val members: List<BattleHeroRef>,
         val sharePercentPerAlly: Int,
+    )
+
+    private data class DamageAbsorptionAccumulator(
+        val protectedTargets: List<BattleHeroRef>,
+        val absorbPercent: Int,
+        var currentRoundAbsorbedDamage: Int = 0,
+        var previousRoundAbsorbedDamage: Int = 0,
+    )
+
+    private data class DamageReleaseSchedule(
+        val target: BattleHeroRef,
+        val referencedDetailId: Int,
+        val referencedEffectId: Int,
+        val baseReleasePercent: Int,
+        val firstReleaseRound: Int,
     )
 
     private val statModifiers = mutableMapOf<EffectKey, StatModifier>()
@@ -413,6 +475,9 @@ class BattleStateChangeApplier(
     private val linkedSharings = mutableMapOf<EffectKey, LinkedSharing>()
     private val forcedTargets = mutableMapOf<EffectKey, BattleHeroRef>()
     private val sharedEffectUseMembers = mutableMapOf<EffectKey, Int>()
+    private val damageAbsorptions = mutableMapOf<EffectKey, DamageAbsorptionAccumulator>()
+    private val damageReleases = mutableMapOf<EffectKey, DamageReleaseSchedule>()
+    private var lastBegunRound = 0
     private var lastStartedRound = 0
     private var lastEndedRound = 0
 
@@ -523,6 +588,72 @@ class BattleStateChangeApplier(
         return BattleStateApplyResult(outputs)
     }
 
+    internal fun matchingControlDurationExtensions(
+        actor: BattleHeroRef,
+        rootSkillId: Int,
+        skillKind: SkillKind,
+    ): ControlDurationExtensionMatch {
+        val mainSkillId = state.liveHero(actor).skillIds.firstOrNull()
+        val matches = activeEntries(state.effectModifiers)
+            .mapNotNull { (key, modifier) ->
+                val extension = modifier as? BattleModifier.ControlDurationIncrease
+                    ?: return@mapNotNull null
+                if (key.target != actor) return@mapNotNull null
+                if (extension.mainSkillOnly && rootSkillId != mainSkillId) {
+                    return@mapNotNull null
+                }
+                if (
+                    extension.requiredSkillKind != null &&
+                    extension.requiredSkillKind != skillKind
+                ) {
+                    return@mapNotNull null
+                }
+                key to extension
+            }
+        return ControlDurationExtensionMatch(
+            rounds = matches.sumOf { (_, extension) -> extension.rounds },
+            effectKeys = matches.map { it.first },
+        )
+    }
+
+    internal fun consumeControlDurationExtensions(
+        match: ControlDurationExtensionMatch,
+    ): BattleStateApplyResult {
+        val outputs = mutableListOf<BattleStateOutput>()
+        match.effectKeys.forEach { key ->
+            val effect = state.effectStore.effectsFor(key.target)
+                .singleOrNull { it.key() == key }
+            if (effect?.remainingHits != null) {
+                outputs += synchronize(
+                    state.effectStore.consumeHit(
+                        target = key.target,
+                        effectId = key.effectId,
+                        source = key.source,
+                        detailId = key.detailId,
+                    ),
+                )
+            }
+        }
+        return BattleStateApplyResult(outputs)
+    }
+
+    fun consumeEffectHit(
+        target: BattleHeroRef,
+        effectId: Int,
+        source: BattleHeroRef? = null,
+        detailId: Int? = null,
+    ): BattleStateApplyResult =
+        BattleStateApplyResult(
+            synchronize(
+                state.effectStore.consumeHit(
+                    target = target,
+                    effectId = effectId,
+                    source = source,
+                    detailId = detailId,
+                ),
+            ),
+        )
+
     fun applyActivated(
         change: ScheduledEffectActivationChange,
         due: SkillTimingDue,
@@ -552,16 +683,75 @@ class BattleStateChangeApplier(
         return BattleStateApplyResult(outputs.toList())
     }
 
-    fun onRoundStart(round: Int): BattleStateApplyResult {
+    fun beginRound(round: Int): BattleStateApplyResult {
         require(round > 0) { "round must be positive: $round" }
+        require(round >= maxOf(lastBegunRound, lastEndedRound)) {
+            "round moved backward: current=${maxOf(lastBegunRound, lastEndedRound)} requested=$round"
+        }
+        if (round == lastBegunRound || round <= lastEndedRound) return BattleStateApplyResult()
+        lastBegunRound = round
+        pruneInactiveBehaviors()
+        activeEntries(damageAbsorptions).forEach { (_, accumulator) ->
+            accumulator.previousRoundAbsorbedDamage = accumulator.currentRoundAbsorbedDamage
+            accumulator.currentRoundAbsorbedDamage = 0
+        }
+        val changes = buildList {
+            activeEntries(damageReleases).forEach releaseLoop@{ (key, release) ->
+                if (round < release.firstReleaseRound) return@releaseLoop
+                if (state.mutable(release.target).troops <= 0) return@releaseLoop
+                val accumulator = activeEntries(damageAbsorptions)
+                    .lastOrNull { (absorptionKey, behavior) ->
+                        absorptionKey.source == key.source &&
+                            absorptionKey.rootSkillId == key.rootSkillId &&
+                            release.target in behavior.protectedTargets
+                    }
+                    ?.second
+                    ?: return@releaseLoop
+                val releasePercent = (
+                    release.baseReleasePercent +
+                        state.runtime.referencedValueDelta(
+                            source = key.source,
+                            rootSkillId = key.rootSkillId,
+                            detailId = key.detailId,
+                        )
+                    ).coerceIn(0, 100)
+                val amount = accumulator.previousRoundAbsorbedDamage.toLong()
+                    .times(releasePercent)
+                    .div(100)
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt()
+                if (amount <= 0) return@releaseLoop
+                add(
+                    TroopDamageChange(
+                        source = key.source,
+                        target = release.target,
+                        amount = amount,
+                        troopsAfter = (
+                            state.mutable(release.target).troops - amount
+                            ).coerceAtLeast(0),
+                        school = DamageSchool.STRATEGY,
+                        origin = DamageOrigin.COMMAND,
+                        tags = setOf(DamageTag.IMPERIAL_SEAL_RELEASE),
+                        skillId = release.referencedDetailId / 100,
+                        effectId = release.referencedEffectId,
+                    ),
+                )
+            }
+        }
+        return apply(changes, round)
+    }
+
+    fun onRoundStart(round: Int): BattleStateApplyResult {
+        val boundary = beginRound(round)
         require(round >= maxOf(lastStartedRound, lastEndedRound)) {
             "round moved backward: current=${maxOf(lastStartedRound, lastEndedRound)} requested=$round"
         }
-        if (round == lastStartedRound || round <= lastEndedRound) return BattleStateApplyResult()
+        if (round == lastStartedRound || round <= lastEndedRound) return boundary
         lastStartedRound = round
         pruneInactiveBehaviors()
+        val dueOngoingDamage = activeEntries(ongoingDamage)
         val changes = buildList {
-            activeEntries(ongoingDamage).forEach { (_, behavior) ->
+            dueOngoingDamage.forEach { (_, behavior) ->
                     add(
                         behavior.change.tick(
                             liveSource = behavior.sourceSnapshot,
@@ -578,7 +768,24 @@ class BattleStateChangeApplier(
                     )
                 }
         }
-        return apply(changes, round)
+        val ongoing = apply(changes, round)
+        val consumedHits = dueOngoingDamage.flatMap { (key, _) ->
+            val active = state.effectStore.effectsFor(key.target)
+                .singleOrNull { it.key() == key }
+            if (active?.remainingHits == null) {
+                emptyList()
+            } else {
+                synchronize(
+                    state.effectStore.consumeHit(
+                        target = key.target,
+                        effectId = key.effectId,
+                        source = key.source,
+                        detailId = key.detailId,
+                    ),
+                )
+            }
+        }
+        return BattleStateApplyResult(boundary.outputs + ongoing.outputs + consumedHits)
     }
 
     fun triggerAppliedOngoingDamage(
@@ -617,6 +824,28 @@ class BattleStateChangeApplier(
         )
     }
 
+    fun triggerSpecifiedOngoingDamage(
+        target: BattleHeroRef,
+        effectId: Int,
+        round: Int,
+    ): BattleStateApplyResult {
+        val behavior = activeEntries(ongoingDamage)
+            .lastOrNull { (key, _) ->
+                key.target == target && key.effectId == effectId
+            }
+            ?.second
+            ?: return BattleStateApplyResult()
+        return apply(
+            listOf(
+                behavior.change.tick(
+                    liveSource = behavior.sourceSnapshot,
+                    liveTarget = state.liveHero(behavior.change.target),
+                ),
+            ),
+            round,
+        )
+    }
+
     fun onRoundEnd(round: Int): BattleStateApplyResult {
         require(round > 0) { "round must be positive: $round" }
         require(round >= maxOf(lastStartedRound, lastEndedRound)) {
@@ -629,9 +858,17 @@ class BattleStateChangeApplier(
         return BattleStateApplyResult(lifecycle)
     }
 
-    fun permissionFor(actor: BattleHeroRef): BattleStatePermission {
+    fun permissionFor(
+        actor: BattleHeroRef,
+        context: SkillBattleContext? = null,
+    ): BattleStatePermission {
         val effects = state.effectStore.effectsFor(actor)
-        val base: ActionPermission = ActionPermissionResolver(state.effectStore).permissionFor(actor)
+        val resolver = ActionPermissionResolver(state.effectStore)
+        val base: ActionPermission = if (context == null) {
+            resolver.permissionFor(actor)
+        } else {
+            resolver.permissionFor(actor, context)
+        }
         val secondaryAttack = effects.any { it.effectId == 545 }
         val redirect = activeEntries(redirections)
             .asSequence()
@@ -649,7 +886,7 @@ class BattleStateChangeApplier(
             pursuitOpportunityCount = if (base.canNormalAttack) base.normalAttackCount else 0,
             splitAttack = secondaryAttack,
             counterattack = base.counterattack,
-            canEvade = ActionPermissionResolver(state.effectStore).canEvade(actor),
+            canEvade = resolver.canEvade(actor),
             ignoresEvade = effects.any { it.effectId == 515 },
             firstAction = base.firstAction,
             damageRedirectTarget = redirect,
@@ -684,7 +921,9 @@ class BattleStateChangeApplier(
             is BattleStatChange -> {
                 requireHero(change.source)
                 requireHero(change.target)
-                require(change.durationRounds > 0) { "stat duration must be positive" }
+                require(change.durationRounds > 0 || change.availableHits > 0) {
+                    "stat modifier must have a positive round or hit lifecycle"
+                }
                 require(
                     change.potency.unit == BattleEffectValueUnit.FLAT ||
                         change.potency.unit == BattleEffectValueUnit.PERCENT,
@@ -695,7 +934,9 @@ class BattleStateChangeApplier(
             is DamageModifierChange -> {
                 requireHero(change.source)
                 requireHero(change.target)
-                require(change.durationRounds > 0) { "damage modifier duration must be positive" }
+                require(change.durationRounds > 0 || change.availableHits > 0) {
+                    "damage modifier must have a positive round or hit lifecycle"
+                }
                 require(change.percent != 0) { "damage modifier percent must not be zero" }
                 modifierEffect(change)
             }
@@ -708,6 +949,35 @@ class BattleStateChangeApplier(
             is SharedEffectUseGroupChange -> {
                 validateSpec(change.spec, delayedActivation)
                 require(change.memberDetailId > 0)
+            }
+            is DamageAbsorptionAccumulatorEffectChange -> {
+                validateSpec(change.spec, delayedActivation)
+                require(change.spec.target == change.spec.source) {
+                    "damage absorption accumulator must be owned by its source"
+                }
+                require(change.protectedTargets.isNotEmpty()) {
+                    "damage absorption accumulator must protect at least one target"
+                }
+                change.protectedTargets.forEach { target ->
+                    requireHero(target)
+                    require(target.side == change.spec.source.side) {
+                        "damage absorption target must be allied with its owner"
+                    }
+                }
+                require(change.absorbPercent in 1..100) {
+                    "damage absorption percent must be within 1..100"
+                }
+            }
+            is DamageReleaseScheduleEffectChange -> {
+                validateSpec(change.spec, delayedActivation)
+                requireHero(change.target)
+                require(change.spec.source == change.target) {
+                    "damage release target must be its source"
+                }
+                require(change.referencedDetailId > 0)
+                require(change.referencedEffectId > 0)
+                require(change.baseReleasePercent in 0..100)
+                require(change.firstReleaseRound > 0)
             }
             is ScheduledDamageEffectChange -> validateSpec(change.spec, delayedActivation)
             is ScheduledRecoveryEffectChange -> validateSpec(change.spec, delayedActivation)
@@ -820,15 +1090,18 @@ class BattleStateChangeApplier(
             }
             is DamageModifierChange -> {
                 val effect = modifierEffect(change)
-                val accepted = applyBehavior(effect, outputs) { key, _ ->
+                val accepted = applyBehavior(effect, outputs) { key, acceptedEffect ->
                     damageModifiers[key] = DamageModifier(
                         change.direction,
                         change.school,
                         change.origin,
                         change.tag,
                         if (change.percent < 0) -1 else 1,
+                        change.requiredTargetStatus,
                     )
-                    state.effectModifiers[key] = change.toBattleModifier()
+                    state.effectModifiers[key] = change.toBattleModifier(
+                        acceptedEffect.effectiveStrength,
+                    )
                 }
                 if (accepted) outputs += BattleStateOutput.ModifierApplied(change)
             }
@@ -844,6 +1117,23 @@ class BattleStateChangeApplier(
             is SharedEffectUseGroupChange -> applyEffect(change.spec, outputs) { key, _ ->
                 sharedEffectUseMembers[key] = change.memberDetailId
             }
+            is DamageAbsorptionAccumulatorEffectChange ->
+                applyEffect(change.spec, outputs) { key, _ ->
+                    damageAbsorptions[key] = DamageAbsorptionAccumulator(
+                        protectedTargets = change.protectedTargets.distinct(),
+                        absorbPercent = change.absorbPercent,
+                    )
+                }
+            is DamageReleaseScheduleEffectChange ->
+                applyEffect(change.spec, outputs) { key, _ ->
+                    damageReleases[key] = DamageReleaseSchedule(
+                        target = change.target,
+                        referencedDetailId = change.referencedDetailId,
+                        referencedEffectId = change.referencedEffectId,
+                        baseReleasePercent = change.baseReleasePercent,
+                        firstReleaseRound = change.firstReleaseRound,
+                    )
+                }
             is ScheduledDamageEffectChange -> {
                 applyEffect(change.spec, outputs) { key, _ ->
                     ongoingDamage[key] = OngoingDamageBehavior(
@@ -860,6 +1150,9 @@ class BattleStateChangeApplier(
             }
             is ActionEffectChange -> applyEffect(change.spec, outputs) { key, _ ->
                 statusFor(change.spec.effectId)?.let { state.effectStatuses[key] = it }
+                if (change.kind == ActionEffectKind.IGNORE_TROOP_COUNTER) {
+                    state.effectModifiers[key] = BattleModifier.TroopCounterImmunity
+                }
             }
             is DamageRedirectionEffectChange -> {
                 applyEffect(change.spec, outputs) { key, _ ->
@@ -909,6 +1202,10 @@ class BattleStateChangeApplier(
         change: TroopDamageChange,
         outputs: MutableList<BattleStateOutput>,
     ) {
+        if (DamageTag.IMPERIAL_SEAL_RELEASE in change.tags) {
+            applyDirectDamage(change, outputs)
+            return
+        }
         val linked = activeEntries(linkedSharings)
             .lastOrNull { (_, behavior) -> change.target in behavior.members }
         if (linked != null) {
@@ -980,7 +1277,43 @@ class BattleStateChangeApplier(
         outputs: MutableList<BattleStateOutput>,
     ) {
         val target = state.mutable(change.target)
-        val amount = change.amount.coerceAtLeast(0).coerceAtMost(target.troops)
+        val incomingAmount = change.amount.coerceAtLeast(0).coerceAtMost(target.troops)
+        val absorptions = if (DamageTag.IMPERIAL_SEAL_RELEASE in change.tags) {
+            emptyList()
+        } else {
+            activeEntries(damageAbsorptions)
+                .filter { (_, behavior) -> change.target in behavior.protectedTargets }
+                .sortedWith(
+                    compareBy<Pair<EffectKey, DamageAbsorptionAccumulator>> {
+                        it.first.source.side.ordinal
+                    }.thenBy { it.first.source.position }
+                        .thenBy { it.first.source.heroId.value }
+                        .thenBy { it.first.rootSkillId },
+                )
+        }
+        var retainedAmount = incomingAmount
+        absorptions.forEach { (key, behavior) ->
+            val absorbedAmount = incomingAmount.toLong()
+                .times(behavior.absorbPercent)
+                .div(100)
+                .coerceAtMost(retainedAmount.toLong())
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+            if (absorbedAmount <= 0) return@forEach
+            retainedAmount -= absorbedAmount
+            behavior.currentRoundAbsorbedDamage = behavior.currentRoundAbsorbedDamage.toLong()
+                .plus(absorbedAmount)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+            outputs += BattleStateOutput.DamageAbsorbed(
+                owner = key.source,
+                target = change.target,
+                amount = absorbedAmount,
+                currentRoundTotal = behavior.currentRoundAbsorbedDamage,
+                percent = behavior.absorbPercent,
+            )
+        }
+        val amount = retainedAmount
         target.troops -= amount
         target.woundedTroops += amount
         state.recordDamage(change.source, amount)
@@ -1004,10 +1337,32 @@ class BattleStateChangeApplier(
             change.skillId,
             change.effectId,
         )
+        activeEntries(state.effectModifiers)
+            .filter { (key, modifier) ->
+                key.target == change.source &&
+                    modifier == BattleModifier.TroopCounterImmunity &&
+                    state.effectStore.effectsFor(key.target)
+                        .singleOrNull { it.key() == key }
+                        ?.remainingHits != null
+            }
+            .map { it.first }
+            .forEach { key ->
+                outputs += synchronize(
+                    state.effectStore.consumeHit(
+                        target = key.target,
+                        effectId = key.effectId,
+                        source = key.source,
+                        detailId = key.detailId,
+                    ),
+                )
+            }
         activeEntries(damageModifiers)
             .filter { (key, modifier) ->
-                key.target == change.target &&
-                    modifier.matches(change) &&
+                modifier.matches(
+                    owner = key.target,
+                    change = change,
+                    ownerStatuses = state.liveHero(key.target).activeStatuses,
+                ) &&
                     state.effectStore.effectsFor(key.target)
                         .singleOrNull { it.key() == key }
                         ?.remainingHits != null
@@ -1038,9 +1393,13 @@ class BattleStateChangeApplier(
         val target = state.mutable(targetRef)
         val room = (target.entry.maxTroops - target.troops).coerceAtLeast(0)
         val limit = if (limitedByWounded) target.woundedTroops else Int.MAX_VALUE
-        val recoveryPercent = state.liveHero(targetRef).modifiers
+        val recoveryDealtPercent = state.liveHero(source).modifiers
+            .filterIsInstance<BattleModifier.RecoveryDealtPercent>()
+            .sumOf { it.percent }
+        val recoveryTakenPercent = state.liveHero(targetRef).modifiers
             .filterIsInstance<BattleModifier.RecoveryTakenPercent>()
             .sumOf { it.percent }
+        val recoveryPercent = recoveryDealtPercent + recoveryTakenPercent
         val modifiedAmount = requestedAmount.coerceAtLeast(0).toLong() *
             (100 + recoveryPercent).coerceAtLeast(0) / 100
         val amount = minOf(modifiedAmount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), room, limit)
@@ -1101,7 +1460,7 @@ class BattleStateChangeApplier(
             delayRound = 0,
             delayHit = 0,
             availableRounds = change.durationRounds,
-            availableHit = 0,
+            availableHit = change.availableHits,
             clearPerHit = false,
             startBoundary = EffectStartBoundary.IMMEDIATE,
             potency = change.potency,
@@ -1182,7 +1541,7 @@ class BattleStateChangeApplier(
             conflict = 0,
             replaceType = 0,
             bindFlag = 0,
-            maxStacks = 1,
+            maxStacks = change.maxStacks,
             delayRound = 0,
             delayHit = 0,
             availableRounds = change.durationRounds,
@@ -1192,21 +1551,24 @@ class BattleStateChangeApplier(
             potency = TypedBattlePotency.percent(change.percent),
         ).toActiveSkillEffect()
 
-    private fun DamageModifierChange.toBattleModifier(): BattleModifier =
-        when (direction) {
+    private fun DamageModifierChange.toBattleModifier(effectiveStrength: Int): BattleModifier {
+        val signedStrength = effectiveStrength * if (percent < 0) -1 else 1
+        return when (direction) {
             DamageModifierChange.Direction.DEALT -> BattleModifier.DamageDealtPercent(
                 school = school,
                 origin = origin,
                 tag = tag,
-                percent = percent,
+                percent = signedStrength,
             )
             DamageModifierChange.Direction.TAKEN -> BattleModifier.DamageTakenPercent(
                 school = school,
                 origin = origin,
                 tag = tag,
-                percent = percent,
+                percent = signedStrength,
+                requiredStatus = requiredTargetStatus,
             )
         }
+    }
 
     private fun synchronize(result: EffectLifecycleResult): List<BattleStateOutput> {
         synchronizeRemoved(result.expired + result.removed)
@@ -1228,6 +1590,8 @@ class BattleStateChangeApplier(
         linkedSharings.remove(key)
         forcedTargets.remove(key)
         sharedEffectUseMembers.remove(key)
+        damageAbsorptions.remove(key)
+        damageReleases.remove(key)
         state.effectStatuses.remove(key)
         state.effectModifiers.remove(key)
     }
@@ -1239,8 +1603,8 @@ class BattleStateChangeApplier(
         (
             statModifiers.keys + damageModifiers.keys + ongoingDamage.keys +
                 ongoingRecovery.keys + redirections.keys + linkedSharings.keys + forcedTargets.keys +
-                sharedEffectUseMembers.keys + state.effectStatuses.keys +
-                state.effectModifiers.keys
+                sharedEffectUseMembers.keys + damageAbsorptions.keys + damageReleases.keys +
+                state.effectStatuses.keys + state.effectModifiers.keys
             )
             .filterNot { it in activeKeys }
             .forEach(::removeBehavior)
@@ -1271,13 +1635,14 @@ class BattleStateChangeApplier(
 
     private fun statusFor(effectId: Int): BattleStatus? = when (effectId) {
         501, 701, 901 -> BattleStatus.CONFUSION
+        503, 703, 903 -> BattleStatus.BERSERK
         502, 702, 902 -> BattleStatus.HESITATION
-        511, 711 -> BattleStatus.INSIGHT
-        514, 714 -> BattleStatus.EVADE
+        511, 711, 811 -> BattleStatus.INSIGHT
+        514, 714, 814 -> BattleStatus.EVADE
         515 -> BattleStatus.IGNORE_EVADE
         544, 744 -> BattleStatus.DOUBLE_ATTACK
         552, 752, 952 -> BattleStatus.DISARM
-        761 -> BattleStatus.FIRST_ACTION
+        561, 761 -> BattleStatus.FIRST_ACTION
         else -> null
     }
 

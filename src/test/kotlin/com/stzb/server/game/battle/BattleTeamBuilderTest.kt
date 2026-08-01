@@ -1,5 +1,6 @@
 package com.stzb.server.game.battle
 
+import com.stzb.server.game.ClientTroopTypeRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -71,6 +72,31 @@ class BattleTeamBuilderTest {
                 !it.percent &&
                 it.deltaExact == 6.0
         })
+    }
+
+    @Test
+    fun `adds dynamic troop skills without repeating statically projected troop effects`() {
+        val team = builder.build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100705,
+                    position = 0,
+                    troops = 1000,
+                    troopFeatureIds = listOf(3106, 3108),
+                    heroType = requireNotNull(
+                        ClientTroopTypeRepository.loadDefault().heroTypeForSkillIds(
+                            setOf(296131, 296141),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val runtimeSkills = team.heroes.single().skillIds
+        assertTrue(296106 in runtimeSkills)
+        assertTrue(296108 in runtimeSkills)
+        assertTrue(296131 in runtimeSkills)
+        assertTrue(296141 !in runtimeSkills)
     }
 
     @Test

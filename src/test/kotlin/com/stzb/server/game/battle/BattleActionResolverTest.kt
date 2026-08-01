@@ -3,6 +3,7 @@ package com.stzb.server.game.battle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class BattleActionResolverTest {
     private val resolver = BattleActionResolver()
@@ -61,6 +62,24 @@ class BattleActionResolverTest {
     }
 
     @Test
+    fun `normal attack skips targets immune to normal targeting`() {
+        val source = hero(1, position = 2, hitRange = 3, attack = 100)
+        val immuneFront = hero(2, position = 2, hitRange = 1, attack = 10).copy(
+            modifiers = listOf(
+                BattleModifier.TargetImmunity(BattleTargetingKind.NORMAL_ATTACK),
+            ),
+        )
+        val targetableMiddle = hero(3, position = 1, hitRange = 1, attack = 10)
+
+        val selected = resolver.selectNormalAttackTarget(
+            source = source,
+            enemies = listOf(immuneFront, targetableMiddle),
+        )
+
+        assertEquals(targetableMiddle.id, selected?.id)
+    }
+
+    @Test
     fun `normal attack uses the reference troop attack and defense curve`() {
         val source = hero(1, position = 2, hitRange = 3, attack = 200).copy(
             troops = 10_000,
@@ -81,6 +100,35 @@ class BattleActionResolverTest {
         )
 
         assertEquals(620, result?.event?.damage)
+    }
+
+    @Test
+    fun `ranged normal attack selects the farthest target and scales damage by distance`() {
+        val source = hero(1, position = 2, hitRange = 5, attack = 200).copy(
+            troops = 10_000,
+            maxTroops = 10_000,
+            modifiers = listOf(
+                BattleModifier.RangedNormalAttack(
+                    damagePercentPerDistance = 25,
+                ),
+            ),
+        )
+        val near = hero(2, position = 2, hitRange = 1, attack = 10).copy(
+            troops = 10_000,
+            maxTroops = 10_000,
+        )
+        val far = near.copy(id = BattleHeroId(3), position = 0)
+
+        val selected = resolver.selectNormalAttackTarget(
+            source = source,
+            enemies = listOf(near, far),
+            random = FixedBattleRandom(0),
+        )
+        val nearDamage = resolver.normalAttackDamage(source, near, FixedBattleRandom(0))
+        val farDamage = resolver.normalAttackDamage(source, far, FixedBattleRandom(0))
+
+        assertEquals(far.id, selected?.id)
+        assertTrue(farDamage > nearDamage)
     }
 
     private fun hero(

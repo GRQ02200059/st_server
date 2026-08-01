@@ -4,10 +4,12 @@ import com.stzb.server.game.battle.BattleConfigRepository
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroId
 import com.stzb.server.game.battle.BattleHeroRef
+import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleRandom
 import com.stzb.server.game.battle.BattleRequest
 import com.stzb.server.game.battle.BattleStats
 import com.stzb.server.game.battle.BattleStatus
+import com.stzb.server.game.battle.BattleTargetingKind
 import com.stzb.server.game.battle.BattleTeam
 import com.stzb.server.game.battle.FixedBattleRandom
 import com.stzb.server.game.battle.Side
@@ -649,6 +651,23 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `self targeted effects do not filter their owner by target troop type`() {
+        val metadata = allRefs().associateWith {
+            metadata(SkillHeroGender.MALE, SkillTroopType.INFANTRY)
+        }.toMutableMap().apply {
+            put(source, metadata(SkillHeroGender.MALE, SkillTroopType.CAVALRY))
+        }
+
+        assertEquals(
+            listOf(source),
+            select(
+                rule(attackType = 0, targetType = 10, selectType = 0),
+                context(view(metadata = metadata)),
+            ),
+        )
+    }
+
+    @Test
     fun `stateful selector codes use their approved live inputs exactly`() {
         val states = defaultStates().toMutableMap().apply {
             put(allyBase, state(morale = 110))
@@ -1036,6 +1055,44 @@ class SkillTargetSelectorTest {
         assertEquals(2, withBonus.currentAttackRange(source))
     }
 
+    @Test
+    fun `skill target immunity filters only its matching skill kind`() {
+        val states = defaultStates() + mapOf(
+            enemyFront to state(
+                modifiers = listOf(
+                    BattleModifier.TargetImmunity(BattleTargetingKind.ACTIVE_SKILL),
+                ),
+            ),
+            enemyMiddle to state(
+                modifiers = listOf(
+                    BattleModifier.TargetImmunity(BattleTargetingKind.PURSUIT_SKILL),
+                ),
+            ),
+        )
+        val context = context(view(states = states))
+        val activeTargets = select(
+            rule(
+                attackType = 43,
+                selectType = 34,
+                attackMax = 3,
+                skillKind = SkillKind.ACTIVE,
+            ),
+            context,
+        )
+        val pursuitTargets = select(
+            rule(
+                attackType = 43,
+                selectType = 34,
+                attackMax = 3,
+                skillKind = SkillKind.PURSUIT,
+            ),
+            context,
+        )
+
+        assertEquals(listOf(enemyMiddle, enemyBase), activeTargets)
+        assertEquals(listOf(enemyFront, enemyBase), pursuitTargets)
+    }
+
     private fun select(rule: SkillEffectRule, context: SkillBattleContext): List<BattleHeroRef> =
         SkillTargetSelector().compile(rule).select(context)
 
@@ -1108,6 +1165,7 @@ class SkillTargetSelectorTest {
         attackRange: Int = 2,
         canReceiveEffectsWhenDefeated: Boolean = false,
         statuses: Set<BattleStatus> = emptySet(),
+        modifiers: List<BattleModifier> = emptyList(),
     ) = SkillBattleHeroState(
         stats = BattleStats(attack, defense, strategy, speed, siege = 0, hitRange = attackRange),
         troops = troops,
@@ -1116,6 +1174,7 @@ class SkillTargetSelectorTest {
         morale = morale,
         attackRange = attackRange,
         canReceiveEffectsWhenDefeated = canReceiveEffectsWhenDefeated,
+        modifiers = modifiers,
     )
 
     private fun metadata(

@@ -30,10 +30,58 @@ class CoreEffectHandlersTest {
     private val targetRef = BattleHeroRef(Side.DEFENDER, 2, BattleHeroId(2))
 
     @Test
-    fun `core effect registry owns the exact forty effect contract`() {
-        assertEquals(40, coreEffectIds.size)
+    fun `core effect registry owns the exact fifty four effect contract`() {
+        assertEquals(54, coreEffectIds.size)
         assertEquals(coreEffectIds, CoreEffectHandlers.effectIds)
         assertEquals(coreEffectIds, registry().implementedEffectIds())
+    }
+
+    @Test
+    fun `troop counter effects emit typed source profiles without generic target selection`() {
+        val dealtRule = rule(
+            effectId = 98,
+            constant = 30,
+            effectParam = 22,
+            targetType = 1,
+            attackType = 23,
+            availableRounds = 8,
+        )
+        val takenRule = rule(
+            effectId = 99,
+            constant = 30,
+            effectParam = 22,
+            targetType = 1,
+            attackType = 23,
+            availableRounds = 8,
+        )
+
+        val dealt = registry(BattleEffectStore(), dealtRule)
+            .execute(dealtRule, context())
+            .stateChanges
+            .single()
+        val taken = registry(BattleEffectStore(), takenRule)
+            .execute(takenRule, context())
+            .stateChanges
+            .single()
+
+        assertIs<ModifierEffectChange>(dealt)
+        assertEquals(sourceRef, dealt.spec.target)
+        assertEquals(
+            BattleModifier.TroopCounterDealtPercent(
+                targetHeroType = 22,
+                percent = 30,
+            ),
+            dealt.modifier,
+        )
+        assertIs<ModifierEffectChange>(taken)
+        assertEquals(sourceRef, taken.spec.target)
+        assertEquals(
+            BattleModifier.TroopCounterTakenPercent(
+                sourceHeroType = 22,
+                percent = -30,
+            ),
+            taken.modifier,
+        )
     }
 
     @Test
@@ -112,6 +160,74 @@ class CoreEffectHandlersTest {
     }
 
     @Test
+    fun `direct damage uses the client skill level and attribute rate formula`() {
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200684),
+                learnableSaSkillIds = emptySet(),
+            ),
+            BattleConfigRepository.loadDefault(),
+        )
+        val source = hero(
+            id = 1,
+            position = 2,
+            troops = 8_130,
+            maxTroops = 8_130,
+            strategy = 300,
+        ).copy(
+            skillIds = listOf(200684),
+            skillLevels = listOf(10),
+        )
+        val target = hero(
+            id = 2,
+            position = 2,
+            troops = 10_000,
+            maxTroops = 10_000,
+            strategy = 100,
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(source)),
+            defender = BattleTeam(listOf(target)),
+        )
+        val context = SkillBattleContext(
+            request = request,
+            runtime = SkillRuntimeState(),
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = sourceRef,
+            rootSkillId = 200684,
+            currentSkillId = 200684,
+            trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            battleView = TestBattleView(
+                mapOf(
+                    sourceRef to source.toState(woundedTroops = 0),
+                    targetRef to target.toState(woundedTroops = 0),
+                ),
+            ),
+        )
+        val invocation = EffectInvocation(
+            rule = graph.detail(20068403),
+            context = context,
+            callPath = emptyList(),
+            preselectedTargets = listOf(targetRef),
+        )
+
+        assertEquals(
+            BattleDamageCalculator.strategy(
+                source = source,
+                target = target,
+                ratePercent = 497,
+                origin = DamageOrigin.ACTIVE,
+            ),
+            DefaultBattleValueCalculator().strategyDamage(
+                invocation = invocation,
+                target = targetRef,
+                ongoing = false,
+            ),
+        )
+    }
+
+    @Test
     fun `damage origin comes from skill kind and selects only its modifier axis`() {
         val config = BattleConfigRepository.loadDefault()
         val pursuitGraph = SkillRuleCatalog.build(
@@ -136,7 +252,7 @@ class CoreEffectHandlersTest {
             BattleDamageCalculator.physical(
                 source = pursuitContext.request.attacker.heroes.single(),
                 target = pursuitContext.request.defender.heroes.single(),
-                ratePercent = 200,
+                ratePercent = 100,
                 attributeRandomTenths = 30,
                 origin = DamageOrigin.PURSUIT,
             ),
@@ -235,7 +351,7 @@ class CoreEffectHandlersTest {
                     when (scheduled.status) {
                         BattleStatus.SHAKE -> DamageTag.SHAKE
                         BattleStatus.PANIC -> DamageTag.PANIC
-                        BattleStatus.BURN -> DamageTag.FIRE
+                        BattleStatus.BURN -> DamageTag.BURN
                         BattleStatus.HEX -> DamageTag.HEX
                         else -> error("unexpected ongoing status=${scheduled.status}")
                     },
@@ -294,7 +410,7 @@ class CoreEffectHandlersTest {
         )
         assertEquals(DamageSchool.STRATEGY, scheduled.school)
         assertEquals(DamageOrigin.COMMAND, scheduled.origin)
-        assertEquals(setOf(DamageTag.ONGOING, DamageTag.FIRE), scheduled.tags)
+        assertEquals(setOf(DamageTag.ONGOING, DamageTag.BURN), scheduled.tags)
         assertEquals(BattleStatus.BURN, scheduled.status)
 
         val firstSource = hero(id = 1, position = 2, troops = 1_000, strategy = 120)
@@ -307,7 +423,7 @@ class CoreEffectHandlersTest {
                 ratePercent = 32,
                 ongoing = true,
                 origin = DamageOrigin.COMMAND,
-                tags = setOf(DamageTag.ONGOING, DamageTag.FIRE),
+                tags = setOf(DamageTag.ONGOING, DamageTag.BURN),
             ),
             first.amount,
         )
@@ -331,7 +447,7 @@ class CoreEffectHandlersTest {
                 ratePercent = 34,
                 ongoing = true,
                 origin = DamageOrigin.COMMAND,
-                tags = setOf(DamageTag.ONGOING, DamageTag.FIRE),
+                tags = setOf(DamageTag.ONGOING, DamageTag.BURN),
             ),
             second.amount,
         )
@@ -364,7 +480,7 @@ class CoreEffectHandlersTest {
 
         assertIs<ScheduledDamageEffectChange>(scheduled)
         assertEquals(DamageOrigin.PURSUIT, scheduled.origin)
-        assertEquals(setOf(DamageTag.ONGOING, DamageTag.FIRE), scheduled.tags)
+        assertEquals(setOf(DamageTag.ONGOING, DamageTag.BURN), scheduled.tags)
         assertEquals(0, scheduled.spec.availableRounds)
         assertEquals(4, scheduled.spec.availableHit)
         assertEquals(2, scheduled.spec.delayHit)
@@ -392,6 +508,63 @@ class CoreEffectHandlersTest {
     }
 
     @Test
+    fun `recovery uses the client skill level and strategy rate formula`() {
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200016),
+                learnableSaSkillIds = emptySet(),
+            ),
+            BattleConfigRepository.loadDefault(),
+        )
+        val source = hero(
+            id = 1,
+            position = 2,
+            troops = 8_130,
+            maxTroops = 8_130,
+            strategy = 300,
+        ).copy(
+            skillIds = listOf(200016),
+            skillLevels = listOf(10),
+        )
+        val target = hero(
+            id = 2,
+            position = 2,
+            troops = 5_000,
+            maxTroops = 10_000,
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(source)),
+            defender = BattleTeam(listOf(target)),
+        )
+        val context = SkillBattleContext(
+            request = request,
+            runtime = SkillRuntimeState(),
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = sourceRef,
+            rootSkillId = 200016,
+            currentSkillId = 200016,
+            trigger = BattleTrigger.HURT_AFTER,
+            battleView = TestBattleView(
+                mapOf(
+                    sourceRef to source.toState(woundedTroops = 0),
+                    targetRef to target.toState(woundedTroops = 5_000),
+                ),
+            ),
+        )
+
+        val amount = DefaultBattleValueCalculator().recovery(
+            EffectInvocation(
+                rule = graph.detail(20001601),
+                context = context,
+                callPath = emptyList(),
+            ),
+        )
+
+        assertEquals(420, amount)
+    }
+
+    @Test
     fun `rest schedules recovery while unrecoverable effect blocks both recovery families`() {
         val effectStore = BattleEffectStore()
         val registry = registry(effectStore)
@@ -409,6 +582,22 @@ class CoreEffectHandlersTest {
             assertEquals(207, blocked.blockingEffectId)
             assertEquals(effectId, blocked.effectId)
         }
+    }
+
+    @Test
+    fun `siege immunity blocks the unrecoverable effect`() {
+        val effectStore = BattleEffectStore()
+        effectStore.apply(activeEffect(effectId = 220))
+
+        val result = registry(effectStore).execute(
+            rule(effectId = 207, constant = 1),
+            context(),
+        )
+
+        val blocked = result.stateChanges.single()
+        assertIs<EffectBlockedChange>(blocked)
+        assertEquals(207, blocked.effectId)
+        assertEquals(220, blocked.blockingEffectId)
     }
 
     @Test
@@ -456,6 +645,118 @@ class CoreEffectHandlersTest {
             assertEquals(null, change.tag)
             assertEquals(values.third, change.percent)
         }
+        val stackable = registry.execute(
+            rule(531, constant = 8, addCountMax = 7),
+            context(),
+        ).stateChanges.single() as DamageModifierChange
+        assertEquals(7, stackable.maxStacks)
+    }
+
+    @Test
+    fun `extended damage modifiers preserve origin tag direction and sign`() {
+        data class Expected(
+            val effectId: Int,
+            val direction: DamageModifierChange.Direction,
+            val origin: DamageOrigin? = null,
+            val tag: DamageTag? = null,
+            val percent: Int,
+        )
+
+        listOf(
+            Expected(251, DamageModifierChange.Direction.DEALT, tag = DamageTag.BURN, percent = 20),
+            Expected(251, DamageModifierChange.Direction.DEALT, tag = DamageTag.FIRE, percent = 20),
+            Expected(262, DamageModifierChange.Direction.TAKEN, tag = DamageTag.PANIC, percent = -30),
+            Expected(323, DamageModifierChange.Direction.DEALT, origin = DamageOrigin.PASSIVE, percent = 40),
+            Expected(324, DamageModifierChange.Direction.DEALT, origin = DamageOrigin.COMMAND, percent = 40),
+            Expected(341, DamageModifierChange.Direction.TAKEN, origin = DamageOrigin.NORMAL, percent = 10),
+            Expected(354, DamageModifierChange.Direction.TAKEN, origin = DamageOrigin.COMMAND, percent = -20),
+        ).forEach { expected ->
+            val effectParam = when (expected.tag) {
+                DamageTag.BURN -> 305
+                DamageTag.FIRE -> 307
+                DamageTag.PANIC -> 304
+                else -> 0
+            }
+            val rule = rule(
+                effectId = expected.effectId,
+                constant = kotlin.math.abs(expected.percent),
+            ).let { configured ->
+                configured.copy(
+                    raw = configured.raw.copy(effectParam = effectParam),
+                )
+            }
+
+            val change = registry(BattleEffectStore(), rule)
+                .execute(rule, context())
+                .stateChanges
+                .single()
+
+            assertIs<DamageModifierChange>(change)
+            assertEquals(expected.direction, change.direction, "effect=${expected.effectId}")
+            assertEquals(expected.origin, change.origin, "effect=${expected.effectId}")
+            assertEquals(expected.tag, change.tag, "effect=${expected.effectId}")
+            assertEquals(expected.percent, change.percent, "effect=${expected.effectId}")
+        }
+    }
+
+    @Test
+    fun `control conditional damage modifiers retain required target status`() {
+        data class Expected(
+            val effectId: Int,
+            val statusName: String,
+            val percent: Int,
+        )
+
+        listOf(
+            Expected(411, "CONFUSION", 30),
+            Expected(413, "BERSERK", 30),
+            Expected(421, "CONFUSION", -30),
+            Expected(422, "HESITATION", -30),
+            Expected(423, "BERSERK", -30),
+            Expected(424, "DISARM", -30),
+        ).forEach { expected ->
+            val configured = rule(
+                effectId = expected.effectId,
+                constant = kotlin.math.abs(expected.percent),
+            )
+            val change = registry(BattleEffectStore(), configured)
+                .execute(configured, context())
+                .stateChanges
+                .single()
+
+            assertIs<DamageModifierChange>(change)
+            assertEquals(DamageModifierChange.Direction.TAKEN, change.direction)
+            assertEquals(expected.percent, change.percent)
+            val requiredStatus = change::class.members
+                .single { member -> member.name == "requiredTargetStatus" }
+                .call(change) as BattleStatus
+            assertEquals(expected.statusName, requiredStatus.name)
+        }
+    }
+
+    @Test
+    fun `conditional damage modifier applies only while its required status is active`() {
+        val source = hero(id = 1, position = 2, troops = 10_000, maxTroops = 10_000)
+        val target = hero(id = 2, position = 2, troops = 10_000, maxTroops = 10_000)
+        val modifier = BattleModifier.DamageTakenPercent(
+            percent = -30,
+            requiredStatus = BattleStatus.CONFUSION,
+        )
+        val baseline = BattleDamageCalculator.physical(source, target)
+        val withoutStatus = BattleDamageCalculator.physical(
+            source,
+            target.copy(modifiers = listOf(modifier)),
+        )
+        val withStatus = BattleDamageCalculator.physical(
+            source,
+            target.copy(
+                activeStatuses = setOf(BattleStatus.CONFUSION),
+                modifiers = listOf(modifier),
+            ),
+        )
+
+        assertEquals(baseline, withoutStatus)
+        assertTrue(withStatus < baseline)
     }
 
     @Test
@@ -638,6 +939,32 @@ class CoreEffectHandlersTest {
     }
 
     @Test
+    fun `official hit scoped damage modifier preserves its hit lifecycle`() {
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200036),
+                learnableSaSkillIds = emptySet(),
+            ),
+            BattleConfigRepository.loadDefault(),
+        )
+        val rule = graph.detail(20003625)
+
+        val change = BattleEffectRegistry.strict(graph)
+            .registerCoreEffects(BattleEffectStore())
+            .execute(
+                rule,
+                context().copy(rootSkillId = 200036, currentSkillId = 200036),
+                preselectedTargets = listOf(targetRef),
+            )
+            .stateChanges
+            .single()
+
+        assertIs<DamageModifierChange>(change)
+        assertEquals(0, change.durationRounds)
+        assertEquals(2, change.availableHits)
+    }
+
+    @Test
     fun `official flat attribute details decode hundredth encoded constants`() {
         val config = BattleConfigRepository.loadDefault()
         val graph = SkillRuleCatalog.build(
@@ -670,6 +997,59 @@ class CoreEffectHandlersTest {
             TypedBattlePotency.flat(17, 50.0 / 3),
             calculator.effectValue(graph.detail(20068903), source, skillLevel = 4),
         )
+    }
+
+    @Test
+    fun `advisor infantry tactics decode strategy coefficients into flat attributes`() {
+        val config = BattleConfigRepository.loadDefault()
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200619, 200620, 200621),
+                learnableSaSkillIds = emptySet(),
+            ),
+            config,
+        )
+        val calculator = DefaultBattleValueCalculator()
+        val source = hero(id = 1, position = 2, strategy = 100)
+
+        listOf(
+            20061901 to 20061912,
+            20062001 to 20062012,
+            20062101 to 20062112,
+        ).forEach { (baseDetailId, advisorDetailId) ->
+            assertEquals(
+                TypedBattlePotency.flat(35),
+                calculator.effectValue(
+                    graph.detail(baseDetailId),
+                    source,
+                    skillLevel = 10,
+                ),
+            )
+            assertEquals(
+                TypedBattlePotency.flat(11, 10.5),
+                calculator.effectValue(
+                    graph.detail(advisorDetailId),
+                    source,
+                    skillLevel = 10,
+                ),
+            )
+            assertEquals(
+                TypedBattlePotency.flat(18, 17.5),
+                calculator.effectValue(
+                    graph.detail(baseDetailId),
+                    source,
+                    skillLevel = 1,
+                ),
+            )
+            assertEquals(
+                TypedBattlePotency.flat(5, 5.25),
+                calculator.effectValue(
+                    graph.detail(advisorDetailId),
+                    source,
+                    skillLevel = 1,
+                ),
+            )
+        }
     }
 
     @Test
@@ -735,7 +1115,7 @@ class CoreEffectHandlersTest {
                     details = listOf(rule),
                 ),
             ),
-            effectIds = coreEffectIds,
+            effectIds = setOf(rule.effectId),
         )
         val context = context().copy(rootSkillId = 295001, currentSkillId = 295001)
 
@@ -975,7 +1355,7 @@ class CoreEffectHandlersTest {
                     details = rules,
                 ),
             ),
-            effectIds = coreEffectIds,
+            effectIds = rules.mapTo(mutableSetOf(), SkillEffectRule::effectId),
         )
 
     private fun rule(
@@ -1000,6 +1380,9 @@ class CoreEffectHandlersTest {
         rawCalcPosition: Int = if (effectId in 101..105 || effectId in 201..205) 311 else 0,
         skillKind: SkillKind = SkillKind.ACTIVE,
         rawSkillType: Int = 3,
+        effectParam: Int = 0,
+        targetType: Int = 0,
+        attackType: Int = 41,
     ): SkillEffectRule =
         SkillEffectRule(
             detailId = 10_000 + effectId,
@@ -1008,9 +1391,10 @@ class CoreEffectHandlersTest {
             raw = SkillDetailConfig(
                 detailId = 10_000 + effectId,
                 effectId = effectId,
+                effectParam = effectParam,
                 calcPos = rawCalcPosition,
-                attackType = 41,
-                targetType = 0,
+                attackType = attackType,
+                targetType = targetType,
                 selectType = 0,
                 availableHit = availableHit,
                 intelParam = intel,
@@ -1031,11 +1415,13 @@ class CoreEffectHandlersTest {
             skillHitRange = 5,
             configuredValue = com.stzb.server.game.battle.ConfiguredBattleEffectValue(
                 unit = when (effectId) {
+                    98, 99 -> BattleEffectValueUnit.RATE
                     in 101..105, in 201..205 -> BattleEffectValueUnit.PERCENT
                     in 301..307, in 321..355, 401, 402, in 521..534 -> BattleEffectValueUnit.RATE
                     else -> BattleEffectValueUnit.FLAT
                 },
                 rawValueType = when (effectId) {
+                    98, 99 -> 1
                     in 101..105, in 201..205 -> 2
                     in 301..307, in 321..355, 401, 402, in 521..534 -> 1
                     else -> 0
@@ -1171,10 +1557,15 @@ class CoreEffectHandlersTest {
 
     private companion object {
         val coreEffectIds = setOf(
+            98, 99,
             101, 102, 103, 104, 105, 106,
             201, 202, 203, 204, 205, 206, 207,
             301, 302, 303, 304, 305, 306, 307,
-            321, 322, 325, 331, 332, 335, 342, 351, 352, 355,
+            251, 262,
+            321, 322, 323, 324, 325,
+            331, 332, 335, 341, 342,
+            351, 352, 354, 355,
+            411, 413, 421, 422, 423, 424,
             401, 402,
             521, 522, 523, 524,
             531, 532, 533, 534,

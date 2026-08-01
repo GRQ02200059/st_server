@@ -15,29 +15,61 @@ class BattleActionResolver {
         enemies: Collection<BattleHero>,
         random: BattleRandom? = null,
     ): BattleHero? {
-        val candidates = enemies
-            .filter { it.troops > 0 }
-            .map { it to formationDistance(source.position, it.position) }
-            .filter { (_, distance) -> distance <= source.stats.hitRange }
-            .sortedWith(compareBy<Pair<BattleHero, Int>> { it.second }.thenByDescending { it.first.position })
+        val candidates = normalAttackTargetsInRange(source, enemies)
+        val rangedAttack = source.modifiers
+            .filterIsInstance<BattleModifier.RangedNormalAttack>()
+            .lastOrNull()
         return when {
             candidates.isEmpty() -> null
+            rangedAttack != null -> candidates.maxByOrNull { it.second }?.first
             random == null -> candidates.first().first
             else -> candidates[random.nextInt(candidates.size)].first
         }
     }
 
+    fun normalAttackTargetsInRange(
+        source: BattleHero,
+        enemies: Collection<BattleHero>,
+    ): List<Pair<BattleHero, Int>> =
+        enemies
+            .filter { it.troops > 0 }
+            .filterNot { target ->
+                BattleModifier.TargetImmunity(BattleTargetingKind.NORMAL_ATTACK) in target.modifiers
+            }
+            .map { it to formationDistance(source.position, it.position) }
+            .filter { (_, distance) -> distance <= source.stats.hitRange }
+            .sortedWith(compareBy<Pair<BattleHero, Int>> { it.second }.thenByDescending { it.first.position })
+
     fun normalAttackDamage(
         source: BattleHero,
         target: BattleHero,
         random: BattleRandom? = null,
-    ): Int =
-        BattleDamageCalculator.physical(
-            source = source,
+    ): Int {
+        val rangedAttack = source.modifiers
+            .filterIsInstance<BattleModifier.RangedNormalAttack>()
+            .lastOrNull()
+        val distanceBonus = rangedAttack
+            ?.damagePercentPerDistance
+            ?.times(formationDistance(source.position, target.position))
+            ?.coerceAtLeast(0)
+            ?: 0
+        val effectiveSource = if (distanceBonus == 0) {
+            source
+        } else {
+            source.copy(
+                modifiers = source.modifiers + BattleModifier.DamageDealtPercent(
+                    origin = DamageOrigin.NORMAL,
+                    percent = distanceBonus,
+                ),
+            )
+        }
+        return BattleDamageCalculator.physical(
+            source = effectiveSource,
             target = target,
             attributeRandomTenths = 30 + (random?.nextInt(10) ?: 5),
             origin = DamageOrigin.NORMAL,
         )
+    }
 
     fun resolveNormalAttack(
         round: Int,

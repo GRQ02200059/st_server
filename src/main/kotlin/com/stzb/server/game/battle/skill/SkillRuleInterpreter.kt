@@ -144,6 +144,26 @@ private enum class InterpreterFailureMode {
     SAFE,
 }
 
+private typealias SkillExecutionStepSink = (SkillExecutionResult) -> Unit
+
+private data class TargetSelectionSignature(
+    val attackType: Int,
+    val selectSkillParam: Int,
+    val targetType: Int,
+    val selectType: Int,
+    val targetCountry: Int,
+    val selectAttribute: Int,
+    val customSelectFlag: Int,
+    val attackMaximum: Int,
+    val castCondition: Int,
+    val precondition: Int,
+    val condition: Int,
+    val selectFlag: Int,
+    val bindFlag: Int,
+    val skillHitRange: Int?,
+    val effectBuffType: Int,
+)
+
 class SkillRuleInterpreter private constructor(
     private val graph: SkillRuleGraph,
     private val registry: BattleEffectRegistry,
@@ -151,6 +171,15 @@ class SkillRuleInterpreter private constructor(
     private val failureMode: InterpreterFailureMode,
     private val diagnosticSink: (SkillExecutionDiagnostic) -> Unit,
 ) {
+    private val referencedTemplateDetailIds: Set<Int> = graph.details
+        .asSequence()
+        .filter { it.effectId in REFERENCED_TEMPLATE_EFFECT_IDS }
+        .map { it.raw.effectParam }
+        .filter { it > 0 }
+        .toSet()
+    private val skillEnhancementUnlockIds: Set<Int> = graph.skillEnhancementUnlockIds
+    private val targetSelector = SkillTargetSelector()
+
     constructor(
         graph: SkillRuleGraph,
         registry: BattleEffectRegistry,
@@ -214,6 +243,22 @@ class SkillRuleInterpreter private constructor(
             SkillExecutionResult.EMPTY
         }
 
+    internal fun executeDetailStreamingForEngine(
+        detail: SkillEffectRule,
+        context: SkillBattleContext,
+        onStep: SkillExecutionStepSink,
+    ): SkillExecutionResult =
+        if (detailProbabilitySucceeds(detail, context)) {
+            executeDetail(detail, context, stepSink = onStep)
+        } else {
+            SkillExecutionResult.EMPTY
+        }
+
+    internal fun detailProbabilitySucceedsForEngine(
+        detail: SkillEffectRule,
+        context: SkillBattleContext,
+    ): Boolean = detailProbabilitySucceeds(detail, context)
+
     private fun executeSkill(
         skillId: Int,
         trigger: BattleTrigger,
@@ -221,6 +266,7 @@ class SkillRuleInterpreter private constructor(
         probabilityOwnership: ChildProbabilityOwnership,
         recordSuccessfulExecution: Boolean = true,
         rootPreselectedTargets: List<BattleHeroRef>? = null,
+        stepSink: SkillExecutionStepSink? = null,
     ): SkillExecutionResult {
         val attemptedPath = parentContext.runtime.currentCallPath() + skillId
         val rule = graph.rule(skillId) ?: throw MissingSkillRuleException(attemptedPath)
@@ -267,13 +313,26 @@ class SkillRuleInterpreter private constructor(
                 executedSkillIds = listOf(skillId),
                 diagnostics = emptyList(),
             )
+            stepSink?.invoke(result)
             val detailOverrides = mutableMapOf<Int, ReferencedDetailExecutionOverride>()
-            rule.details.forEach { detail ->
+            val executableDetails =
+                rule.details.filterNot { it.detailId in referencedTemplateDetailIds }
+            val lockableTargetSignatures = executableDetails
+                .groupingBy { it.targetSelectionSignature() }
+                .eachCount()
+                .filterValues { it > 1 }
+                .keys
+            val lockedTargets =
+                mutableMapOf<TargetSelectionSignature, List<BattleHeroRef>>()
+            executableDetails.forEach { detail ->
                 val branch = executeBranch(
                     detail,
                     context,
                     rootPreselectedTargets,
                     detailOverrides.remove(detail.detailId),
+                    stepSink,
+                    lockableTargetSignatures,
+                    lockedTargets,
                 )
                 result += branch
                 captureExtraParameters(branch, detailOverrides)
@@ -289,18 +348,38 @@ class SkillRuleInterpreter private constructor(
         context: SkillBattleContext,
         preselectedTargets: List<BattleHeroRef>? = null,
         executionOverride: ReferencedDetailExecutionOverride? = null,
+        stepSink: SkillExecutionStepSink? = null,
+        lockableTargetSignatures: Set<TargetSelectionSignature> = emptySet(),
+        lockedTargets: MutableMap<TargetSelectionSignature, List<BattleHeroRef>>? = null,
     ): SkillExecutionResult =
         try {
-            if (!conditionInterpreter.matches(detail, context.trigger, context) ||
+            if (!isSkillEnhancementUnlocked(detail, context) ||
+                !conditionInterpreter.matches(detail, context.trigger, context) ||
+                detail.effectId !in PER_ROUND_PREPARED_EFFECT_IDS &&
+                !usesPerTargetProbability(detail) &&
                 !detailProbabilitySucceeds(detail, context)
             ) {
                 SkillExecutionResult.EMPTY
             } else {
+                val signature = detail.targetSelectionSignature()
+                val selectedTargets =
+                    preselectedTargets ?: executionOverride?.targetOverride
+                        ?: if (
+                            lockedTargets != null &&
+                            signature in lockableTargetSignatures
+                        ) {
+                            lockedTargets.getOrPut(signature) {
+                                targetSelector.compile(detail).select(context)
+                            }
+                        } else {
+                            null
+                        }
                 executeDetail(
                     detail,
                     context,
-                    preselectedTargets,
+                    selectedTargets,
                     executionOverride = executionOverride,
+                    stepSink = stepSink,
                 )
             }
         } catch (error: Exception) {
@@ -308,12 +387,39 @@ class SkillRuleInterpreter private constructor(
             diagnosticResult(detail, context, error)
         }
 
+    private fun isSkillEnhancementUnlocked(
+        detail: SkillEffectRule,
+        context: SkillBattleContext,
+    ): Boolean {
+        val requiredSkillId = detail.raw.lockFlag
+        if (requiredSkillId !in skillEnhancementUnlockIds) return true
+        val source = context.source
+        val entry = (if (source.side == com.stzb.server.game.battle.Side.ATTACKER) {
+            context.request.attacker
+        } else {
+            context.request.defender
+        }).heroes.single { hero ->
+            hero.position == source.position && hero.id == source.heroId
+        }
+        val modifiers = if (
+            SkillBattleViewCapability.LIVE_STATE in context.battleView.capabilities
+        ) {
+            context.battleView.state(source)?.modifiers.orEmpty()
+        } else {
+            entry.modifiers
+        }
+        return modifiers.any { modifier ->
+            modifier == BattleModifier.SkillEnhancementUnlock(requiredSkillId)
+        }
+    }
+
     private fun executeDetail(
         detail: SkillEffectRule,
         context: SkillBattleContext,
         preselectedTargets: List<BattleHeroRef>? = null,
         valueOverride: TypedBattlePotency.Resolved? = null,
         executionOverride: ReferencedDetailExecutionOverride? = null,
+        stepSink: SkillExecutionStepSink? = null,
     ): SkillExecutionResult {
         val ownerSkillId = detail.detailId / 100
         val frame = SkillExecutionFrame(ownerSkillId, detail.detailId)
@@ -396,13 +502,15 @@ class SkillRuleInterpreter private constructor(
                 executedSkillIds = emptyList(),
                 diagnostics = emptyList(),
             )
+            stepSink?.invoke(result)
             execution.stateChanges.forEach { change ->
                 result += when (change) {
-                    is ExecuteChildSkillChange -> executeChildren(change, executionContext)
-                    is RetriggerSkillChange -> retrigger(change, executionContext)
-                    is TriggerReferencedEffectChange -> triggerReferencedEffect(change, executionContext)
+                    is ExecuteChildSkillChange -> executeChildren(change, executionContext, stepSink)
+                    is RetriggerSkillChange -> retrigger(change, executionContext, stepSink)
+                    is TriggerReferencedEffectChange ->
+                        triggerReferencedEffect(change, executionContext, stepSink)
                     is TransformAndCastRandomActiveSkillChange ->
-                        transformAndCastRandomActiveSkill(change, executionContext)
+                        transformAndCastRandomActiveSkill(change, executionContext, stepSink)
                     else -> SkillExecutionResult.EMPTY
                 }
             }
@@ -412,30 +520,69 @@ class SkillRuleInterpreter private constructor(
         }
     }
 
+    private fun SkillEffectRule.targetSelectionSignature(): TargetSelectionSignature =
+        TargetSelectionSignature(
+            attackType = raw.attackType,
+            selectSkillParam = raw.selectSkillParam,
+            targetType = raw.targetType,
+            selectType = raw.selectType,
+            targetCountry = raw.targetCountry,
+            selectAttribute = raw.selectAttri,
+            customSelectFlag = raw.customSelectFlag,
+            attackMaximum = raw.attackMax,
+            castCondition = raw.castCondition,
+            precondition = raw.precondition,
+            condition = raw.condition,
+            selectFlag = raw.selectFlag,
+            bindFlag = raw.bindFlag,
+            skillHitRange = skillHitRange,
+            effectBuffType = effectBuffType,
+        )
+
     private fun executeChildren(
         change: ExecuteChildSkillChange,
         context: SkillBattleContext,
-    ): SkillExecutionResult =
-        change.childSkillIds.fold(SkillExecutionResult.EMPTY) { aggregate, childSkillId ->
+        stepSink: SkillExecutionStepSink? = null,
+    ): SkillExecutionResult {
+        fun executeChild(childSkillId: Int): SkillExecutionResult {
             val child = graph.rule(childSkillId) ?: throw MissingSkillRuleException(
                 context.runtime.currentCallPath() + childSkillId,
             )
-            aggregate + if (change.valueOverride == null && change.inheritedPreselectedTargets == null) {
+            return if (change.valueOverride == null && change.inheritedPreselectedTargets == null) {
                 executeSkill(
                     skillId = childSkillId,
                     trigger = triggerFor(child.kind),
                     parentContext = context,
                     probabilityOwnership = change.probabilityOwnership,
+                    stepSink = stepSink,
                 )
             } else {
-                executeChildWithOverrides(child, change, context)
+                executeChildWithOverrides(child, change, context, stepSink)
             }
         }
+
+        if (change.detailId in FENJI_PER_TARGET_CHILD_DETAILS) {
+            val detail = graph.details.single { it.detailId == change.detailId }
+            return change.selectedTargets.fold(SkillExecutionResult.EMPTY) { aggregate, _ ->
+                if (detailProbabilitySucceeds(detail, context)) {
+                    change.childSkillIds.fold(aggregate) { childAggregate, childSkillId ->
+                        childAggregate + executeChild(childSkillId)
+                    }
+                } else {
+                    aggregate
+                }
+            }
+        }
+        return change.childSkillIds.fold(SkillExecutionResult.EMPTY) { aggregate, childSkillId ->
+            aggregate + executeChild(childSkillId)
+        }
+    }
 
     private fun executeChildWithOverrides(
         child: SkillRule,
         change: ExecuteChildSkillChange,
         parentContext: SkillBattleContext,
+        stepSink: SkillExecutionStepSink? = null,
     ): SkillExecutionResult {
         val trigger = triggerFor(child.kind)
         val attemptedPath = parentContext.runtime.currentCallPath() + child.skillId
@@ -469,16 +616,19 @@ class SkillRuleInterpreter private constructor(
                 executedSkillIds = listOf(child.skillId),
                 diagnostics = emptyList(),
             )
+            stepSink?.invoke(result)
             val detailOverrides = mutableMapOf<Int, ReferencedDetailExecutionOverride>()
-            child.details.forEach { detail ->
+            child.details.filterNot { it.detailId in referencedTemplateDetailIds }.forEach { detail ->
                 val branch = try {
                     if (conditionInterpreter.matches(detail, trigger, context)) {
                         executeDetail(
                             detail = detail,
                             context = context,
-                            preselectedTargets = change.inheritedPreselectedTargets,
+                            preselectedTargets = change.inheritedPreselectedTargets
+                                ?.takeIf { detail.raw.attackType in INHERITED_TARGET_ATTACK_TYPES },
                             valueOverride = change.valueOverride,
                             executionOverride = detailOverrides.remove(detail.detailId),
+                            stepSink = stepSink,
                         )
                     } else {
                         SkillExecutionResult.EMPTY
@@ -499,6 +649,7 @@ class SkillRuleInterpreter private constructor(
     private fun retrigger(
         change: RetriggerSkillChange,
         context: SkillBattleContext,
+        stepSink: SkillExecutionStepSink? = null,
     ): SkillExecutionResult {
         val maximum = change.maximumExecutions
         var result = SkillExecutionResult.EMPTY
@@ -518,6 +669,7 @@ class SkillRuleInterpreter private constructor(
                                 effectValueScalePercent = change.effectValueScalePercent,
                             ),
                             probabilityOwnership = change.probabilityOwnership,
+                            stepSink = stepSink,
                         )
                     }
                 }
@@ -546,19 +698,31 @@ class SkillRuleInterpreter private constructor(
     private fun triggerReferencedEffect(
         change: TriggerReferencedEffectChange,
         context: SkillBattleContext,
+        stepSink: SkillExecutionStepSink? = null,
     ): SkillExecutionResult {
         val detail = graph.details.singleOrNull { it.detailId == change.referencedDetailId }
             ?: throw MissingSkillDetailException(
                 context.runtime.currentCallPath(),
                 change.referencedDetailId,
             )
+        if (!conditionInterpreter.matches(detail, context.trigger, context)) {
+            return SkillExecutionResult.EMPTY
+        }
         return if (change.probabilityAlreadyAccepted || detailProbabilitySucceeds(detail, context)) {
             executeDetail(
                 detail = detail,
                 context = context,
-                preselectedTargets = change.selectedTargets,
+                preselectedTargets =
+                    if (change.detailId in FENJI_LINKED_REFERENCE_DETAILS &&
+                        change.selectedTargets.isEmpty()
+                    ) {
+                        null
+                    } else {
+                        change.selectedTargets
+                    },
                 valueOverride = change.valueOverride,
                 executionOverride = change.executionOverride,
+                stepSink = stepSink,
             )
         } else {
             SkillExecutionResult.EMPTY
@@ -568,6 +732,7 @@ class SkillRuleInterpreter private constructor(
     private fun transformAndCastRandomActiveSkill(
         change: TransformAndCastRandomActiveSkillChange,
         context: SkillBattleContext,
+        stepSink: SkillExecutionStepSink? = null,
     ): SkillExecutionResult {
         val sourceSkills = requestHero(context, change.source).skillIds.toSet()
         val candidates = context.battleView.heroes()
@@ -600,8 +765,12 @@ class SkillRuleInterpreter private constructor(
                 trigger = BattleTrigger.ACTIVE_SKILL_ATTEMPT,
             ),
             probabilityOwnership = ChildProbabilityOwnership.FORCED_SUCCESS,
+            stepSink = stepSink,
         )
     }
+
+    private fun usesPerTargetProbability(detail: SkillEffectRule): Boolean =
+        detail.detailId in FENJI_PER_TARGET_CHILD_DETAILS
 
     private fun diagnosticResult(
         detail: SkillEffectRule,
@@ -704,7 +873,16 @@ class SkillRuleInterpreter private constructor(
         detail: SkillEffectRule,
         context: SkillBattleContext,
     ): Boolean {
-        if (detail.effectId == 81) return true
+        if (
+            detail.effectId == 81 ||
+            (
+                detail.effectId == 401 &&
+                    detail.raw.calcPos == EMERGENCY_RECOVERY_CALC_POSITION &&
+                    context.trigger == BattleTrigger.BATTLE_COMMAND
+                )
+        ) {
+            return true
+        }
         val source = requestHero(context, context.source)
         val level = EffectInvocation(
             rule = detail,
@@ -758,6 +936,12 @@ class SkillRuleInterpreter private constructor(
         }
 
     companion object {
+        private val FENJI_LINKED_REFERENCE_DETAILS = setOf(21096101, 21096102)
+        private val FENJI_PER_TARGET_CHILD_DETAILS = setOf(21296113, 21296114)
+        private val REFERENCED_TEMPLATE_EFFECT_IDS = setOf(125, 408)
+        private val INHERITED_TARGET_ATTACK_TYPES = setOf(43, 98)
+        private const val EMERGENCY_RECOVERY_CALC_POSITION = 995
+
         fun safe(
             graph: SkillRuleGraph,
             registry: BattleEffectRegistry,

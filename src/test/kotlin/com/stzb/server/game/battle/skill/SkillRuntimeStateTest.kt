@@ -22,6 +22,33 @@ class SkillRuntimeStateTest {
     }
 
     @Test
+    fun `runtime counters isolate owners and clamp signed progress`() {
+        val runtime = SkillRuntimeState()
+        val owner = BattleHeroRef(Side.ATTACKER, 2, BattleHeroId(100785))
+        val ally = BattleHeroRef(Side.ATTACKER, 1, BattleHeroId(100001))
+
+        assertEquals(
+            40,
+            runtime.addCounter(
+                owner,
+                "skill.200255.normal-damage-uplift",
+                delta = 45,
+                maximum = 40,
+            ),
+        )
+        assertEquals(40, runtime.counter(owner, "skill.200255.normal-damage-uplift"))
+        assertEquals(0, runtime.counter(ally, "skill.200255.normal-damage-uplift"))
+        assertEquals(
+            0,
+            runtime.addCounter(
+                owner,
+                "skill.200255.normal-damage-uplift",
+                delta = -50,
+            ),
+        )
+    }
+
+    @Test
     fun `round hurt counts isolate target and round`() {
         val runtime = SkillRuntimeState()
         val first = BattleHeroRef(Side.DEFENDER, 2, BattleHeroId(1))

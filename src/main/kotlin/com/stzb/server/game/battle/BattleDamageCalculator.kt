@@ -73,9 +73,29 @@ object BattleDamageCalculator {
             .sumOf { it.percent }
         val taken = target.modifiers
             .filterIsInstance<BattleModifier.DamageTakenPercent>()
-            .filter { it.matches(school, origin, tags) }
+            .filter { it.matches(school, origin, tags, target.activeStatuses) }
             .sumOf { it.percent }
-        return (100 + dealt + taken).coerceAtLeast(10) / 100.0
+        val troopCounterDealt = source.modifiers
+            .filterIsInstance<BattleModifier.TroopCounterDealtPercent>()
+            .filter { it.targetHeroType == target.heroType }
+            .sumOf { it.percent }
+        val troopCounterTaken = if (
+            BattleModifier.TroopCounterImmunity in source.modifiers
+        ) {
+            0
+        } else {
+            target.modifiers
+                .filterIsInstance<BattleModifier.TroopCounterTakenPercent>()
+                .filter { it.sourceHeroType == source.heroType }
+                .sumOf { it.percent }
+        }
+        return (
+            100 +
+                dealt +
+                taken +
+                troopCounterDealt +
+                troopCounterTaken
+            ).coerceAtLeast(10) / 100.0
     }
 
     private fun BattleModifier.DamageDealtPercent.matches(
@@ -91,10 +111,12 @@ object BattleDamageCalculator {
         school: DamageSchool,
         origin: DamageOrigin?,
         tags: Set<DamageTag>,
+        statuses: Set<BattleStatus>,
     ): Boolean =
         (this.school == null || this.school == school) &&
             (this.origin == null || this.origin == origin) &&
-            (tag == null || tag in tags)
+            (tag == null || tag in tags) &&
+            (requiredStatus == null || requiredStatus in statuses)
 
     private fun attackDefenseFactor(attack: Int, defense: Int): Double {
         val difference = attack - defense

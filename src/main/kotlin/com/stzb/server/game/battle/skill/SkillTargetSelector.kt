@@ -2,7 +2,9 @@ package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleConfigRepository
+import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleStatus
+import com.stzb.server.game.battle.BattleTargetingKind
 import com.stzb.server.game.battle.Side
 import com.stzb.server.game.battle.SkillKind
 import com.stzb.server.game.battle.opposite
@@ -55,11 +57,13 @@ class SkillTargetSelector(
                 }
             }
             .filter { view.isTargetable(it) }
+            .filterNot { target -> view.hasTargetImmunity(target, rule.skillKind) }
             .filter { target ->
-                matchesTargetType(
-                    raw.targetType,
-                    if (raw.targetType == TARGET_ANY) null else view.metadata(target),
-                )
+                raw.attackType % 1000 == 0 ||
+                    matchesTargetType(
+                        raw.targetType,
+                        if (raw.targetType == TARGET_ANY) null else view.metadata(target),
+                    )
             }
             .filter { target ->
                 raw.targetCountry == 0 || view.metadata(target)?.country == raw.targetCountry
@@ -116,7 +120,11 @@ class SkillTargetSelector(
                         context.source,
                         target,
                         rule.skillHitRange?.plus(
-                            context.battleView.skillRangeBonus(context.source, rule.skillKind),
+                            context.battleView.skillRangeBonus(
+                                context.source,
+                                rule.skillKind,
+                                rule.detailId / 100,
+                            ),
                         ),
                     )
             }
@@ -537,6 +545,19 @@ class SkillTargetSelector(
         } else {
             entryState(ref)
         }
+
+    private fun SkillBattleView.hasTargetImmunity(
+        ref: BattleHeroRef,
+        skillKind: SkillKind,
+    ): Boolean {
+        val targetingKind = when (skillKind) {
+            SkillKind.ACTIVE -> BattleTargetingKind.ACTIVE_SKILL
+            SkillKind.PURSUIT -> BattleTargetingKind.PURSUIT_SKILL
+            else -> return false
+        }
+        return BattleModifier.TargetImmunity(targetingKind) in
+            targetabilityState(ref)?.modifiers.orEmpty()
+    }
 
     private companion object {
         const val BASE_POSITION = 0

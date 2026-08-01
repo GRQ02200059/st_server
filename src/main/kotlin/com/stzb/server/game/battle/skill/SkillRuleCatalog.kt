@@ -47,7 +47,12 @@ object SkillRuleCatalog {
                 }
             }
             .toSet()
-        return SkillRuleGraph(rules, effectIds, scope.mainSkillIds)
+        return SkillRuleGraph(
+            rules = rules,
+            effectIds = effectIds,
+            rootSkillIds = scope.mainSkillIds,
+            skillEnhancementUnlockIds = config.skillEnhancementUnlockIds(),
+        )
     }
 
     private fun childSkillIds(
@@ -56,7 +61,6 @@ object SkillRuleCatalog {
     ): Set<Int> {
         val candidates = when (detail.effectId) {
             122, 123 -> listOf(detail.constantParam)
-            210 -> listOf(detail.effectParam)
             else -> emptyList()
         }
         return candidates

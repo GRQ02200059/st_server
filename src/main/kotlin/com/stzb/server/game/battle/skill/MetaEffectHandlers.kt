@@ -5,12 +5,15 @@ import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
 import com.stzb.server.game.battle.BattleModifier
 import com.stzb.server.game.battle.BattleStat
+import com.stzb.server.game.battle.BattleTargetingKind
 import com.stzb.server.game.battle.ConfiguredBattleEffectValue
 import com.stzb.server.game.battle.SkillKind
 import com.stzb.server.game.battle.opposite
 
 enum class MetaEffectOperation {
     MARKER,
+    SIMULATED_NORMAL_ATTACK,
+    NORMAL_ATTACK_ALL_IN_RANGE,
     JOINT_ATTACK,
     DAMAGE_RATE_MAXIMUM,
     DAMAGE_RATE_MINIMUM,
@@ -25,28 +28,39 @@ enum class MetaEffectOperation {
     EXECUTE_HARMFUL_CHILD,
     BENEFICIAL_PUPPET,
     DAMAGE_SHARING,
+    RANGED_NORMAL_ATTACK,
+    CONTROL_DURATION_INCREASE,
+    NEXT_CONTROL_DURATION_INCREASE,
     RETRIGGER_ACTIVE_SKILL,
     RETRIGGER_PURSUIT_SKILL,
     SKILL_PROBABILITY_INCREASE,
+    SKILL_ENHANCEMENT_UNLOCK,
     EFFECT_PROBABILITY_INCREASE,
     TRIGGER_LAST_APPLIED_EFFECT,
+    TRIGGER_SPECIFIED_EFFECT,
     TRIGGER_REFERENCED_EFFECT,
     CLEAR_REFERENCED_EFFECT,
     TRIGGER_ATTRIBUTE_SCALED_EFFECT,
     IGNORE_ENEMY_ATTRIBUTE,
     SKILL_RANGE_INCREASE,
     SKILL_RANGE_DECREASE,
+    NORMAL_TARGET_IMMUNITY,
+    ACTIVE_TARGET_IMMUNITY,
+    PURSUIT_TARGET_IMMUNITY,
     TRANSFORMATION,
     COMBO,
     EXECUTE_NAMED_CHILD,
+    SIEGE_IMMUNITY,
     SKILL_PROBABILITY_DECREASE,
     SPECIAL_DAMAGE_TAKEN_INCREASE,
+    RECOVERY_DEALT_INCREASE,
     RECOVERY_TAKEN_INCREASE,
     REDUCE_REFERENCED_EFFECT_USES,
     EXTRA_CONTROL_TARGET,
     DAMAGE_ABSORPTION,
     RELEASE_DAMAGE,
     LINKED_HEARTS,
+    COUNTERATTACK_IMMUNITY,
 }
 
 /**
@@ -164,6 +178,30 @@ data class MarkerEffectChange(
     val parameters: MetaEffectParameters,
 ) : BattleStateChange
 
+data class NamedFlagCounterChange(
+    val source: BattleHeroRef,
+    val target: BattleHeroRef,
+    val rootSkillId: Int,
+    val skillId: Int,
+    val detailId: Int,
+    val flagId: Int,
+    val delta: Int,
+    val maximum: Int,
+) : BattleStateChange
+
+enum class SimulatedNormalAttackMode {
+    SINGLE,
+    ALL_IN_RANGE,
+}
+
+data class SimulatedNormalAttackChange(
+    val source: BattleHeroRef,
+    val mode: SimulatedNormalAttackMode,
+    val skillId: Int,
+    val effectId: Int,
+    val detailId: Int,
+) : BattleStateChange
+
 data class ReferencedValueChange(
     val source: BattleHeroRef,
     val rootSkillId: Int,
@@ -195,6 +233,16 @@ data class TriggerLastAppliedEffectChange(
     val appliedSpec: PersistentEffectSpec? = null,
 ) : BattleStateChange
 
+data class TriggerSpecifiedEffectChange(
+    val source: BattleHeroRef,
+    val target: BattleHeroRef,
+    val rootSkillId: Int,
+    val skillId: Int,
+    val detailId: Int,
+    val triggeredEffectId: Int,
+    val parameters: MetaEffectParameters,
+) : BattleStateChange
+
 data class TransformAndCastRandomActiveSkillChange(
     val source: BattleHeroRef,
     val rootSkillId: Int,
@@ -211,6 +259,21 @@ data class ForcedTargetEffectChange(
 data class SharedEffectUseGroupChange(
     val spec: PersistentEffectSpec,
     val memberDetailId: Int,
+) : BattleStateChange
+
+data class DamageAbsorptionAccumulatorEffectChange(
+    val spec: PersistentEffectSpec,
+    val protectedTargets: List<BattleHeroRef>,
+    val absorbPercent: Int,
+) : BattleStateChange
+
+data class DamageReleaseScheduleEffectChange(
+    val spec: PersistentEffectSpec,
+    val target: BattleHeroRef,
+    val referencedDetailId: Int,
+    val referencedEffectId: Int,
+    val baseReleasePercent: Int,
+    val firstReleaseRound: Int,
 ) : BattleStateChange
 
 data class ReferencedExtraParameterChange(
@@ -356,17 +419,19 @@ data class ConsumeEffectUseChange(
 object MetaEffectHandlers {
     val effectIds: Set<Int> = setOf(
         0,
-        77,
+        77, 79, 80,
         81, 82, 83,
         88,
         111, 112, 113, 114,
         118,
         121, 122, 123,
-        125, 127, 129, 130, 131,
-        141, 149,
+        125, 127, 128, 129, 130, 131, 132,
+        141, 149, 150,
         151, 152, 153,
-        161, 171, 181, 199, 200, 210, 231, 261, 281, 313,
+        161, 171, 181, 190, 193, 194, 199, 200, 210, 220, 231, 261, 271, 281, 313,
+        311, 312,
         404, 407, 408, 409,
+        553,
     )
 
     fun registrations(
@@ -402,6 +467,19 @@ private class MetaEffectHandler(
         val parameters = MetaEffectParameters.from(invocation.rule)
         val operation = OPERATIONS.getValue(ownedEffectId)
         val changes: List<BattleStateChange> = when (ownedEffectId) {
+            79, 80 -> listOf(
+                SimulatedNormalAttackChange(
+                    source = context.source,
+                    mode = if (ownedEffectId == 79) {
+                        SimulatedNormalAttackMode.SINGLE
+                    } else {
+                        SimulatedNormalAttackMode.ALL_IN_RANGE
+                    },
+                    skillId = context.currentSkillId,
+                    effectId = ownedEffectId,
+                    detailId = invocation.rule.detailId,
+                ),
+            )
             77 -> targets.map { target ->
                 MarkerEffectChange(
                     source = context.source,
@@ -479,7 +557,7 @@ private class MetaEffectHandler(
                     ),
                 )
             }
-            122, 123, 210 -> listOf(
+            122, 123 -> listOf(
                 ExecuteChildSkillChange(
                     source = context.source,
                     rootSkillId = context.rootSkillId,
@@ -494,6 +572,18 @@ private class MetaEffectHandler(
                     parameters = parameters,
                 ),
             )
+            210 -> targets.map { target ->
+                NamedFlagCounterChange(
+                    source = context.source,
+                    target = target,
+                    rootSkillId = context.rootSkillId,
+                    skillId = context.currentSkillId,
+                    detailId = invocation.rule.detailId,
+                    flagId = raw.effectParam,
+                    delta = raw.constantParam,
+                    maximum = raw.addCountMax,
+                )
+            }
             125 -> {
                 val referenced = referencedDetail(invocation)
                 val inherited = invocation.executionOverride
@@ -583,6 +673,15 @@ private class MetaEffectHandler(
                     ),
                 )
             }
+            271 -> {
+                val potency = configuredPotency(invocation)
+                targets.map { target ->
+                    ModifierEffectChange(
+                        spec = persistentSpec(invocation, target, potency),
+                        modifier = BattleModifier.RecoveryDealtPercent(potency.value),
+                    )
+                }
+            }
             281 -> {
                 val potency = configuredPotency(invocation)
                 targets.map { target ->
@@ -597,7 +696,7 @@ private class MetaEffectHandler(
                 val tag = when (raw.effectParam) {
                     303 -> com.stzb.server.game.battle.DamageTag.SHAKE
                     304 -> com.stzb.server.game.battle.DamageTag.PANIC
-                    305 -> com.stzb.server.game.battle.DamageTag.FIRE
+                    305 -> com.stzb.server.game.battle.DamageTag.BURN
                     306 -> com.stzb.server.game.battle.DamageTag.HEX
                     307 -> com.stzb.server.game.battle.DamageTag.FIRE
                     else -> null
@@ -636,7 +735,44 @@ private class MetaEffectHandler(
                     )
                 }
             }
+            190, 193, 194 -> {
+                val kind = when (ownedEffectId) {
+                    190 -> BattleTargetingKind.NORMAL_ATTACK
+                    193 -> BattleTargetingKind.ACTIVE_SKILL
+                    194 -> BattleTargetingKind.PURSUIT_SKILL
+                    else -> error("Unsupported target immunity effect=$ownedEffectId")
+                }
+                targets.map { target ->
+                    ModifierEffectChange(
+                        spec = persistentSpec(
+                            invocation,
+                            target,
+                            TypedBattlePotency.flat(1),
+                        ),
+                        modifier = BattleModifier.TargetImmunity(kind),
+                    )
+                }
+            }
+            553 -> targets.map { target ->
+                ModifierEffectChange(
+                    spec = persistentSpec(
+                        invocation,
+                        target,
+                        TypedBattlePotency.flat(1),
+                    ),
+                    modifier = BattleModifier.CounterattackImmunity,
+                )
+            }
             121 -> targets.map { target ->
+                ApplyBattleEffectChange(
+                    persistentSpec(
+                        invocation,
+                        target,
+                        TypedBattlePotency.flat(1),
+                    ),
+                )
+            }
+            220 -> targets.map { target ->
                 ApplyBattleEffectChange(
                     persistentSpec(
                         invocation,
@@ -726,6 +862,76 @@ private class MetaEffectHandler(
                     },
                 )
             }
+            128 -> {
+                val potency = rangedNormalAttackPotency(invocation)
+                targets.map { target ->
+                    ModifierEffectChange(
+                        spec = persistentSpec(invocation, target, potency),
+                        modifier = BattleModifier.RangedNormalAttack(
+                            damagePercentPerDistance = potency.value,
+                        ),
+                    )
+                }
+            }
+            311, 312 -> {
+                val potency = TypedBattlePotency.flat(
+                    kotlin.math.abs(raw.constantParam).coerceAtLeast(1),
+                )
+                val requiredSkillKind = when (raw.effectParam) {
+                    PURSUIT_MAIN_SKILL_FILTER -> SkillKind.PURSUIT
+                    else -> null
+                }
+                targets.map { target ->
+                    val spec = persistentSpec(invocation, target, potency)
+                    ModifierEffectChange(
+                        spec = if (
+                            spec.skillKind == SkillKind.UNKNOWN &&
+                            spec.rawSkillType in CONTROL_EXTENSION_PASSIVE_SKILL_TYPES
+                        ) {
+                            spec.copy(skillKind = SkillKind.PASSIVE)
+                        } else {
+                            spec
+                        },
+                        modifier = BattleModifier.ControlDurationIncrease(
+                            rounds = potency.value,
+                            mainSkillOnly = ownedEffectId == 311,
+                            requiredSkillKind = requiredSkillKind,
+                        ),
+                    )
+                }
+            }
+            132 -> targets.map { target ->
+                val unlockedSkillId = raw.effectParam.takeIf { it > 0 }
+                    ?: context.currentSkillId
+                ModifierEffectChange(
+                    spec = persistentSpec(
+                        invocation,
+                        target,
+                        TypedBattlePotency.flat(1),
+                    ),
+                    modifier = BattleModifier.SkillEnhancementUnlock(
+                        skillId = unlockedSkillId,
+                    ),
+                )
+            }
+            407 -> {
+                if (targets.isEmpty()) {
+                    emptyList()
+                } else {
+                    val absorbPercent = configuredPotency(invocation).value.coerceIn(1, 100)
+                    listOf(
+                        DamageAbsorptionAccumulatorEffectChange(
+                            spec = persistentSpec(
+                                invocation,
+                                context.source,
+                                TypedBattlePotency.percent(absorbPercent),
+                            ),
+                            protectedTargets = targets,
+                            absorbPercent = absorbPercent,
+                        ),
+                    )
+                }
+            }
             409 -> {
                 if (targets.isEmpty()) emptyList() else listOf(
                     LinkedDamageSharingEffectChange(
@@ -749,6 +955,17 @@ private class MetaEffectHandler(
                     parameters = parameters,
                 ),
             )
+            150 -> targets.map { target ->
+                TriggerSpecifiedEffectChange(
+                    source = context.source,
+                    target = target,
+                    rootSkillId = context.rootSkillId,
+                    skillId = context.currentSkillId,
+                    detailId = invocation.rule.detailId,
+                    triggeredEffectId = raw.effectParam,
+                    parameters = parameters,
+                )
+            }
             200 -> targets.map { target ->
                 ActionEffectChange(
                     spec = persistentSpec(
@@ -788,7 +1005,31 @@ private class MetaEffectHandler(
                     ).copy(availableHit = raw.availableHit.coerceAtLeast(1)),
                 )
             }
-            151, 153, 408 -> {
+            408 -> {
+                val referenced = referencedDetail(invocation)
+                val baseReleasePercent = raw.constantParam.coerceIn(0, 100)
+                listOf(
+                    DamageReleaseScheduleEffectChange(
+                        spec = persistentSpec(
+                            invocation,
+                            context.source,
+                            TypedBattlePotency.percent(baseReleasePercent),
+                        ).copy(
+                            delayRound = 0,
+                            delayHit = 0,
+                            startBoundary = EffectStartBoundary.IMMEDIATE,
+                        ),
+                        target = context.source,
+                        referencedDetailId = referenced.detailId,
+                        referencedEffectId = referenced.effectId,
+                        baseReleasePercent = baseReleasePercent,
+                        firstReleaseRound = (
+                            context.round + raw.delayRound + 1
+                            ).coerceAtLeast(1),
+                    ),
+                )
+            }
+            151, 153 -> {
                 val referenced = referencedDetail(invocation)
                 listOf(
                     TriggerReferencedEffectChange(
@@ -801,7 +1042,6 @@ private class MetaEffectHandler(
                         selectedTargets = targets,
                         mode = when (ownedEffectId) {
                             153 -> ReferenceEffectMode.ATTRIBUTE_SCALED
-                            408 -> ReferenceEffectMode.DAMAGE_RELEASE
                             else -> ReferenceEffectMode.NORMAL
                         },
                         valueOverride = if (ownedEffectId == 153) configuredPotency(invocation) else null,
@@ -840,7 +1080,7 @@ private class MetaEffectHandler(
                     )
                 }
             }
-            else -> targets.map { target ->
+            171, 181 -> targets.map { target ->
                 MetaEffectChange(
                     source = context.source,
                     target = target,
@@ -852,6 +1092,10 @@ private class MetaEffectHandler(
                     parameters = parameters,
                 )
             }
+            else -> error(
+                "Missing typed meta effect intent: effect=$ownedEffectId " +
+                    "detail=${invocation.rule.detailId}",
+            )
         }
         return EffectExecution(changes, emptyList())
     }
@@ -870,6 +1114,47 @@ private class MetaEffectHandler(
         if (rawChildSkillId !in configured) return configured
         val shifted = Math.addExact(rawChildSkillId, delta)
         return configured.map { if (it == rawChildSkillId) shifted else it }
+    }
+
+    private fun rangedNormalAttackPotency(
+        invocation: EffectInvocation,
+    ): TypedBattlePotency.Resolved {
+        val skillDetailBase = invocation.context.currentSkillId * 100
+        val referencedDamageDetail = (1..99)
+            .asSequence()
+            .mapNotNull { suffix -> detailResolver(skillDetailBase + suffix) }
+            .filter { detail ->
+                detail.effectId == 111 &&
+                    detail.raw.calcPos == RANGED_DISTANCE_CALC_POSITION &&
+                    detail.raw.calcParam == PHYSICAL_DISTANCE_PARAMETER
+            }
+            .mapNotNull { parameterDetail ->
+                detailResolver(parameterDetail.raw.effectParam)
+            }
+            .singleOrNull { detail -> detail.effectId == RANGED_PHYSICAL_DAMAGE_EFFECT_ID }
+            ?: throw MissingSkillDetailException(
+                invocation.callPath,
+                skillDetailBase + RANGED_PHYSICAL_DAMAGE_DETAIL_SUFFIX,
+            )
+        val source = sourceHero(invocation)
+        val calculated = calculator.effectValue(
+            referencedDamageDetail,
+            source,
+            invocation.rootSkillLevel(source),
+        )
+        val resolved = calculated as? TypedBattlePotency.Resolved
+            ?: throw UnsupportedConfiguredBattleValueException(
+                BattleEffectDiagnostic(
+                    code = EffectFailureCode.UNSUPPORTED_CONFIGURED_VALUE,
+                    skillId = invocation.context.currentSkillId,
+                    detailId = referencedDamageDetail.detailId,
+                    effectId = referencedDamageDetail.effectId,
+                    trigger = invocation.context.trigger,
+                    callPath = invocation.callPath,
+                    reason = (calculated as TypedBattlePotency.Deferred).diagnostic,
+                ),
+            )
+        return TypedBattlePotency.percent(kotlin.math.abs(resolved.value))
     }
 
     private fun persistentSpec(
@@ -968,6 +1253,8 @@ private class MetaEffectHandler(
     private companion object {
         val OPERATIONS = mapOf(
             77 to MetaEffectOperation.MARKER,
+            79 to MetaEffectOperation.SIMULATED_NORMAL_ATTACK,
+            80 to MetaEffectOperation.NORMAL_ATTACK_ALL_IN_RANGE,
             81 to MetaEffectOperation.JOINT_ATTACK,
             82 to MetaEffectOperation.DAMAGE_RATE_MAXIMUM,
             83 to MetaEffectOperation.DAMAGE_RATE_MINIMUM,
@@ -982,28 +1269,46 @@ private class MetaEffectHandler(
             123 to MetaEffectOperation.EXECUTE_HARMFUL_CHILD,
             125 to MetaEffectOperation.BENEFICIAL_PUPPET,
             127 to MetaEffectOperation.DAMAGE_SHARING,
+            128 to MetaEffectOperation.RANGED_NORMAL_ATTACK,
+            311 to MetaEffectOperation.CONTROL_DURATION_INCREASE,
+            312 to MetaEffectOperation.NEXT_CONTROL_DURATION_INCREASE,
             129 to MetaEffectOperation.RETRIGGER_ACTIVE_SKILL,
             130 to MetaEffectOperation.RETRIGGER_PURSUIT_SKILL,
             131 to MetaEffectOperation.SKILL_PROBABILITY_INCREASE,
+            132 to MetaEffectOperation.SKILL_ENHANCEMENT_UNLOCK,
             141 to MetaEffectOperation.EFFECT_PROBABILITY_INCREASE,
             149 to MetaEffectOperation.TRIGGER_LAST_APPLIED_EFFECT,
+            150 to MetaEffectOperation.TRIGGER_SPECIFIED_EFFECT,
             151 to MetaEffectOperation.TRIGGER_REFERENCED_EFFECT,
             152 to MetaEffectOperation.CLEAR_REFERENCED_EFFECT,
             153 to MetaEffectOperation.TRIGGER_ATTRIBUTE_SCALED_EFFECT,
             161 to MetaEffectOperation.IGNORE_ENEMY_ATTRIBUTE,
             171 to MetaEffectOperation.SKILL_RANGE_INCREASE,
             181 to MetaEffectOperation.SKILL_RANGE_DECREASE,
+            190 to MetaEffectOperation.NORMAL_TARGET_IMMUNITY,
+            193 to MetaEffectOperation.ACTIVE_TARGET_IMMUNITY,
+            194 to MetaEffectOperation.PURSUIT_TARGET_IMMUNITY,
             199 to MetaEffectOperation.TRANSFORMATION,
             200 to MetaEffectOperation.COMBO,
             210 to MetaEffectOperation.EXECUTE_NAMED_CHILD,
+            220 to MetaEffectOperation.SIEGE_IMMUNITY,
             231 to MetaEffectOperation.SKILL_PROBABILITY_DECREASE,
             261 to MetaEffectOperation.SPECIAL_DAMAGE_TAKEN_INCREASE,
+            271 to MetaEffectOperation.RECOVERY_DEALT_INCREASE,
             281 to MetaEffectOperation.RECOVERY_TAKEN_INCREASE,
             313 to MetaEffectOperation.REDUCE_REFERENCED_EFFECT_USES,
             404 to MetaEffectOperation.EXTRA_CONTROL_TARGET,
             407 to MetaEffectOperation.DAMAGE_ABSORPTION,
             408 to MetaEffectOperation.RELEASE_DAMAGE,
             409 to MetaEffectOperation.LINKED_HEARTS,
+            553 to MetaEffectOperation.COUNTERATTACK_IMMUNITY,
         )
+
+        const val RANGED_DISTANCE_CALC_POSITION = 991
+        const val PHYSICAL_DISTANCE_PARAMETER = 1
+        const val RANGED_PHYSICAL_DAMAGE_EFFECT_ID = 531
+        const val RANGED_PHYSICAL_DAMAGE_DETAIL_SUFFIX = 3
+        const val PURSUIT_MAIN_SKILL_FILTER = 1000001004
+        val CONTROL_EXTENSION_PASSIVE_SKILL_TYPES = setOf(16, 17, 19)
     }
 }
