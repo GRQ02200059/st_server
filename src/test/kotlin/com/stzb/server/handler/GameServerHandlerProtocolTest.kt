@@ -3,8 +3,10 @@ package com.stzb.server.handler
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.game.CardBorderCatalog
 import com.stzb.server.game.FilePlayerRepository
+import com.stzb.server.game.FileUnionRepository
 import com.stzb.server.game.InventoryCatalog
 import com.stzb.server.game.PlayerStateRepository
+import com.stzb.server.game.UnionStateRepository
 import com.stzb.server.game.WorldStateRepository
 import com.stzb.server.game.battle.ClientBattleReportStore
 import com.stzb.server.protocol.Cmd
@@ -38,6 +40,7 @@ class GameServerHandlerProtocolTest {
         GameServerHandler.resetRuntimeForTests()
         repositoryRoot = Files.createTempDirectory("stzb-handler-protocol-")
         PlayerStateRepository.configure(FilePlayerRepository(repositoryRoot))
+        UnionStateRepository.configure(repositoryRoot)
         WorldStateRepository.configure(repositoryRoot)
     }
 
@@ -45,6 +48,7 @@ class GameServerHandlerProtocolTest {
     fun tearDown() {
         GameServerHandler.resetRuntimeForTests()
         PlayerStateRepository.reset()
+        UnionStateRepository.reset()
         WorldStateRepository.reset()
         repositoryRoot.toFile().deleteRecursively()
     }
@@ -112,6 +116,20 @@ class GameServerHandlerProtocolTest {
             assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
             assertNull(channel.readOutbound<Any>(), "cmd=$cmd emitted an extra packet")
         }
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `union group list fallback returns exactly one plain empty row list`() {
+        val channel = newChannel()
+
+        channel.writeInbound(upPacket(Cmd.UNION_GET_GROUP_LIST, "[]"))
+
+        val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.UNION_GET_GROUP_LIST, response.cmd)
+        assertEquals(DownType.PLAIN, response.dataType)
+        assertEquals("[]", response.body.toString(Charsets.UTF_8))
+        assertNull(channel.readOutbound<Any>())
         channel.finishAndReleaseAll()
     }
 
@@ -350,6 +368,87 @@ class GameServerHandlerProtocolTest {
         assertEquals(1, members.size())
         assertEquals(playerId, members[0][0].asInt())
         assertEquals(1, members[0][3].asInt())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `union chat members use authenticated identity and return empty without a union`() {
+        val foreignChannel = newChannel()
+        val foreignUserId = platformLogin(foreignChannel, "union-chat-foreign")
+        foreignChannel.writeInbound(
+            upPacket(Cmd.UNION_CREATE, """["Foreign Union"]""", userId = foreignUserId),
+        )
+        drainOutbound(foreignChannel)
+
+        val channel = newChannel()
+        platformLogin(channel, "union-chat-no-union")
+        val repository = FileUnionRepository(repositoryRoot)
+        val snapshotBefore = repository.load()
+
+        channel.writeInbound(
+            upPacket(
+                Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT,
+                "[]",
+                userId = foreignUserId,
+            ),
+        )
+
+        val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT, response.cmd)
+        assertEquals(DownType.PLAIN, response.dataType)
+        assertEquals("[]", response.body.toString(Charsets.UTF_8))
+        assertNull(channel.readOutbound<Any>())
+        assertEquals(snapshotBefore, repository.load())
+        channel.finishAndReleaseAll()
+        foreignChannel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `union chat members return every local member as sorted unassigned rows`() {
+        val channel = newChannel()
+        val playerId = platformLogin(channel, "union-chat-member")
+        channel.writeInbound(
+            upPacket(Cmd.UNION_CREATE, """["Local Union"]""", userId = playerId),
+        )
+        val unionId = mapper.readTree(assertIs<DownPacket>(channel.readOutbound<Any>()).body).asInt()
+        assertIs<DownPacket>(channel.readOutbound<Any>())
+
+        val repository = FileUnionRepository(repositoryRoot)
+        val memberUserIds = linkedSetOf(playerId + 20, playerId, playerId + 10)
+        val snapshot = repository.load()
+        repository.save(
+            snapshot.copy(
+                unions = snapshot.unions.map { union ->
+                    if (union.unionId == unionId) union.copy(memberUserIds = memberUserIds) else union
+                },
+            ),
+        )
+        UnionStateRepository.configure(repositoryRoot)
+        val snapshotBefore = repository.load()
+
+        channel.writeInbound(
+            upPacket(
+                Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT,
+                "[]",
+                userId = playerId + 30,
+            ),
+        )
+
+        val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT, response.cmd)
+        assertEquals(DownType.PLAIN, response.dataType)
+        val rows = mapper.readTree(response.body)
+        assertEquals(memberUserIds.sorted(), rows.map { row -> row[0].asInt() })
+        assertTrue(
+            rows.all { row ->
+                row.size() == 3 &&
+                    row[1].asInt() == 0 &&
+                    row[2].isTextual &&
+                    row[2].asText().isEmpty()
+            },
+        )
+        assertNull(channel.readOutbound<Any>())
+        assertEquals(snapshotBefore, repository.load())
         channel.finishAndReleaseAll()
     }
 

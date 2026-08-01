@@ -8,6 +8,12 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `union group commands expose readable ids`() {
+        assertEquals(142, Cmd.UNION_GET_GROUP_LIST)
+        assertEquals(143, Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT)
+    }
+
+    @Test
     fun `production registry contains every generated 9 2 2 inventory command`() {
         val registry = CommandContractCatalog.registry
         val all = registry.all()
@@ -30,6 +36,17 @@ class CommandContractRegistryTest {
         assertEquals(CommandStatus.PROVISIONAL, registry.contract(Cmd.SYS_NOTIFY_DB_UPDATE)?.status)
         assertEquals(CommandStatus.PROVISIONAL, registry.contract(Cmd.SEND_WORLD_SCENCE_FULL_INFO)?.status)
         assertEquals(CommandStatus.PROVISIONAL, registry.contract(2_100)?.status)
+    }
+
+    @Test
+    fun `union group contracts reflect policy and explicit handler ownership`() {
+        val groupList = CommandContractCatalog.registry.contract(Cmd.UNION_GET_GROUP_LIST)
+        assertEquals(CommandStatus.OBSERVED_SHAPE, groupList?.status)
+        assertEquals("NetworkResponsePolicy", groupList?.owner)
+
+        val chatMembers = CommandContractCatalog.registry.contract(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT)
+        assertEquals(CommandStatus.PROVISIONAL, chatMembers?.status)
+        assertEquals("GameServerHandler", chatMembers?.owner)
     }
 
     @Test

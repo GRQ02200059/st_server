@@ -104,7 +104,6 @@ class CapturedShapeTest {
     fun `captured indexed tuples reserve positional slots so client resp index reads survive`() {
         // 这些命令客户端按下标读取（resp[0]/resp[1]），空 [] 会取到 null 崩溃。
         val expectedSizes = mapOf(
-            142 to 1,
             5210 to 1,
             6242 to 1,
             6243 to 1,
@@ -140,7 +139,7 @@ class CapturedShapeTest {
     @Test
     fun `captured list iterated commands stay empty arrays`() {
         // 这些命令客户端整体遍历列表，空 [] 即结构正确（保结构不保数值）。
-        listOf(92, 103, 143, 171, 711, 871, 6256).forEach { cmd ->
+        listOf(92, 103, Cmd.UNION_GET_GROUP_LIST, 171, 711, 871, 6256).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(0, ShapeAssert.tupleSize(body), "cmd=$cmd")

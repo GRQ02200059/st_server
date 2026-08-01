@@ -13,7 +13,7 @@ object NetworkResponsePolicy {
     private val mapper = jacksonObjectMapper()
 
     private val noOpArrayCommands = setOf(
-        22, 92, 103, 111, 143, 171, 202, 203, 220, 509, 700, 701, 711, 714, 727, 780, 871,
+        22, 92, 103, 111, Cmd.UNION_GET_GROUP_LIST, 171, 202, 203, 220, 509, 700, 701, 711, 714, 727, 780, 871,
         959, 963, 974, 3758, 3846, 4080, 4331, 4967, 5043, 5044, 5045, 5049, 5082,
         6030, 6067, 6256, 9099,
     )
@@ -118,7 +118,6 @@ object NetworkResponsePolicy {
 
     private val fixedTupleCommands = mapOf(
         135 to "[[],{},{},{},{}]",
-        142 to "[[]]",
         172 to "[200,\"\"]",
         204 to "[0,\"\",\"\",\"\",\"\",\"\",0,0,0,\"\",\"\",\"\",\"\",0,0,\"\"]",
         261 to "[{}]",

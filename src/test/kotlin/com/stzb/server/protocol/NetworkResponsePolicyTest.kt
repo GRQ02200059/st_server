@@ -15,6 +15,16 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `union group list returns an empty row list instead of a one slot tuple`() {
+        assertEquals("[]", NetworkResponsePolicy.observedShapeBody(Cmd.UNION_GET_GROUP_LIST))
+    }
+
+    @Test
+    fun `union chat member list requires the explicit handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT))
+    }
+
+    @Test
     fun `unregistered command has no shape response`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(45_678))
         assertTrue(!CommandContractCatalog.registry.isShapeResponseAllowed(45_678))

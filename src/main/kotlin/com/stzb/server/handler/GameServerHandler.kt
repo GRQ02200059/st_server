@@ -163,6 +163,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendUnionMembers(ctx, session, msg)
             }
 
+            Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT -> {
+                logIn(msg)
+                sendUnionChatMembers(ctx, session, msg)
+            }
+
             Cmd.GET_HOMEPAGE_INFO -> {
                 logIn(msg)
                 sendHomepageInfo(ctx, session, msg)
@@ -1094,6 +1099,16 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             ?: GameResponses.emptyArray()
         ctx.writeAndFlush(DownPacket.json(Cmd.UNION_MEMBER, json, dataType = DownType.PLAIN))
         log.info(">> cmd=103 同盟成员已下发 (uid=$userId, hasUnion=${UnionStateRepository.forUser(userId) != null})")
+    }
+
+    private fun sendUnionChatMembers(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val union = UnionStateRepository.forUser(userId)
+        val json = union
+            ?.let(GameResponses::unionChatMembers)
+            ?: GameResponses.emptyArray()
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=143 同盟分组聊天成员已下发 (uid=$userId, hasUnion=${union != null})")
     }
 
     private fun sendHomepageInfo(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {

@@ -758,6 +758,19 @@ object GameResponses {
             ),
         )
 
+    fun unionChatMembers(union: PlayerUnion): String {
+        val rows = nf.arrayNode()
+        union.memberUserIds.sorted().forEach { memberUserId ->
+            rows.add(
+                nf.arrayNode()
+                    .add(memberUserId)
+                    .add(0)
+                    .add(""),
+            )
+        }
+        return mapper.writeValueAsString(rows)
+    }
+
     fun armyUpsertNotify(state: PlayerState, armyId: Int = state.primaryArmyId()): String =
         mapper.writeValueAsString(
             nf.arrayNode().add(
