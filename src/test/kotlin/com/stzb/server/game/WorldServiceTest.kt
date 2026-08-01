@@ -16,14 +16,37 @@ class WorldServiceTest {
     }
 
     @Test
-    fun `world service refuses claims on static city cells`() {
+    fun `world service refuses claims on protected static city cells`() {
         val root = createTempDirectory("stzb-world-static-city")
         val playerRepository = FilePlayerRepository(root)
         val world = WorldService(FileWorldRepository(root), playerRepository::save)
         val state = world.registerOrRestorePlayer(player(10_001, "alice"))
+        val protectedStaticCity = GameHome.LUOYANG_WID + 1
 
-        assertFalse(world.claimLand(state, GameHome.LUOYANG_WID, nowSec = 100))
+        assertTrue(StaticCityCatalog.contains(protectedStaticCity))
+        assertFalse(world.claimLand(state, protectedStaticCity, nowSec = 100))
         assertTrue(state.occupiedLands().isEmpty())
+    }
+
+    @Test
+    fun `first victor can claim Luoyang and retain its ownership after restart`() {
+        val root = createTempDirectory("stzb-world-luoyang")
+        val playerRepository = FilePlayerRepository(root)
+        val firstWorld = WorldService(FileWorldRepository(root), playerRepository::save)
+        val first = firstWorld.registerOrRestorePlayer(player(10_001, "alice"))
+        val second = firstWorld.registerOrRestorePlayer(player(10_002, "bob"))
+
+        assertTrue(firstWorld.claimLand(first, GameHome.LUOYANG_WID, nowSec = 100))
+        assertFalse(firstWorld.claimLand(second, GameHome.LUOYANG_WID, nowSec = 101))
+        assertEquals(setOf(GameHome.LUOYANG_WID), first.occupiedLands())
+
+        val reloadedWorld = WorldService(FileWorldRepository(root), playerRepository::save)
+        val restored = reloadedWorld.registerOrRestorePlayer(
+            PlayerState.fromSnapshot(first.toSnapshot()),
+        )
+
+        assertEquals(setOf(GameHome.LUOYANG_WID), restored.occupiedLands())
+        assertEquals(10_001, reloadedWorld.ownerOf(GameHome.LUOYANG_WID)?.userId)
     }
 
     @Test

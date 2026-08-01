@@ -192,7 +192,10 @@ class WorldService(
         val previous = landsByWid[wid]
         when {
             previous != null -> return@write previous.userId == state.userId
-            wid <= 0 || isCityFootprintWid(wid) || StaticCityCatalog.contains(wid) -> return@write false
+            wid <= 0 ||
+                isCityFootprintWid(wid) ||
+                (StaticCityCatalog.contains(wid) && wid != GameHome.LUOYANG_WID) ->
+                return@write false
         }
 
         landsByWid[wid] = LandClaim(
