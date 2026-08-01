@@ -19,6 +19,8 @@ import com.stzb.server.game.WorldProjection
 import com.stzb.server.game.WorldStateRepository
 import com.stzb.server.game.battle.ClientBattleReportStore
 import com.stzb.server.protocol.Cmd
+import com.stzb.server.protocol.CommandContractCatalog
+import com.stzb.server.protocol.CommandStatus
 import com.stzb.server.protocol.DownPacket
 import com.stzb.server.protocol.DownType
 import com.stzb.server.protocol.GameServerConfig
@@ -986,20 +988,21 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     }
 
     private fun logUnhandledOrFallback(ctx: ChannelHandlerContext, msg: UpPacket) {
-        val fallback = NetworkResponsePolicy.fallbackBody(msg.cmdId, msg.bodyText)
-        if (fallback == null) {
-            log.warn("⚠ 未处理系统 cmd=${msg.cmdId} idx=${msg.cmdIndex} uid=${msg.userId} flag=${msg.flag} checkOk=${msg.checkOk}")
-            if (msg.body.isNotEmpty()) log.warn("   body: ${msg.bodyText}")
+        val contract = CommandContractCatalog.registry.contract(msg.cmdId)
+        val response = contract
+            ?.takeIf { it.status == CommandStatus.OBSERVED_SHAPE }
+            ?.let { NetworkResponsePolicy.observedShapeBody(msg.cmdId, msg.bodyText) }
+
+        if (response == null) {
+            log.warn(
+                "unhandled command cmd=${msg.cmdId} status=${contract?.status ?: "UNKNOWN"} " +
+                    "idx=${msg.cmdIndex} uid=${msg.userId} checkOk=${msg.checkOk}",
+            )
             return
         }
 
-        log.warn(
-            "⚠ 未精确实现 cmd=${msg.cmdId}，已按协议形状兜底返回 ${responseShape(fallback)} " +
-                "idx=${msg.cmdIndex} uid=${msg.userId}",
-        )
-        if (msg.body.isNotEmpty()) log.warn("   body: ${msg.bodyText}")
-        ctx.writeAndFlush(DownPacket.json(msg.cmdId, fallback, dataType = DownType.PLAIN))
-        log.info(">> cmd=${msg.cmdId} 业务兜底已应答")
+        log.warn("shape-only command cmd=${msg.cmdId} status=${contract.status}")
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, response, dataType = DownType.PLAIN))
     }
 
     private fun responseShape(json: String): String =
@@ -1102,8 +1105,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     }
 
     private fun sendRecordedAcknowledgement(ctx: ChannelHandlerContext, msg: UpPacket) {
-        val response = NetworkResponsePolicy.fallbackBody(msg.cmdId, msg.bodyText)
-            ?: GameResponses.emptyArray()
+        val response = requireNotNull(
+            NetworkResponsePolicy.observedShapeBody(msg.cmdId, msg.bodyText),
+        ) {
+            "missing recorded acknowledgement shape for ${msg.cmdId}"
+        }
         ctx.writeAndFlush(DownPacket.json(msg.cmdId, response, dataType = DownType.PLAIN))
         log.info(">> cmd=${msg.cmdId} 协议确认已应答 (${responseShape(response)})")
     }

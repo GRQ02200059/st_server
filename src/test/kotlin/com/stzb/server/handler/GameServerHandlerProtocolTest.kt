@@ -60,6 +60,16 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `unknown command is logged without fabricated success response`() {
+        val channel = newChannel()
+
+        channel.writeInbound(upPacket(45_678, "[]"))
+
+        assertNull(channel.readOutbound<Any>())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `world scene request acknowledges before full scene notification`() {
         val channel = newChannel()
         channel.writeInbound(upPacket(Cmd.GET_WORLD_SCENCE_INFO, "[50,70,641,661,0,0]"))
