@@ -96,6 +96,11 @@ object CommandContractCatalog {
             Cmd.WORLD_BOSS_SAVE_TEAM,
             Cmd.EXERCISE_DAILY_SAVE_TEAM,
         ).distinct().map(::provisionalRequest) +
+            listOf(
+                Cmd.LOG_FPS,
+                Cmd.SEND_ACSDK_CHEAT_INFO,
+                Cmd.USER_OPEN_UI,
+            ).map(::provisionalClientRequest) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,
                 names = emptyList(),
@@ -159,6 +164,16 @@ object CommandContractCatalog {
             id = id,
             names = emptyList(),
             direction = CommandDirection.DUPLEX,
+            domain = CommandDomain.UNKNOWN,
+            status = CommandStatus.PROVISIONAL,
+            owner = "GameServerHandler",
+        )
+
+    private fun provisionalClientRequest(id: Int): CommandContract =
+        CommandContract(
+            id = id,
+            names = emptyList(),
+            direction = CommandDirection.CLIENT_REQUEST,
             domain = CommandDomain.UNKNOWN,
             status = CommandStatus.PROVISIONAL,
             owner = "GameServerHandler",

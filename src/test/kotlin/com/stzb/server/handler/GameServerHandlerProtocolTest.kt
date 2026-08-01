@@ -66,6 +66,46 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `telemetry acknowledgements ignore arbitrary payloads without mutating repositories`() {
+        val channel = newChannel()
+        val accountKey = "telemetry-ack-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Telemetry Snapshot User",
+        )
+        UnionStateRepository.create(state, "Telemetry Snapshot Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_002, nowSec = 1))
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val cases = listOf(
+            Triple(Cmd.LOG_FPS, """["ignored-fps",59.7,{"device":"ignored"}]""", "null"),
+            Triple(Cmd.SEND_ACSDK_CHEAT_INFO, """{"sdk":"ignored","role":"ignored","account":"ignored"}""", "true"),
+            Triple(Cmd.USER_OPEN_UI, """["ignored-ui-action",{"detail":"ignored"}]""", "null"),
+        )
+
+        cases.forEach { (cmd, request, expectedBody) ->
+            channel.writeInbound(upPacket(cmd, request, userId = state.userId))
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "cmd=$cmd")
+            assertEquals(cmd, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "cmd=$cmd emitted an extra packet")
+        }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `unknown command is logged without fabricated success response`() {
         val channel = newChannel()
 

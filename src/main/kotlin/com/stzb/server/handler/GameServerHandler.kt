@@ -149,6 +149,18 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendServerTimeMillis(ctx)
             }
 
+            Cmd.LOG_FPS -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.LOG_FPS, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.SEND_ACSDK_CHEAT_INFO -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.SEND_ACSDK_CHEAT_INFO, "true", dataType = DownType.PLAIN))
+            }
+
+            Cmd.USER_OPEN_UI -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.USER_OPEN_UI, "null", dataType = DownType.PLAIN))
+            }
+
             Cmd.BATTLE_REPORT_PROFILE -> {
                 logIn(msg)
                 sendBattleReportProfile(ctx, session, msg)

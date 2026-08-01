@@ -26,6 +26,7 @@ object Cmd {
     const val BUILD_BUILDING = 13
     const val UPGRADE_BUILDING = 14
     const val LAND_INFO = 21
+    const val LOG_FPS = 24
     const val GET_SERVER_TIME = 25
     const val ADD_HERO_TO_ARMY = 30
     const val REMOVE_HERO_FROM_ARMY = 31
@@ -42,6 +43,7 @@ object Cmd {
     const val UNION_OFFICIAL_LIST = 110
     const val UNION_GET_GROUP_LIST = 142
     const val UNION_GET_ALL_MEMBER_LIST_FOR_CHAT = 143
+    const val SEND_ACSDK_CHEAT_INFO = 191
     const val MAIL_INFO = 204
     const val MAIL_BRIEF_INFO_BY_MAIL_ID = 209
     const val COMMUNITY_GET_USER_TOKEN = 1436
@@ -65,6 +67,7 @@ object Cmd {
     const val RANK_LIST = 700
     const val CHAT = 710
     const val CHAT_HISTORY = 711
+    const val USER_OPEN_UI = 885
     const val GEAR_EQUIP = 1226
     const val GEAR_FORGET = 1227
     const val HERO_ACTIVE_FACADE = 2520

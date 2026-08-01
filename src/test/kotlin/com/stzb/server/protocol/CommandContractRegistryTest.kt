@@ -8,6 +8,25 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `telemetry commands expose readable handler owned client request contracts`() {
+        val commands = listOf(
+            Cmd.LOG_FPS,
+            Cmd.SEND_ACSDK_CHEAT_INFO,
+            Cmd.USER_OPEN_UI,
+        )
+        assertEquals(24, Cmd.LOG_FPS)
+        assertEquals(191, Cmd.SEND_ACSDK_CHEAT_INFO)
+        assertEquals(885, Cmd.USER_OPEN_UI)
+
+        commands.forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `union group commands expose readable ids`() {
         assertEquals(142, Cmd.UNION_GET_GROUP_LIST)
         assertEquals(143, Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT)
