@@ -82,6 +82,9 @@ object UserInitTableBuilder {
             PlayerStateRepository.getOrCreate(it, cityWid, roleName)
         } ?: PlayerStateRepository.getOrCreate(userId, cityWid, roleName)
         state.ensureAdvanceMaterials()
+        if (state.ensureDefaultArmyFacadeBindings() != null) {
+            PlayerStateRepository.save(state)
+        }
         val playerId = state.userId
         val playerCityWid = state.cityWid
         val worldProjection = world.withPlayer(state)

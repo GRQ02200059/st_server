@@ -8,6 +8,7 @@ import com.stzb.server.game.ArmyBattleRequestParser
 import com.stzb.server.game.ArmyFacadeOperationRequestParser
 import com.stzb.server.game.ConscriptRequestParser
 import com.stzb.server.game.ClientCardPackCatalog
+import com.stzb.server.game.CityFacadeOperationRequestParser
 import com.stzb.server.game.GearOperationRequestParser
 import com.stzb.server.game.GameResponses
 import com.stzb.server.game.PlayerBattleService
@@ -281,6 +282,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.HERO_ACTIVE_CARD_BORDER -> {
                 logIn(msg)
                 sendSelectHeroCardBorder(ctx, session, msg)
+            }
+
+            Cmd.BUILD_FACADE_APPLY_BUILD_SCHEME -> {
+                logIn(msg)
+                sendApplyCityFacadeScheme(ctx, session, msg)
             }
 
             Cmd.BATCH_ACTIVE_ARMY_FACADE_CARD,
@@ -923,6 +929,28 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             ">> cmd=${msg.cmdId} 行军外观操作已处理 " +
                 "(uid=$userId, changed=${mutation != null}, body=${msg.bodyText})",
         )
+    }
+
+    private fun sendApplyCityFacadeScheme(
+        ctx: ChannelHandlerContext,
+        session: Session?,
+        msg: UpPacket,
+    ) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val state = playerState(session, userId, GameServerConfig.CITY_WID)
+        val changed = CityFacadeOperationRequestParser.parseApplyScheme(msg.bodyText)
+            ?.let { request ->
+                WorldStateRepository.updateCityCustomView(state, request.cityWid, request.customView)
+            } == true
+
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN))
+        if (changed) {
+            broadcastWorldScene(
+                removedArmyUserId = 0,
+                removedArmyId = 0,
+            )
+        }
+        log.info(">> cmd=${msg.cmdId} 主城布局已处理 (uid=$userId, changed=$changed)")
     }
 
     private fun sendCardSetAllNotNew(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {

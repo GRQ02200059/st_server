@@ -372,6 +372,41 @@ class PlayerState(
         )
     }
 
+    fun ensureDefaultArmyFacadeBindings(): ArmyFacadeMutation? {
+        if (armyFacadeCards.any { it.cfgHeroId > 0 }) return null
+        val deployedHeroes = armyIds()
+            .flatMap(::teamHeroes)
+            .distinct()
+            .mapNotNull(::hero)
+            .filter { !it.isAdvanceMaterial && HeroCatalog.heroQuality(it.heroId) == 4 }
+        if (deployedHeroes.isEmpty()) return null
+
+        val orderedCards = ArmyFacadeCatalog.standardFacadeIds().flatMap { facadeId ->
+            armyFacadeCards
+                .filter { it.facadeId == facadeId && it.cfgHeroId == 0 }
+                .sortedBy(PlayerArmyFacadeCard::cardId)
+        }
+        val changedCards = linkedMapOf<Int, Int>()
+        val changedHeroes = linkedMapOf<Int, Int>()
+        deployedHeroes.forEach { target ->
+            val card = orderedCards.firstOrNull { candidate ->
+                candidate.cfgHeroId == 0 &&
+                    armyFacadeCards.none {
+                        it.facadeId == candidate.facadeId && it.cfgHeroId == target.heroId
+                    }
+            } ?: return@forEach
+            card.cfgHeroId = target.heroId
+            target.armyFacadeCardId = card.facadeId
+            changedCards[card.cardId] = target.heroId
+            changedHeroes[target.heroUid] = card.facadeId
+        }
+        return ArmyFacadeMutation(
+            cardCfgHeroIds = changedCards,
+            heroFacadeIds = changedHeroes,
+            affectedArmyIds = deployedHeroes.map(PlayerHero::armyId).filter { it > 0 }.toSortedSet(),
+        ).takeIf { changedCards.isNotEmpty() }
+    }
+
     fun equippedGearUid(heroUid: Int): Int =
         hero(heroUid)?.gearUid ?: 0
 
