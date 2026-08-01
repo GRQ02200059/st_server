@@ -46,6 +46,26 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `prebook info is provisional and community token is locally rejected`() {
+        assertEquals(40_008, Cmd.GET_PREBOOK_SERVER_INFO)
+        val prebook = CommandContractCatalog.registry.contract(Cmd.GET_PREBOOK_SERVER_INFO)
+        assertEquals(CommandDirection.CLIENT_REQUEST, prebook?.direction)
+        assertEquals(CommandStatus.PROVISIONAL, prebook?.status)
+        assertEquals("GameServerHandler", prebook?.owner)
+
+        assertEquals(1_436, Cmd.COMMUNITY_GET_USER_TOKEN)
+        val community = CommandContractCatalog.registry.contract(Cmd.COMMUNITY_GET_USER_TOKEN)
+        assertEquals(CommandDirection.CLIENT_REQUEST, community?.direction)
+        assertEquals(CommandDomain.EXTERNAL, community?.domain)
+        assertEquals(CommandStatus.REJECTED, community?.status)
+        assertEquals("GameServerHandler", community?.owner)
+
+        val privileged = CommandContractCatalog.registry.contract(98_765)
+        assertEquals(CommandStatus.REJECTED, privileged?.status)
+        assertEquals("LocalPrivilegePolicy", privileged?.owner)
+    }
+
+    @Test
     fun `production registry contains every generated 9 2 2 inventory command`() {
         val registry = CommandContractCatalog.registry
         val all = registry.all()

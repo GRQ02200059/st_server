@@ -47,6 +47,18 @@ object GameResponses {
     fun preServerTokenCheck(): String =
         mapper.writeValueAsString(nf.arrayNode().add(0))
 
+    fun prebookServerInfo(): String =
+        mapper.writeValueAsString(
+            nf.objectNode().apply {
+                putArray("prebook_info")
+                putArray("del_prebook")
+                putArray("prebook_list")
+            },
+        )
+
+    fun communityUserTokenRejection(): String =
+        mapper.writeValueAsString(nf.arrayNode().add(0).add("").add(""))
+
     /**
      * 20003 (GetAllServerInfoNew) 响应。
      *

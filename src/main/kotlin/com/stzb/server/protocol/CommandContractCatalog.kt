@@ -94,7 +94,15 @@ object CommandContractCatalog {
             Cmd.NORMAL_TEAM_COMPOSITION,
             Cmd.WORLD_BOSS_SAVE_TEAM,
             Cmd.EXERCISE_DAILY_SAVE_TEAM,
-        ).distinct().map(::provisionalRequest)
+        ).distinct().map(::provisionalRequest) +
+            CommandContract(
+                id = Cmd.GET_PREBOOK_SERVER_INFO,
+                names = emptyList(),
+                direction = CommandDirection.CLIENT_REQUEST,
+                domain = CommandDomain.UNKNOWN,
+                status = CommandStatus.PROVISIONAL,
+                owner = "GameServerHandler",
+            )
 
     private fun provisionalPushContracts(): List<CommandContract> =
         listOf(
@@ -126,16 +134,24 @@ object CommandContractCatalog {
         }
 
     private fun rejectedContracts(): List<CommandContract> =
-        listOf(98_765).map { id ->
+        listOf(
             CommandContract(
-                id = id,
+                id = Cmd.COMMUNITY_GET_USER_TOKEN,
+                names = emptyList(),
+                direction = CommandDirection.CLIENT_REQUEST,
+                domain = CommandDomain.EXTERNAL,
+                status = CommandStatus.REJECTED,
+                owner = "GameServerHandler",
+            ),
+            CommandContract(
+                id = 98_765,
                 names = emptyList(),
                 direction = CommandDirection.CLIENT_REQUEST,
                 domain = CommandDomain.EXTERNAL,
                 status = CommandStatus.REJECTED,
                 owner = "LocalPrivilegePolicy",
-            )
-        }
+            ),
+        )
 
     private fun provisionalRequest(id: Int): CommandContract =
         CommandContract(

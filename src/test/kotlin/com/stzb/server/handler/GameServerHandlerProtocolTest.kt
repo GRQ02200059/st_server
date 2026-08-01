@@ -322,6 +322,53 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `prebook info and community token rejection emit one plain response without mutation`() {
+        val channel = newChannel()
+        val accountKey = "prebook-community-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Protocol Snapshot User",
+        )
+        UnionStateRepository.create(state, "Protocol Snapshot Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_002, nowSec = 1))
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val cases = listOf(
+            Triple(
+                Cmd.GET_PREBOOK_SERVER_INFO,
+                """["11"]""",
+                """{"prebook_info":[],"del_prebook":[],"prebook_list":[]}""",
+            ),
+            Triple(
+                Cmd.COMMUNITY_GET_USER_TOKEN,
+                "[]",
+                """[0,"",""]""",
+            ),
+        )
+
+        cases.forEach { (cmd, request, expectedBody) ->
+            channel.writeInbound(upPacket(cmd, request, userId = state.userId))
+
+            val packet = assertIs<DownPacket>(channel.readOutbound<Any>(), "cmd=$cmd")
+            assertEquals(cmd, packet.cmd)
+            assertEquals(DownType.PLAIN, packet.dataType)
+            assertEquals(expectedBody, packet.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "cmd=$cmd emitted an extra packet")
+        }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `world chat uses official 2100 shape and is returned by history`() {
         val channel = newChannel()
         val playerId = platformLogin(channel, "alice")

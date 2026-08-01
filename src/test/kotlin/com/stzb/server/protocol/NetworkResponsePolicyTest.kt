@@ -54,6 +54,17 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `prebook info and community token require explicit handlers`() {
+        listOf(
+            Cmd.GET_PREBOOK_SERVER_INFO to """["11"]""",
+            Cmd.COMMUNITY_GET_USER_TOKEN to "[]",
+        ).forEach { (cmd, request) ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd, request), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `unregistered command has no shape response`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(45_678))
         assertTrue(!CommandContractCatalog.registry.isShapeResponseAllowed(45_678))
@@ -171,7 +182,6 @@ class NetworkResponsePolicyTest {
             135 to 5,
             172 to 2,
             725 to 4,
-            1436 to 3,
             2529 to 3,
             3686 to 2,
             3787 to 2,

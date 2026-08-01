@@ -162,6 +162,16 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendMailBriefInfo(ctx, msg)
             }
 
+            Cmd.GET_PREBOOK_SERVER_INFO -> {
+                logIn(msg)
+                sendPrebookServerInfo(ctx)
+            }
+
+            Cmd.COMMUNITY_GET_USER_TOKEN -> {
+                logIn(msg)
+                sendCommunityUserTokenRejection(ctx)
+            }
+
             Cmd.UNION_CREATE -> {
                 logIn(msg)
                 sendCreateUnion(ctx, session, msg)
@@ -440,6 +450,18 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val json = GameResponses.preServerTokenCheck()
         ctx.writeAndFlush(DownPacket.json(Cmd.SYS_PRE_SERVER_TOKEN_CHECK, json, dataType = DownType.PLAIN))
         log.info(">> cmd=99994 预登录校验已下发")
+    }
+
+    private fun sendPrebookServerInfo(ctx: ChannelHandlerContext) {
+        val json = GameResponses.prebookServerInfo()
+        ctx.writeAndFlush(DownPacket.json(Cmd.GET_PREBOOK_SERVER_INFO, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=40008 预预约服务器信息已下发")
+    }
+
+    private fun sendCommunityUserTokenRejection(ctx: ChannelHandlerContext) {
+        val json = GameResponses.communityUserTokenRejection()
+        ctx.writeAndFlush(DownPacket.json(Cmd.COMMUNITY_GET_USER_TOKEN, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=1436 社区凭证请求已本地拒绝")
     }
 
     /** 下发 20003/98702 服务器列表; 广播的 host:port 即本进程监听地址。 */

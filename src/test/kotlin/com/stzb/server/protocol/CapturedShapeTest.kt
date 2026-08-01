@@ -74,7 +74,7 @@ class CapturedShapeTest {
     @Test
     fun `captured object command keeps object kind`() {
         // 5021 GET_SEASON_HISTROY_PARAMS 正式服真实 recv 为对象。
-        listOf(40008, 5021).forEach { cmd ->
+        listOf(5021).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("object", ShapeAssert.topLevelKind(body), "cmd=$cmd")
         }

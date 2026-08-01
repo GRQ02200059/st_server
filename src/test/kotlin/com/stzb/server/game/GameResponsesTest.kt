@@ -10,6 +10,43 @@ class GameResponsesTest {
     private val mapper = jacksonObjectMapper()
 
     @Test
+    fun `prebook server info exposes all mandatory empty lists`() {
+        val json = GameResponses.prebookServerInfo()
+        val response = mapper.readTree(json)
+
+        assertEquals(
+            """{"prebook_info":[],"del_prebook":[],"prebook_list":[]}""",
+            json,
+        )
+        assertTrue(response.isObject)
+        assertEquals(
+            setOf("prebook_info", "del_prebook", "prebook_list"),
+            response.fieldNames().asSequence().toSet(),
+        )
+        listOf("prebook_info", "del_prebook", "prebook_list").forEach { key ->
+            assertTrue(response.has(key), "missing key=$key")
+            assertTrue(response[key].isArray, "key=$key must be an array")
+            assertEquals(0, response[key].size(), "key=$key must be empty")
+        }
+    }
+
+    @Test
+    fun `community user token rejection keeps the three slot client contract`() {
+        val json = GameResponses.communityUserTokenRejection()
+        val response = mapper.readTree(json)
+
+        assertEquals("""[0,"",""]""", json)
+        assertTrue(response.isArray)
+        assertEquals(3, response.size())
+        assertTrue(response[0].isIntegralNumber)
+        assertEquals(0, response[0].asInt())
+        assertTrue(response[1].isTextual)
+        assertEquals("", response[1].asText())
+        assertTrue(response[2].isTextual)
+        assertEquals("", response[2].asText())
+    }
+
+    @Test
     fun `army related fort response keeps all recorded dictionary buckets`() {
         val response = mapper.readTree(GameResponses.armyRelatedFort())
 

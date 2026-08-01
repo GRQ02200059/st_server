@@ -113,7 +113,7 @@ object NetworkResponsePolicy {
     )
 
     private val dictionaryCommands = setOf(
-        510, 5021, 6053, 6068, 6219, 6239, 40008,
+        510, 5021, 6053, 6068, 6219, 6239,
     )
 
     private val fixedTupleCommands = mapOf(
@@ -122,7 +122,6 @@ object NetworkResponsePolicy {
         261 to "[{}]",
         262 to "[{}]",
         725 to "[0,[],[],{}]",
-        1436 to "[200,\"\",\"\"]",
         2529 to "[0,0,[]]",
         2604 to "[0,[]]",
         3787 to "[[0,0],[]]",

@@ -43,6 +43,7 @@ object Cmd {
     const val UNION_GET_ALL_MEMBER_LIST_FOR_CHAT = 143
     const val MAIL_INFO = 204
     const val MAIL_BRIEF_INFO_BY_MAIL_ID = 209
+    const val COMMUNITY_GET_USER_TOKEN = 1436
     const val CARD_RECRUIT = 301
     const val CARD_SET_ALL_NOT_NEW = 302
     const val CARD_QUICK_RECRUIT = 304
@@ -89,6 +90,7 @@ object Cmd {
     const val EXERCISE_DAILY_SAVE_TEAM = 8011
     const val NORMAL_TEAM_COMPOSITION = 9026
     const val HERO_TEAM_LIBRARY = 9029
+    const val GET_PREBOOK_SERVER_INFO = 40008
 }
 
 /**
