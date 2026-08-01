@@ -14,7 +14,7 @@ object NetworkResponsePolicy {
 
     private val noOpArrayCommands = setOf(
         22, 92, 103, 111, 143, 171, 202, 203, 220, 509, 700, 701, 711, 714, 727, 780, 871,
-        959, 963, 974, 3758, 3846, 4080, 4331, 4967, 5043, 5044, 5045, 5049, 5070, 5082,
+        959, 963, 974, 3758, 3846, 4080, 4331, 4967, 5043, 5044, 5045, 5049, 5082,
         6030, 6067, 6256, 9099,
     )
 
@@ -39,6 +39,8 @@ object NetworkResponsePolicy {
                 3877,
                 4968,
                 5091,
+                5070,
+                5210,
                 6078,
                 6092,
             )
@@ -52,6 +54,8 @@ object NetworkResponsePolicy {
             cmdId == 3686 -> ProfileResponses.homepageInfo() // GET_HOMEPAGE_INFO(自己主页)：完整字典，空 {} 会崩
             cmdId == 5013 -> roleLookup(requestBody)
             cmdId == 4979 -> nameLookup(requestBody)
+            cmdId == 5070 -> dailyReportDetail(requestBody)
+            cmdId == 5210 -> heroRecommendation(requestBody)
             cmdId in booleanCommands -> "true"
             cmdId in jsonNullCommands -> "null"
             cmdId in scalarNumberCommands -> scalarNumberCommands.getValue(cmdId)
@@ -126,7 +130,6 @@ object NetworkResponsePolicy {
         2604 to "[0,[]]",
         3787 to "[[0,0],[]]",
         3928 to "[\"\",\"\"]",
-        5210 to "[0,[]]",
         5201 to "[0]",
         6242 to "[0]",
         6243 to "[[]]",
@@ -161,6 +164,28 @@ object NetworkResponsePolicy {
         val request = runCatching { mapper.readTree(requestBody ?: "[]") }.getOrNull()
         val name = request?.get(0)?.asText() ?: ""
         return mapper.writeValueAsString(listOf(name, emptyList<Any>(), emptyList<Any>()))
+    }
+
+    private fun dailyReportDetail(requestBody: String?): String {
+        val request = runCatching { mapper.readTree(requestBody ?: "[]") }.getOrNull()
+        val timestamp = request
+            ?.takeIf { it.isArray && it.size() > 0 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: 0
+        return mapper.writeValueAsString(listOf(emptyList<Any>(), 0, "", "", timestamp))
+    }
+
+    private fun heroRecommendation(requestBody: String?): String {
+        val request = runCatching { mapper.readTree(requestBody ?: "[]") }.getOrNull()
+        val heroId = request
+            ?.takeIf { it.isArray && it.size() > 0 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: 0
+        return mapper.writeValueAsString(listOf(heroId))
     }
 
     private fun transferSeasonRecommendations(requestBody: String?): String {

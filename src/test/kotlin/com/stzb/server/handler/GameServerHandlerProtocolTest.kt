@@ -96,6 +96,26 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `request aware observed shape fallbacks echo identity in one plain response`() {
+        val channel = newChannel()
+        val cases = listOf(
+            Triple(5070, "[1700000000]", """[[],0,"","",1700000000]"""),
+            Triple(5210, "[100521]", "[100521]"),
+        )
+
+        cases.forEach { (cmd, request, expectedBody) ->
+            channel.writeInbound(upPacket(cmd, request))
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "cmd=$cmd")
+            assertEquals(cmd, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "cmd=$cmd emitted an extra packet")
+        }
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `world chat uses official 2100 shape and is returned by history`() {
         val channel = newChannel()
         val playerId = platformLogin(channel, "alice")

@@ -75,6 +75,58 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `daily report detail echoes timestamp in the mandatory five slot tuple`() {
+        assertEquals(
+            """[[],0,"","",1700000000]""",
+            NetworkResponsePolicy.observedShapeBody(5070, "[1700000000]"),
+        )
+    }
+
+    @Test
+    fun `hero recommendation no data response echoes requested hero id`() {
+        assertEquals("[100521]", NetworkResponsePolicy.observedShapeBody(5210, "[100521]"))
+    }
+
+    @Test
+    fun `request aware fallbacks default invalid identity slots to zero`() {
+        val invalidRequests = listOf<String?>(
+            null,
+            "",
+            "not-json",
+            "0",
+            "{}",
+            "[]",
+            "[null]",
+            """["100521"]""",
+            "[1.5]",
+            "[2147483648]",
+            "[-2147483649]",
+        )
+
+        invalidRequests.forEach { request ->
+            assertEquals(
+                """[[],0,"","",0]""",
+                NetworkResponsePolicy.observedShapeBody(5070, request),
+                "cmd=5070 request=$request",
+            )
+            assertEquals(
+                "[0]",
+                NetworkResponsePolicy.observedShapeBody(5210, request),
+                "cmd=5210 request=$request",
+            )
+        }
+    }
+
+    @Test
+    fun `request aware fallbacks remain observed shapes owned by network policy`() {
+        listOf(5070, 5210).forEach { cmdId ->
+            val contract = CommandContractCatalog.registry.contract(cmdId)
+            assertEquals(CommandStatus.OBSERVED_SHAPE, contract?.status, "cmd=$cmdId")
+            assertEquals("NetworkResponsePolicy", contract?.owner, "cmd=$cmdId")
+        }
+    }
+
+    @Test
     fun `recorded fixed tuple queries keep minimum client readable arity`() {
         val expectedSizes = mapOf(
             135 to 5,

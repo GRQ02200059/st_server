@@ -105,7 +105,7 @@ class CapturedShapeTest {
         // 这些命令客户端按下标读取（resp[0]/resp[1]），空 [] 会取到 null 崩溃。
         val expectedSizes = mapOf(
             142 to 1,
-            5210 to 2,
+            5210 to 1,
             6242 to 1,
             6243 to 1,
             6244 to 1,
@@ -116,6 +116,25 @@ class CapturedShapeTest {
             assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(size, ShapeAssert.tupleSize(body), "cmd=$cmd")
         }
+    }
+
+    @Test
+    fun `captured request aware tuples keep mandatory slot kinds`() {
+        val dailyReport = mapper.readTree(
+            NetworkResponsePolicy.observedShapeBody(5070, "[1700000000]"),
+        )
+        assertEquals(5, dailyReport.size())
+        assertEquals(true, dailyReport[0].isArray)
+        assertEquals(true, dailyReport[1].isIntegralNumber)
+        assertEquals(true, dailyReport[2].isTextual)
+        assertEquals(true, dailyReport[3].isTextual)
+        assertEquals(true, dailyReport[4].isIntegralNumber)
+
+        val heroRecommendation = mapper.readTree(
+            NetworkResponsePolicy.observedShapeBody(5210, "[100521]"),
+        )
+        assertEquals(1, heroRecommendation.size())
+        assertEquals(true, heroRecommendation[0].isIntegralNumber)
     }
 
     @Test
