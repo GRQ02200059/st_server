@@ -63,4 +63,24 @@ class CommandContractRegistryTest {
             )
         }
     }
+
+    @Test
+    fun `every inventory entry has one effective contract and observed shapes have bodies`() {
+        val registry = CommandContractCatalog.registry
+        val inventoryIds = CommandContractRegistry.loadFromClasspath()
+            .commands
+            .map(ClientCommandInventoryEntry::id)
+            .toSet()
+        val contracts = registry.all()
+
+        assertEquals(inventoryIds, contracts.map(CommandContract::id).toSet())
+        contracts
+            .filter { it.status == CommandStatus.OBSERVED_SHAPE }
+            .forEach { contract ->
+                assertNotNull(
+                    NetworkResponsePolicy.observedShapeBody(contract.id),
+                    "missing observed response shape for ${contract.id}",
+                )
+            }
+    }
 }
