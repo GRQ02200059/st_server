@@ -119,7 +119,6 @@ object NetworkResponsePolicy {
     private val fixedTupleCommands = mapOf(
         135 to "[[],{},{},{},{}]",
         172 to "[200,\"\"]",
-        204 to "[0,\"\",\"\",\"\",\"\",\"\",0,0,0,\"\",\"\",\"\",\"\",0,0,\"\"]",
         261 to "[{}]",
         262 to "[{}]",
         725 to "[0,[],[],{}]",

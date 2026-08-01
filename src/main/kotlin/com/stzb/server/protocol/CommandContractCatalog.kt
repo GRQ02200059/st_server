@@ -43,6 +43,7 @@ object CommandContractCatalog {
             CurrentClientCommand.CHAT_HISTORY,
             Cmd.RANK_LIST,
             Cmd.USER_GET_USERS_HEADICON,
+            Cmd.MAIL_INFO,
             Cmd.ARMY_BATTLE,
             Cmd.BUILD_BUILDING,
             Cmd.UPGRADE_BUILDING,

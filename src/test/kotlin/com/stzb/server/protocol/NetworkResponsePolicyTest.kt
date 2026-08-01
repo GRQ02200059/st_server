@@ -35,6 +35,12 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `mail info requires the explicit request aware handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.MAIL_INFO, "[677829,1,9]"))
+        assertTrue(Cmd.MAIL_INFO !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `unregistered command has no shape response`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(45_678))
         assertTrue(!CommandContractCatalog.registry.isShapeResponseAllowed(45_678))

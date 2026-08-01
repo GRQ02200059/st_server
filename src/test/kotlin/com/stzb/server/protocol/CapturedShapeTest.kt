@@ -83,7 +83,6 @@ class CapturedShapeTest {
     @Test
     fun `captured fixed tuples keep captured arity`() {
         val expectedSizes = mapOf(
-            204 to 16,
             2604 to 2,
             3928 to 2,
             8009 to 6,

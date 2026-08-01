@@ -30,6 +30,14 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `mail info exposes a readable handler owned contract`() {
+        assertEquals(204, Cmd.MAIL_INFO)
+        val contract = CommandContractCatalog.registry.contract(Cmd.MAIL_INFO)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `production registry contains every generated 9 2 2 inventory command`() {
         val registry = CommandContractCatalog.registry
         val all = registry.all()

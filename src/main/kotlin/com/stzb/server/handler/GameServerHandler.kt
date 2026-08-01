@@ -11,6 +11,7 @@ import com.stzb.server.game.ClientCardPackCatalog
 import com.stzb.server.game.CityFacadeOperationRequestParser
 import com.stzb.server.game.GearOperationRequestParser
 import com.stzb.server.game.GameResponses
+import com.stzb.server.game.MailInfoResponses
 import com.stzb.server.game.PlayerBattleService
 import com.stzb.server.game.PlayerConscriptService
 import com.stzb.server.game.PlayerStateRepository
@@ -148,6 +149,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.BATTLE_REPORT_PROFILE -> {
                 logIn(msg)
                 sendBattleReportProfile(ctx, session, msg)
+            }
+
+            Cmd.MAIL_INFO -> {
+                logIn(msg)
+                sendMailInfo(ctx, msg)
             }
 
             Cmd.UNION_CREATE -> {
@@ -1141,6 +1147,12 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             DownPacket.json(Cmd.USER_GET_USERS_HEADICON, json, dataType = DownType.PLAIN),
         )
         log.info(">> cmd=514 用户头像已下发")
+    }
+
+    private fun sendMailInfo(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val json = MailInfoResponses.response(msg.bodyText)
+        ctx.writeAndFlush(DownPacket.json(Cmd.MAIL_INFO, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=204 邮件详情已下发")
     }
 
     private fun sendHomepageInfo(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {

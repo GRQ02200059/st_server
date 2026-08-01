@@ -41,6 +41,7 @@ object Cmd {
     const val UNION_MEMBER = 103
     const val UNION_GET_GROUP_LIST = 142
     const val UNION_GET_ALL_MEMBER_LIST_FOR_CHAT = 143
+    const val MAIL_INFO = 204
     const val CARD_RECRUIT = 301
     const val CARD_SET_ALL_NOT_NEW = 302
     const val CARD_QUICK_RECRUIT = 304
