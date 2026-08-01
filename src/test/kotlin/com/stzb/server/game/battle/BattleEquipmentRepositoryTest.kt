@@ -1,5 +1,8 @@
 package com.stzb.server.game.battle
 
+import java.nio.file.Files
+import kotlin.io.path.createDirectories
+import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -36,5 +39,35 @@ class BattleEquipmentRepositoryTest {
 
         assertTrue(1024 in ids)
         assertTrue(ids.size >= 90)
+    }
+
+    @Test
+    fun `loads equipment config from a standalone server checkout`() {
+        val serverRoot = Files.createTempDirectory("stzb-server-checkout")
+        try {
+            val cfgRoot = serverRoot.resolve("assent/cfg").createDirectories()
+            cfgRoot.resolve("gear_id.json").writeText(
+                """
+                [
+                  {
+                    "id": 991024,
+                    "name": "远端测试装备",
+                    "quality": "稀世",
+                    "type": "武器",
+                    "skillName": "",
+                    "skillDesc": "",
+                    "featureGroup": 0
+                  }
+                ]
+                """.trimIndent(),
+            )
+            cfgRoot.resolve("gear_feature_extra.json").writeText("[]")
+
+            val standalone = BattleEquipmentRepository.load(serverRoot)
+
+            assertEquals("远端测试装备", standalone.equipment(991024)?.name)
+        } finally {
+            serverRoot.toFile().deleteRecursively()
+        }
     }
 }

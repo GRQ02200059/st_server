@@ -36,7 +36,7 @@ class BattleEquipmentRepository private constructor(
             load(resolveProjectRoot())
 
         fun load(projectRoot: Path): BattleEquipmentRepository {
-            val cfgRoot = projectRoot.resolve("server/assent/cfg")
+            val cfgRoot = resolveConfigRoot(projectRoot)
             val equipment = JsonRows.read(cfgRoot.resolve("gear_id.json")).associate { row ->
                 val id = row.int("id")
                 id to EquipmentConfig(
@@ -67,12 +67,24 @@ class BattleEquipmentRepository private constructor(
         }
 
         private fun resolveProjectRoot(): Path {
-            val cwd = Path.of("").toAbsolutePath()
-            return sequenceOf(cwd, cwd.parent)
-                .filterNotNull()
-                .firstOrNull { it.resolve("hero_table.csv").exists() }
+            val cwd = Path.of("").toAbsolutePath().normalize()
+            return generateSequence(cwd) { it.parent }
+                .firstOrNull { root ->
+                    CONFIG_PATHS.any { path -> root.resolve(path).exists() }
+                }
                 ?: error("无法定位项目根目录: $cwd")
         }
+
+        private fun resolveConfigRoot(projectRoot: Path): Path =
+            CONFIG_PATHS
+                .map(projectRoot::resolve)
+                .firstOrNull { it.exists() }
+                ?: projectRoot.resolve(CONFIG_PATHS.first())
+
+        private val CONFIG_PATHS = listOf(
+            Path.of("assent/cfg"),
+            Path.of("server/assent/cfg"),
+        )
     }
 }
 
