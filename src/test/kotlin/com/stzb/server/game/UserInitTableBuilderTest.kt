@@ -211,48 +211,55 @@ class UserInitTableBuilderTest {
 
     @Test
     fun `snapshot restores recruited heroes and saved team from player state`() {
-        val state = PlayerStateRepository.getOrCreate(userId = 43, cityWid = 10043, roleName = "主公")
-        val first = state.addHero(100017, nowSec = 1_700_000_001)
-        val second = state.addHero(100021, nowSec = 1_700_000_002)
-        state.hero(first.heroUid)?.troops = 750
-        state.hero(first.heroUid)?.stamina = 80
-        state.saveTeam(listOf(first.heroUid, second.heroUid))
+        val root = createTempDirectory("stzb-snapshot-restored-team")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val state = PlayerStateRepository.getOrCreate(userId = 43, cityWid = 10043, roleName = "主公")
+            val first = state.addHero(100017, nowSec = 1_700_000_001)
+            val second = state.addHero(100021, nowSec = 1_700_000_002)
+            state.hero(first.heroUid)?.troops = 750
+            state.hero(first.heroUid)?.stamina = 80
+            state.saveTeam(listOf(first.heroUid, second.heroUid))
 
-        val snapshot = UserInitTableBuilder.build(
-            userId = 43,
-            cityWid = 10043,
-            roleName = "主公",
-            serverOpenTime = 1_700_000_000L,
-        )
+            val snapshot = UserInitTableBuilder.build(
+                userId = 43,
+                cityWid = 10043,
+                roleName = "主公",
+                serverOpenTime = 1_700_000_000L,
+            )
 
-        val tables = snapshot.drop(1).associateBy { it[0].asText() }
-        val heroes = tables.getValue("Tb_hero")[1]
-        assertEquals(8, heroes.size())
-        assertEquals(first.heroUid, heroes[0][0].asInt())
-        assertEquals(100017, heroes[0][1].asInt())
-        assertEquals(PlayerHero.MAX_STAMINA, heroes[0][7].asInt())
-        assertEquals(750, heroes[0][11].asInt())
-        assertEquals(second.heroUid, heroes[1][0].asInt())
-        assertEquals(100021, heroes[1][1].asInt())
+            val tables = snapshot.drop(1).associateBy { it[0].asText() }
+            val heroes = tables.getValue("Tb_hero")[1]
+            assertEquals(8, heroes.size())
+            assertEquals(first.heroUid, heroes[0][0].asInt())
+            assertEquals(100017, heroes[0][1].asInt())
+            assertEquals(PlayerHero.MAX_STAMINA, heroes[0][7].asInt())
+            assertEquals(750, heroes[0][11].asInt())
+            assertEquals(second.heroUid, heroes[1][0].asInt())
+            assertEquals(100021, heroes[1][1].asInt())
 
-        val army = tables.getValue("Tb_army")[1][0]
-        assertEquals(0, army[5].asInt())
-        assertEquals(second.heroUid, army[6].asInt())
-        assertEquals(first.heroUid, army[7].asInt())
-        assertEquals(10043 * 10 + 1, heroes[0][3].asInt())
-        assertEquals(10043 * 10 + 1, heroes[1][3].asInt())
-        assertEquals(
-            HeroCatalog.maxLevelSkillString(first.heroId),
-            heroes[0][22].asText(),
-            "login snapshot must provide complete skill slots so CanLearnSecondSkill cannot index an empty list",
-        )
-        assertEquals(1, heroes[0][24].asInt(), "all heroes must be awakened")
-        assertEquals(first.skillString(), heroes[0][22].asText())
-        assertEquals(
-            SkillInventoryCatalog.allSkillIds().size,
-            tables.getValue("Tb_user_skill")[1].size(),
-            "the login snapshot must expose every skill from the client warfare-skill inventory",
-        )
+            val army = tables.getValue("Tb_army")[1][0]
+            assertEquals(0, army[5].asInt())
+            assertEquals(second.heroUid, army[6].asInt())
+            assertEquals(first.heroUid, army[7].asInt())
+            assertEquals(10043 * 10 + 1, heroes[0][3].asInt())
+            assertEquals(10043 * 10 + 1, heroes[1][3].asInt())
+            assertEquals(
+                HeroCatalog.maxLevelSkillString(first.heroId),
+                heroes[0][22].asText(),
+                "login snapshot must provide complete skill slots so CanLearnSecondSkill cannot index an empty list",
+            )
+            assertEquals(1, heroes[0][24].asInt(), "all heroes must be awakened")
+            assertEquals(first.skillString(), heroes[0][22].asText())
+            assertEquals(
+                SkillInventoryCatalog.allSkillIds().size,
+                tables.getValue("Tb_user_skill")[1].size(),
+                "the login snapshot must expose every skill from the client warfare-skill inventory",
+            )
+        } finally {
+            PlayerStateRepository.reset()
+            root.toFile().deleteRecursively()
+        }
     }
 
     @Test
@@ -448,6 +455,110 @@ class UserInitTableBuilderTest {
             assertEquals("101138,0;", armyRow[61].asText())
         } finally {
             PlayerStateRepository.reset()
+        }
+    }
+
+    @Test
+    fun `login snapshot equips a default army facade for deployed heroes without one`() {
+        val root = createTempDirectory("stzb-default-army-facade-snapshot")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val state = PlayerStateRepository.getOrCreate(
+                userId = 49,
+                cityWid = 10049,
+                roleName = "主公",
+            )
+            val hero = state.addHero(HeroCatalog.defaultFiveStarHeroIds().first())
+            state.saveTeam(listOf(hero.heroUid))
+
+            val tables = UserInitTableBuilder.build(
+                userId = state.userId,
+                cityWid = state.cityWid,
+                roleName = state.roleName,
+                serverOpenTime = 1_700_000_000L,
+            ).drop(1).associateBy { it[0].asText() }
+            val heroRow = tables.getValue("Tb_hero")[1]
+                .single { it[0].asInt() == hero.heroUid }
+            val armyRow = tables.getValue("Tb_army")[1]
+                .single { it[0].asInt() == state.primaryArmyId() }
+            val defaultCard = tables.getValue("Tb_user_army_facade_card")[1]
+                .single { it[0].asInt() == ArmyFacadeCatalog.cardId(101138, 1) }
+
+            assertEquals(101138, heroRow[72].asInt())
+            assertEquals("101138,0;", armyRow[61].asText())
+            assertEquals(hero.heroId, defaultCard[5].asInt())
+        } finally {
+            PlayerStateRepository.reset()
+        }
+    }
+
+    @Test
+    fun `login snapshot assigns the next facade after five default cards are used`() {
+        val root = createTempDirectory("stzb-default-army-facade-order")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val state = PlayerStateRepository.getOrCreate(
+                userId = 50,
+                cityWid = 10050,
+                roleName = "主公",
+            )
+            val heroes = HeroCatalog.defaultFiveStarHeroIds().take(6).map(state::addHero)
+            heroes.forEachIndexed { index, hero ->
+                state.assignTeamHero(
+                    heroUid = hero.heroUid,
+                    pos = index % 3 + 1,
+                    armyId = state.armyIds()[index / 3],
+                )
+            }
+
+            UserInitTableBuilder.build(
+                userId = state.userId,
+                cityWid = state.cityWid,
+                roleName = state.roleName,
+                serverOpenTime = 1_700_000_000L,
+            )
+
+            assertEquals(
+                List(5) { 101138 } + 101156,
+                heroes.map { hero -> state.hero(hero.heroUid)?.armyFacadeCardId },
+            )
+        } finally {
+            PlayerStateRepository.reset()
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `login snapshot keeps an existing manual army facade binding`() {
+        val root = createTempDirectory("stzb-default-army-facade-manual")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val state = PlayerStateRepository.getOrCreate(
+                userId = 51,
+                cityWid = 10051,
+                roleName = "主公",
+            )
+            val hero = state.addHero(HeroCatalog.defaultFiveStarHeroIds().first())
+            state.saveTeam(listOf(hero.heroUid))
+            requireNotNull(state.bindArmyFacadeCards(101682, listOf(hero.heroUid)))
+
+            UserInitTableBuilder.build(
+                userId = state.userId,
+                cityWid = state.cityWid,
+                roleName = state.roleName,
+                serverOpenTime = 1_700_000_000L,
+            )
+
+            assertEquals(101682, state.hero(hero.heroUid)?.armyFacadeCardId)
+            assertEquals(
+                hero.heroId,
+                state.armyFacadeCards()
+                    .single { it.facadeId == 101682 && it.cfgHeroId > 0 }
+                    .cfgHeroId,
+            )
+        } finally {
+            PlayerStateRepository.reset()
+            root.toFile().deleteRecursively()
         }
     }
 
