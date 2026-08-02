@@ -154,6 +154,8 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalRequest(Cmd.UNION_NEARBY_PLAYER_LIST)
                     .copy(domain = CommandDomain.SOCIAL),
+                provisionalClientRequest(Cmd.WORLD_BOSS_TOP_THREE_RANK)
+                    .copy(domain = CommandDomain.ACTIVITY),
             ) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,

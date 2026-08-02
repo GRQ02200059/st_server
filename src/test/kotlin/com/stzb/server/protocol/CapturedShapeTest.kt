@@ -108,15 +108,11 @@ class CapturedShapeTest {
     }
 
     @Test
-    fun `captured fixed tuples keep captured arity`() {
-        val expectedSizes = mapOf(
-            8009 to 6,
+    fun `handler owned world boss top three rank is absent from observed shape fallback`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.WORLD_BOSS_TOP_THREE_RANK))
+        assertTrue(
+            Cmd.WORLD_BOSS_TOP_THREE_RANK !in NetworkResponsePolicy.observedShapeCommandIds(),
         )
-        expectedSizes.forEach { (cmd, size) ->
-            val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
-            assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
-            assertEquals(size, ShapeAssert.tupleSize(body), "cmd=$cmd")
-        }
     }
 
     @Test

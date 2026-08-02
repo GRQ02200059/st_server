@@ -143,6 +143,7 @@ object Cmd {
     const val SET_FRONT_UNLOCK_ANIM = 7046
     const val SYS_PING = 90006
     const val WORLD_BOSS_SAVE_TEAM = 8005
+    const val WORLD_BOSS_TOP_THREE_RANK = 8009
     const val EXERCISE_DAILY_SAVE_TEAM = 8011
     const val NORMAL_TEAM_COMPOSITION = 9026
     const val HERO_TEAM_LIBRARY = 9029

@@ -1414,6 +1414,104 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `world boss top three rank ignores every body and returns one local projection without mutation`() {
+        val commandId = Cmd.WORLD_BOSS_TOP_THREE_RANK
+        val channel = newChannel()
+        val accountKey = "world-boss-top-three-rank"
+        val roleName = "World Boss Local User"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = roleName,
+        )
+        WorldStateRepository.registerOrRestorePlayer(state)
+        state.resources.money = 1_234_567
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "World Boss Local Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_019, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = state.toSnapshot()
+        val persistedBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val requestBodies = listOf(
+            "null",
+            "[0,3,51]",
+            """[17,{"opaque":42}]""",
+            """{"synthetic":"metadata","ids":[17,42]}""",
+            "not-json synthetic payload",
+            "[0,3,51] true",
+        )
+        val expectedSelfKeys = setOf(
+            "defend_strength",
+            "kill_count",
+            "lose_count",
+            "refresh_time",
+            "user_id",
+            "user_info",
+        )
+        val expectedUserInfo = mapper.writeValueAsString(listOf(roleName, "0", "0,0"))
+
+        requestBodies.forEach { request ->
+            channel.writeInbound(
+                upPacket(commandId, request, userId = state.userId + 10_000),
+            )
+
+            val packet = assertIs<DownPacket>(
+                channel.readOutbound<Any>(),
+                "request=$request",
+            )
+            assertEquals(commandId, packet.cmd)
+            assertEquals(DownType.PLAIN, packet.dataType)
+            val response = mapper.readTree(packet.body)
+            assertTrue(response.isArray, "request=$request")
+            assertEquals(6, response.size(), "request=$request")
+            assertTrue(response[0].isIntegralNumber, "request=$request slot=0")
+            assertEquals(51, response[0].asInt(), "request=$request slot=0")
+            assertTrue(response[1].isIntegralNumber, "request=$request slot=1")
+            assertEquals(-1, response[1].asInt(), "request=$request slot=1")
+            assertTrue(response[2].isObject, "request=$request slot=2")
+            assertEquals(
+                expectedSelfKeys,
+                response[2].fieldNames().asSequence().toSet(),
+                "request=$request slot=2",
+            )
+            listOf(
+                "defend_strength",
+                "kill_count",
+                "lose_count",
+                "refresh_time",
+            ).forEach { key ->
+                assertTrue(response[2][key].isIntegralNumber, "request=$request key=$key")
+                assertEquals(0, response[2][key].asInt(), "request=$request key=$key")
+            }
+            assertTrue(response[2]["user_id"].isIntegralNumber, "request=$request key=user_id")
+            assertEquals(state.userId, response[2]["user_id"].asInt(), "request=$request")
+            assertTrue(response[2]["user_info"].isTextual, "request=$request key=user_info")
+            assertEquals(expectedUserInfo, response[2]["user_info"].asText(), "request=$request")
+            assertTrue(response[3].isIntegralNumber, "request=$request slot=3")
+            assertEquals(0, response[3].asInt(), "request=$request slot=3")
+            assertTrue(response[4].isArray, "request=$request slot=4")
+            assertTrue(response[4].isEmpty, "request=$request slot=4")
+            assertTrue(response[5].isNull, "request=$request slot=5")
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+
+        assertEquals(playerBefore, state.toSnapshot())
+        assertEquals(
+            persistedBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `user head icons preserve requested order and duplicates without mutating repositories`() {
         val channel = newChannel()
         val accountKey = "head-icon-snapshot"

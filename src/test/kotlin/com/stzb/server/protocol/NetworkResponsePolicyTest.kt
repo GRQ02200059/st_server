@@ -171,6 +171,14 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `world boss top three rank requires the explicit handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.WORLD_BOSS_TOP_THREE_RANK))
+        assertTrue(
+            Cmd.WORLD_BOSS_TOP_THREE_RANK !in NetworkResponsePolicy.observedShapeCommandIds(),
+        )
+    }
+
+    @Test
     fun `user head icon lookup requires the explicit handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.USER_GET_USERS_HEADICON))
     }

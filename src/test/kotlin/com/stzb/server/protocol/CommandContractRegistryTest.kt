@@ -376,6 +376,18 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `world boss top three rank exposes an anonymous handler owned activity contract`() {
+        assertEquals(8_009, Cmd.WORLD_BOSS_TOP_THREE_RANK)
+
+        val contract = CommandContractCatalog.registry.contract(Cmd.WORLD_BOSS_TOP_THREE_RANK)
+        assertEquals(emptyList(), contract?.names)
+        assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction)
+        assertEquals(CommandDomain.ACTIVITY, contract?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `user head icon lookup exposes a readable handler owned contract`() {
         assertEquals(514, Cmd.USER_GET_USERS_HEADICON)
         val contract = CommandContractCatalog.registry.contract(Cmd.USER_GET_USERS_HEADICON)

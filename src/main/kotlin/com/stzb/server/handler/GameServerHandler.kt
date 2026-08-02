@@ -380,6 +380,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendRankList(ctx, session, msg)
             }
 
+            Cmd.WORLD_BOSS_TOP_THREE_RANK -> {
+                sendWorldBossTopThreeRank(ctx, session)
+            }
+
             Cmd.USER_GET_USERS_HEADICON -> {
                 logIn(msg)
                 sendUserHeadIcons(ctx, msg)
@@ -1576,6 +1580,19 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         )
         ctx.writeAndFlush(DownPacket.json(Cmd.RANK_LIST, json, dataType = DownType.PLAIN))
         log.info(">> cmd=700 排行榜已下发 (uid=$userId)")
+    }
+
+    private fun sendWorldBossTopThreeRank(ctx: ChannelHandlerContext, session: Session?) {
+        val userId = requireNotNull(session).userId
+        val json = RankListResponses.response(
+            requestBody = "[0,3,51]",
+            userId = userId,
+            world = WorldStateRepository.projection(),
+            unions = UnionStateRepository.all(),
+        )
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.WORLD_BOSS_TOP_THREE_RANK, json, dataType = DownType.PLAIN),
+        )
     }
 
     private fun sendUserHeadIcons(ctx: ChannelHandlerContext, msg: UpPacket) {
