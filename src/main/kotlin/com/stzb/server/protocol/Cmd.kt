@@ -42,6 +42,7 @@ object Cmd {
     const val UNION_CREATE = 102
     const val UNION_MEMBER = 103
     const val UNION_OFFICIAL_LIST = 110
+    const val UNION_NPC_CITY_LIST = 135
     const val UNION_GET_GROUP_LIST = 142
     const val UNION_GET_ALL_MEMBER_LIST_FOR_CHAT = 143
     const val SWITCH_ROLE_QUERY_ROLE_LIST = 171
@@ -120,9 +121,14 @@ object Cmd {
     const val UPDATE_GUIDE_RECORD = 5091
     const val GET_HERO_RECOMMEND_2 = 5210
     const val SOLDIER_GIFT_ACTIVATE = 6030
+    const val CHAT_UNION_PLAN_HISTORY_ID = 6053
     const val COMMAND_PLAN_GET_UNION_TEMP_GROUP = 6067
+    const val COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER = 6068
     const val GET_UDS_GUESS_SEASON = 6078
+    const val ARMY_REINFORCE_STAY_CHECK = 6219
     const val BATTLE_REPORT_SHORT_DETAIL = 6231
+    const val UNION_STATION_GET_DATA = 6243
+    const val UNION_STATION_ALL_RECORDS = 6244
     const val UNION_STATION_PLAYER_DANMU_LIST_GET = 6256
     const val SET_FRONT_UNLOCK_ANIM = 7046
     const val SYS_PING = 90006

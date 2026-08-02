@@ -223,6 +223,15 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendReadOnlyEmptyList(ctx, msg.cmdId)
             }
 
+            Cmd.UNION_NPC_CITY_LIST,
+            Cmd.CHAT_UNION_PLAN_HISTORY_ID,
+            Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER,
+            Cmd.ARMY_REINFORCE_STAY_CHECK,
+            Cmd.UNION_STATION_GET_DATA,
+            Cmd.UNION_STATION_ALL_RECORDS -> {
+                sendReadOnlyUnionArmyStationResponse(ctx, msg.cmdId)
+            }
+
             Cmd.GET_UNION_BATTLE_REPORT,
             Cmd.MAIL_OUTBOX,
             Cmd.GET_BLACK_LIST,
@@ -668,6 +677,22 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 dataType = DownType.PLAIN,
             ),
         )
+    }
+
+    private fun sendReadOnlyUnionArmyStationResponse(
+        ctx: ChannelHandlerContext,
+        cmdId: Int,
+    ) {
+        val response = when (cmdId) {
+            Cmd.UNION_NPC_CITY_LIST -> "[[],{},{},{},{}]"
+            Cmd.CHAT_UNION_PLAN_HISTORY_ID,
+            Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER,
+            Cmd.ARMY_REINFORCE_STAY_CHECK -> "{}"
+            Cmd.UNION_STATION_GET_DATA,
+            Cmd.UNION_STATION_ALL_RECORDS -> "[[]]"
+            else -> error("unsupported read-only union/army/station cmd: $cmdId")
+        }
+        ctx.writeAndFlush(DownPacket.json(cmdId, response, dataType = DownType.PLAIN))
     }
 
     /**

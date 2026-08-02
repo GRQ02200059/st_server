@@ -140,12 +140,25 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `handler owned union army and station queries are absent from observed shape fallback`() {
+        listOf(
+            Cmd.UNION_NPC_CITY_LIST,
+            Cmd.CHAT_UNION_PLAN_HISTORY_ID,
+            Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER,
+            Cmd.ARMY_REINFORCE_STAY_CHECK,
+            Cmd.UNION_STATION_GET_DATA,
+            Cmd.UNION_STATION_ALL_RECORDS,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `captured indexed tuples reserve positional slots so client resp index reads survive`() {
         // 这些命令客户端按下标读取（resp[0]/resp[1]），空 [] 会取到 null 崩溃。
         val expectedSizes = mapOf(
             6242 to 1,
-            6243 to 1,
-            6244 to 1,
             20003 to 2,
         )
         expectedSizes.forEach { (cmd, size) ->

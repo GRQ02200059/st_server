@@ -8,6 +8,37 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `read only union army and station queries expose handler owned contracts`() {
+        val duplexCommands = mapOf(
+            Cmd.UNION_NPC_CITY_LIST to 135,
+            Cmd.CHAT_UNION_PLAN_HISTORY_ID to 6_053,
+            Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER to 6_068,
+            Cmd.UNION_STATION_ALL_RECORDS to 6_244,
+        )
+        val clientRequestCommands = mapOf(
+            Cmd.ARMY_REINFORCE_STAY_CHECK to 6_219,
+            Cmd.UNION_STATION_GET_DATA to 6_243,
+        )
+
+        duplexCommands.forEach { (cmd, expectedId) ->
+            assertEquals(expectedId, cmd)
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.DUPLEX, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandDomain.UNKNOWN, contract?.domain, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+        clientRequestCommands.forEach { (cmd, expectedId) ->
+            assertEquals(expectedId, cmd)
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandDomain.UNKNOWN, contract?.domain, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `message acknowledgements and gift rejection expose handler owned contracts`() {
         assertEquals(2_402, Cmd.XUANFUQIU_RECEIVED_MSG)
         assertEquals(2_404, Cmd.GAME_CHENGXIANGGE_RECEIVED)

@@ -869,6 +869,67 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `read only union army and station queries preserve shapes without mutation`() {
+        val channel = newChannel()
+        val accountKey = "read-only-union-army-station"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Read Only Union Army Station User",
+        )
+        UnionStateRepository.create(state, "Read Only Union Army Station Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_014, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val expectedBodies = mapOf(
+            Cmd.UNION_NPC_CITY_LIST to """[[],{},{},{},{}]""",
+            Cmd.CHAT_UNION_PLAN_HISTORY_ID to "{}",
+            Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER to "{}",
+            Cmd.ARMY_REINFORCE_STAY_CHECK to "{}",
+            Cmd.UNION_STATION_GET_DATA to "[[]]",
+            Cmd.UNION_STATION_ALL_RECORDS to "[[]]",
+        )
+        val arbitraryPayloads = listOf(
+            "null",
+            "[]",
+            """{"synthetic":"metadata","ids":[17,42]}""",
+            """[{"opaque":true}] trailing""",
+            "not-json synthetic payload",
+        )
+
+        expectedBodies.forEach { (cmd, expectedBody) ->
+            arbitraryPayloads.forEach { request ->
+                channel.writeInbound(upPacket(cmd, request, userId = state.userId))
+
+                val response = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request",
+                )
+                assertEquals(cmd, response.cmd)
+                assertEquals(DownType.PLAIN, response.dataType)
+                assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request emitted an extra packet",
+                )
+            }
+        }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `message acknowledgements and gift rejection ignore payloads without mutation`() {
         val channel = newChannel()
         val accountKey = "message-ack-gift-rejection"

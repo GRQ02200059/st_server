@@ -62,6 +62,21 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `read only union army and station queries require explicit handlers`() {
+        listOf(
+            Cmd.UNION_NPC_CITY_LIST,
+            Cmd.CHAT_UNION_PLAN_HISTORY_ID,
+            Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER,
+            Cmd.ARMY_REINFORCE_STAY_CHECK,
+            Cmd.UNION_STATION_GET_DATA,
+            Cmd.UNION_STATION_ALL_RECORDS,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `season history handlers are not owned by network response policy`() {
         listOf(
             Cmd.GET_USER_SEASON_RECORD,
@@ -220,8 +235,7 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
-    fun `reinforce stay checks return dictionaries required by conquest army ui`() {
-        assertEquals("{}", NetworkResponsePolicy.observedShapeBody(6219))
+    fun `legion reinforce stay check keeps fallback dictionary required by conquest army ui`() {
         assertEquals("{}", NetworkResponsePolicy.observedShapeBody(6239))
     }
 
@@ -245,7 +259,7 @@ class NetworkResponsePolicyTest {
 
     @Test
     fun `recorded dictionary commands return objects instead of arrays`() {
-        listOf(510, 6053, 6068, 6219, 6239).forEach { cmdId ->
+        listOf(510, 6239).forEach { cmdId ->
             assertEquals("{}", NetworkResponsePolicy.observedShapeBody(cmdId), "cmd=$cmdId")
         }
     }
@@ -266,7 +280,6 @@ class NetworkResponsePolicyTest {
     @Test
     fun `recorded fixed tuple queries keep minimum client readable arity`() {
         val expectedSizes = mapOf(
-            135 to 5,
             172 to 2,
             725 to 4,
             2529 to 3,
