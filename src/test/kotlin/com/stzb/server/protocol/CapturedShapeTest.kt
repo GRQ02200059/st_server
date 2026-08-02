@@ -167,10 +167,17 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `handler owned multiplexed 6242 is absent from observed shape fallback`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_STATION_ENTER_SCENE))
+        assertTrue(
+            Cmd.UNION_STATION_ENTER_SCENE !in NetworkResponsePolicy.observedShapeCommandIds(),
+        )
+    }
+
+    @Test
     fun `captured indexed tuples reserve positional slots so client resp index reads survive`() {
         // 这些命令客户端按下标读取（resp[0]/resp[1]），空 [] 会取到 null 崩溃。
         val expectedSizes = mapOf(
-            6242 to 1,
             20003 to 2,
         )
         expectedSizes.forEach { (cmd, size) ->

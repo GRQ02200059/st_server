@@ -77,6 +77,14 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `multiplexed 6242 requires its request aware handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_STATION_ENTER_SCENE))
+        assertTrue(
+            Cmd.UNION_STATION_ENTER_SCENE !in NetworkResponsePolicy.observedShapeCommandIds(),
+        )
+    }
+
+    @Test
     fun `season history handlers are not owned by network response policy`() {
         listOf(
             Cmd.GET_USER_SEASON_RECORD,

@@ -150,6 +150,8 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.WORLD),
                 provisionalClientRequest(Cmd.UNION_RELATION_FULL_REQUEST)
                     .copy(domain = CommandDomain.SOCIAL),
+                provisionalClientRequest(Cmd.UNION_STATION_ENTER_SCENE)
+                    .copy(domain = CommandDomain.SOCIAL),
             ) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,

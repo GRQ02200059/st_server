@@ -222,6 +222,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(msg.cmdId, "null", dataType = DownType.PLAIN))
             }
 
+            Cmd.UNION_STATION_ENTER_SCENE -> {
+                sendMultiplexedUnionStationResponse(ctx, msg.bodyText)
+            }
+
             Cmd.SWITCH_ROLE_QUERY_ROLE_LIST,
             Cmd.MAIL_INBOX,
             Cmd.MAIL_GET_CONTACTS,
@@ -702,6 +706,28 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             else -> error("unsupported read-only union/army/station cmd: $cmdId")
         }
         ctx.writeAndFlush(DownPacket.json(cmdId, response, dataType = DownType.PLAIN))
+    }
+
+    private fun sendMultiplexedUnionStationResponse(
+        ctx: ChannelHandlerContext,
+        requestBody: String,
+    ) {
+        val request = runCatching { strictRequestMapper.readTree(requestBody) }.getOrNull()
+        val isSceneControl = request
+            ?.takeIf { it.isArray && it.size() == 1 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?.let { it == 1 || it == 2 }
+            ?: false
+        val response = if (isSceneControl) "[0]" else "[]"
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.UNION_STATION_ENTER_SCENE,
+                response,
+                dataType = DownType.PLAIN,
+            ),
+        )
     }
 
     /**

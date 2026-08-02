@@ -988,6 +988,68 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `multiplexed 6242 routes exact requests without mutation`() {
+        val channel = newChannel()
+        val accountKey = "multiplexed-6242"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Multiplexed 6242 User",
+        )
+        UnionStateRepository.create(state, "Multiplexed 6242 Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_016, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val cases = linkedMapOf(
+            "[]" to "[]",
+            "[1]" to "[0]",
+            "[2]" to "[0]",
+            "null" to "[]",
+            "{}" to "[]",
+            "not-json synthetic payload" to "[]",
+            "[] trailing" to "[]",
+            "[1,2]" to "[]",
+            """["1"]""" to "[]",
+            "[true]" to "[]",
+            "[1.0]" to "[]",
+            "[2147483648]" to "[]",
+            "[0]" to "[]",
+            "[3]" to "[]",
+        )
+
+        cases.forEach { (request, expectedBody) ->
+            channel.writeInbound(
+                upPacket(Cmd.UNION_STATION_ENTER_SCENE, request, userId = state.userId),
+            )
+
+            val response = assertIs<DownPacket>(
+                channel.readOutbound<Any>(),
+                "request=$request",
+            )
+            assertEquals(Cmd.UNION_STATION_ENTER_SCENE, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
+            assertNull(
+                channel.readOutbound<Any>(),
+                "request=$request emitted an extra packet",
+            )
+        }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `message acknowledgements and gift rejection ignore payloads without mutation`() {
         val channel = newChannel()
         val accountKey = "message-ack-gift-rejection"

@@ -8,6 +8,25 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `multiplexed 6242 exposes both names and a handler owned social contract`() {
+        assertEquals(6_242, Cmd.TEAM_INVITATIONAL_QUERY_MEMBER_FOR_INVITE)
+        assertEquals(6_242, Cmd.UNION_STATION_ENTER_SCENE)
+
+        val contract = CommandContractCatalog.registry.contract(Cmd.UNION_STATION_ENTER_SCENE)
+        assertEquals(
+            listOf(
+                "TEAM_INVITATIONAL_QUERY_MEMBER_FOR_INVITE",
+                "UNION_STATION_ENTER_SCENE",
+            ),
+            contract?.names,
+        )
+        assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction)
+        assertEquals(CommandDomain.SOCIAL, contract?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `optional social and world queries expose handler owned contracts`() {
         val expectedDomains = mapOf(
             Cmd.CCLIVE_GET_FOLLOW_LIST to (2_529 to CommandDomain.EXTERNAL),
