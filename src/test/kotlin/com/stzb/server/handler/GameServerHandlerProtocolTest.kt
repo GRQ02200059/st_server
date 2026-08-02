@@ -636,6 +636,7 @@ class GameServerHandlerProtocolTest {
             2_670 to "[]",
             2_679 to "[]",
             2_683 to "[]",
+            2_698 to "[]",
             3_845 to "[]",
             4_102 to "{}",
             6_089 to "[0,0]",
@@ -686,7 +687,7 @@ class GameServerHandlerProtocolTest {
                         )
                         val parsed = mapper.readTree(packet.body)
                         when (commandId) {
-                            2_670, 2_679, 2_683, 3_845 -> {
+                            2_670, 2_679, 2_683, 2_698, 3_845 -> {
                                 assertTrue(parsed.isArray, "cmd=$commandId")
                                 assertTrue(parsed.isEmpty, "cmd=$commandId")
                             }

@@ -109,6 +109,7 @@ object Cmd {
     const val CLAN_LOG_GET = 2678
     const val UNION_LEADER_CLAN_CITY_LIST = 2679
     const val CLAN_APPLICANT_LIST = 2683
+    const val CLAN_NEARBY_NEARBY_PLAYER_LIST = 2698
     const val CLAN_NEARBY_CLAN_LIST = 2701
     const val CLAN_NPC_CITY_LIST = 2709
     const val CLAN_GET_CONTRIBUTION_LIST = 2711
