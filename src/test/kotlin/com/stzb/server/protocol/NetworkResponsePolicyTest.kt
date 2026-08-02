@@ -82,6 +82,33 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `summer farm record queries require explicit handlers`() {
+        val commands = listOf(5_120, 5_121)
+
+        assertAll(
+            "summer farm record query fallback boundaries",
+            commands.map { commandId ->
+                Executable {
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(
+                            commandId,
+                            "not-json synthetic-record-canary",
+                        ),
+                        "cmd=$commandId",
+                    )
+                    assertTrue(
+                        commandId !in NetworkResponsePolicy.observedShapeCommandIds(),
+                        "cmd=$commandId",
+                    )
+                    val contract = CommandContractCatalog.registry.contract(commandId)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$commandId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$commandId")
+                }
+            },
+        )
+    }
+
+    @Test
     fun `nobility officer record query requires its explicit handler`() {
         val commandId = 5_212
 

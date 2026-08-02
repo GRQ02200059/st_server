@@ -81,6 +81,33 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `summer farm record queries stay outside captured shape fallback`() {
+        val commands = listOf(5_120, 5_121)
+
+        assertAll(
+            "summer farm record query captured shape boundaries",
+            commands.map { commandId ->
+                Executable {
+                    val contract = CommandContractCatalog.registry.contract(commandId)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$commandId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$commandId")
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(
+                            commandId,
+                            """["synthetic-record-canary"] trailing""",
+                        ),
+                        "cmd=$commandId",
+                    )
+                    assertTrue(
+                        commandId !in NetworkResponsePolicy.observedShapeCommandIds(),
+                        "cmd=$commandId",
+                    )
+                }
+            },
+        )
+    }
+
+    @Test
     fun `nobility officer record query stays outside captured shape fallback`() {
         val commandId = 5_212
 

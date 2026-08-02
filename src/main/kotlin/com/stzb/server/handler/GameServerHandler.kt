@@ -312,6 +312,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendStrictEmptyQueryProjection(ctx, msg)
             }
 
+            Cmd.SUMMER_FARM_MESSAGE_RECORD,
+            Cmd.SUMMER_FARM_VISIT_RECORD -> {
+                sendSummerFarmRecordQuery(ctx, msg)
+            }
+
             Cmd.NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD -> {
                 sendNobilityOfficerRecord(ctx, msg)
             }
@@ -1797,6 +1802,16 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             ?.get(0)
             ?.takeIf { it.isIntegralNumber && it.canConvertToLong() }
             ?.longValue()
+
+    private fun sendSummerFarmRecordQuery(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
+        val key = request?.takeIf { it.isArray && it.size() == 1 }?.get(0) ?: return
+        val validKey = (key.isIntegralNumber && key.canConvertToLong()) ||
+            (key.isTextual && key.textValue().isNotEmpty())
+        if (!validKey) return
+
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[]", dataType = DownType.PLAIN))
+    }
 
     private fun sendWorldBossTopThreeRank(ctx: ChannelHandlerContext, session: Session?) {
         val userId = requireNotNull(session).userId

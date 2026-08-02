@@ -91,6 +91,37 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `summer farm record queries expose exact constants and handler owned activity contracts`() {
+        val commands = linkedMapOf(
+            "SUMMER_FARM_MESSAGE_RECORD" to 5_120,
+            "SUMMER_FARM_VISIT_RECORD" to 5_121,
+        )
+
+        assertAll(
+            "summer farm record query contracts",
+            commands.map { (name, commandId) ->
+                Executable {
+                    val field = assertNotNull(
+                        runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+                        "missing Cmd.$name",
+                    )
+                    assertEquals(commandId, field.getInt(null), name)
+                    val contract = CommandContractCatalog.registry.contract(commandId)
+                    assertEquals(listOf(name), contract?.names, "cmd=$commandId")
+                    assertEquals(
+                        CommandDirection.CLIENT_REQUEST,
+                        contract?.direction,
+                        "cmd=$commandId",
+                    )
+                    assertEquals(CommandDomain.ACTIVITY, contract?.domain, "cmd=$commandId")
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$commandId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$commandId")
+                }
+            },
+        )
+    }
+
+    @Test
     fun `nobility officer record query exposes exact constant and handler owned social duplex contract`() {
         val name = "NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD"
         val commandId = 5_212

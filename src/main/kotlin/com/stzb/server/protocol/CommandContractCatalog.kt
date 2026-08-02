@@ -193,6 +193,10 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.ACTIVITY),
                 provisionalClientRequest(Cmd.QUERY_OTHER_REGION_CLAN_LIST)
                     .copy(domain = CommandDomain.SOCIAL),
+                provisionalClientRequest(Cmd.SUMMER_FARM_MESSAGE_RECORD)
+                    .copy(domain = CommandDomain.ACTIVITY),
+                provisionalClientRequest(Cmd.SUMMER_FARM_VISIT_RECORD)
+                    .copy(domain = CommandDomain.ACTIVITY),
                 provisionalRequest(Cmd.NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD)
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalRequest(Cmd.GET_USER_RES_WID_LEVEL_MAP)

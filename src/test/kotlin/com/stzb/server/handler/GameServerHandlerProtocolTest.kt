@@ -723,6 +723,141 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `summer farm record queries enforce exact keys and remain repository free`() {
+        val accountKey = "summer-farm-record-query-boundary"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Summer Farm Record Query User",
+        )
+        state.resources.money = 5_120_512
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Summer Farm Record Query Union", nowSec = 4)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_028, nowSec = 4))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val commands = listOf(5_120, 5_121)
+        val pairedCommands = mapOf(
+            5_120 to 5_121,
+            5_121 to 5_120,
+        )
+        val validRequests = listOf(
+            "[0]",
+            """["synthetic-role-key"]""",
+            "[-9223372036854775808]",
+            "[9223372036854775807]",
+        )
+        val invalidRequests = linkedMapOf(
+            "JSON null" to "null",
+            "number scalar" to "5120",
+            "string scalar" to """"synthetic-record-canary"""",
+            "boolean scalar" to "false",
+            "top-level object" to """{"synthetic":"record-canary"}""",
+            "empty text" to "",
+            "malformed JSON" to "[",
+            "empty array" to "[]",
+            "nested array" to "[[]]",
+            "more than one slot" to "[0,1]",
+            "null slot" to "[null]",
+            "boolean slot" to "[true]",
+            "object slot" to """[{"synthetic":"record-canary"}]""",
+            "empty string slot" to """[""]""",
+            "floating point" to "[17.0]",
+            "exponential" to "[1e3]",
+            "positive out of range" to "[9223372036854775808]",
+            "negative out of range" to "[-9223372036854775809]",
+            "trailing token" to "[0] []",
+        )
+
+        fun assertStateUnchanged(stage: String) {
+            assertEquals(playerBefore, state.toSnapshot(), "$stage player state changed")
+            assertTrue(
+                persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+                "$stage persisted player bytes changed",
+            )
+            assertEquals(worldBefore, WorldStateRepository.projection(), "$stage world state changed")
+            assertEquals(unionsBefore, UnionStateRepository.all(), "$stage union state changed")
+        }
+
+        val invalidRequestExecutables = commands.map { commandId ->
+            Executable {
+                val channel = newChannel()
+                try {
+                    invalidRequests.forEach { (case, request) ->
+                        channel.writeInbound(
+                            upPacket(commandId, request, userId = state.userId + 10_000),
+                        )
+                        assertNull(
+                            channel.readOutbound<Any>(),
+                            "cmd=$commandId case=$case emitted an outbound packet",
+                        )
+                    }
+                    assertStateUnchanged("cmd=$commandId invalid requests")
+                } finally {
+                    channel.finishAndReleaseAll()
+                }
+            }
+        }
+        val validRequestExecutables = commands.flatMap { commandId ->
+            validRequests.map { request ->
+                Executable {
+                    val channel = newChannel()
+                    try {
+                        channel.writeInbound(
+                            upPacket(commandId, request, userId = state.userId + 10_000),
+                        )
+
+                        val packet = assertIs<DownPacket>(
+                            channel.readOutbound<Any>(),
+                            "cmd=$commandId valid request=$request emitted no response",
+                        )
+                        assertEquals(commandId, packet.cmd, "cmd=$commandId request=$request")
+                        assertNotEquals(
+                            Cmd.SYS_NOTIFY_DB_UPDATE,
+                            packet.cmd,
+                            "cmd=$commandId request=$request",
+                        )
+                        assertNotEquals(
+                            pairedCommands.getValue(commandId),
+                            packet.cmd,
+                            "cmd=$commandId request=$request emitted paired command",
+                        )
+                        assertEquals(
+                            DownType.PLAIN,
+                            packet.dataType,
+                            "cmd=$commandId request=$request",
+                        )
+                        assertTrue(
+                            "[]".toByteArray().contentEquals(packet.body),
+                            "cmd=$commandId request=$request emitted wrong wire bytes",
+                        )
+                        val parsed = mapper.readTree(packet.body)
+                        assertTrue(parsed.isArray, "cmd=$commandId request=$request")
+                        assertTrue(parsed.isEmpty, "cmd=$commandId request=$request")
+                        assertNull(
+                            channel.readOutbound<Any>(),
+                            "cmd=$commandId request=$request emitted an extra or paired packet",
+                        )
+                        assertStateUnchanged("cmd=$commandId valid request=$request")
+                    } finally {
+                        channel.finishAndReleaseAll()
+                    }
+                }
+            }
+        }
+
+        assertAll(
+            "summer farm record query commands",
+            invalidRequestExecutables + validRequestExecutables,
+        )
+    }
+
+    @Test
     fun `backflow empty lists enforce exact requests and remain repository free`() {
         val accountKey = "backflow-empty-list-boundary"
         val state = PlayerStateRepository.getOrCreate(
