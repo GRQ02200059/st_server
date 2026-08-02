@@ -971,6 +971,124 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `summer farm user list echoes valid channels and rejects every other shape repository free`() {
+        val commandId = 5_109
+        val accountKey = "summer-farm-user-list-boundary"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Summer Farm User List User",
+        )
+        state.resources.money = 5_109_003
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Summer Farm User List Union", nowSec = 5)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_029, nowSec = 5))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val invalidRequests = linkedMapOf(
+            "JSON null" to "null",
+            "empty text" to "",
+            "malformed JSON" to "[",
+            "number scalar" to "1",
+            "string scalar" to """"synthetic-channel-canary"""",
+            "boolean scalar" to "true",
+            "top-level object" to """{"synthetic":"channel-canary"}""",
+            "empty array" to "[]",
+            "nested array" to "[[1]]",
+            "extra slot" to "[1,2]",
+            "null slot" to "[null]",
+            "string slot" to """["1"]""",
+            "boolean slot" to "[false]",
+            "object slot" to """[{"synthetic":"channel-canary"}]""",
+            "array slot" to "[[]]",
+            "channel zero" to "[0]",
+            "channel four" to "[4]",
+            "negative channel" to "[-1]",
+            "positive Int32 overflow" to "[2147483648]",
+            "negative Int32 overflow" to "[-2147483649]",
+            "floating point" to "[1.0]",
+            "exponential" to "[1e0]",
+            "trailing token" to "[1] []",
+        )
+
+        fun assertStateUnchanged(stage: String) {
+            assertEquals(playerBefore, state.toSnapshot(), "$stage player state changed")
+            assertTrue(
+                persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+                "$stage persisted player bytes changed",
+            )
+            assertEquals(worldBefore, WorldStateRepository.projection(), "$stage world state changed")
+            assertEquals(unionsBefore, UnionStateRepository.all(), "$stage union state changed")
+        }
+
+        val invalidRequestsExecutable = Executable {
+            val channel = newChannel()
+            try {
+                invalidRequests.forEach { (case, request) ->
+                    channel.writeInbound(
+                        upPacket(commandId, request, userId = state.userId + 10_000),
+                    )
+                    assertNull(
+                        channel.readOutbound<Any>(),
+                        "case=$case emitted an outbound packet",
+                    )
+                }
+                assertStateUnchanged("invalid requests")
+            } finally {
+                channel.finishAndReleaseAll()
+            }
+        }
+        val validChannelExecutables = (1..3).map { requestedChannel ->
+            Executable {
+                val channel = newChannel()
+                try {
+                    channel.writeInbound(
+                        upPacket(commandId, "[$requestedChannel]", userId = state.userId + 10_000),
+                    )
+
+                    val packet = assertIs<DownPacket>(
+                        channel.readOutbound<Any>(),
+                        "channel=$requestedChannel emitted no response",
+                    )
+                    assertEquals(commandId, packet.cmd, "channel=$requestedChannel")
+                    assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, packet.cmd, "channel=$requestedChannel")
+                    assertNotEquals(5_125, packet.cmd, "channel=$requestedChannel emitted cmd 5125")
+                    assertEquals(DownType.PLAIN, packet.dataType, "channel=$requestedChannel")
+                    val expectedBody = "[$requestedChannel,[]]"
+                    assertTrue(
+                        expectedBody.toByteArray().contentEquals(packet.body),
+                        "channel=$requestedChannel emitted wrong wire bytes",
+                    )
+                    val parsed = mapper.readTree(packet.body)
+                    assertTrue(parsed.isArray, "channel=$requestedChannel response is not an array")
+                    assertEquals(2, parsed.size(), "channel=$requestedChannel response arity")
+                    assertTrue(parsed[0].isIntegralNumber, "channel=$requestedChannel slot 0 type")
+                    assertEquals(requestedChannel, parsed[0].intValue(), "channel=$requestedChannel slot 0")
+                    assertTrue(parsed[1].isArray, "channel=$requestedChannel slot 1 type")
+                    assertTrue(parsed[1].isEmpty, "channel=$requestedChannel slot 1 rows")
+                    assertNull(
+                        channel.readOutbound<Any>(),
+                        "channel=$requestedChannel emitted an extra, cmd 90005, or cmd 5125 packet",
+                    )
+                    assertStateUnchanged("valid channel=$requestedChannel")
+                } finally {
+                    channel.finishAndReleaseAll()
+                }
+            }
+        }
+
+        assertAll(
+            "summer farm user list command",
+            listOf(invalidRequestsExecutable) + validChannelExecutables,
+        )
+    }
+
+    @Test
     fun `backflow empty lists enforce exact requests and remain repository free`() {
         val accountKey = "backflow-empty-list-boundary"
         val state = PlayerStateRepository.getOrCreate(

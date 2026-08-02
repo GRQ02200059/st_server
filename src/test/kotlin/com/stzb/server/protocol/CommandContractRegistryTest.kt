@@ -122,6 +122,24 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `summer farm user list exposes exact constant and handler owned activity contract`() {
+        val name = "SUMMER_FARM_GET_USER_LIST"
+        val commandId = 5_109
+        val field = assertNotNull(
+            runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+            "missing Cmd.$name",
+        )
+
+        assertEquals(commandId, field.getInt(null))
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(listOf(name), contract?.names)
+        assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction)
+        assertEquals(CommandDomain.ACTIVITY, contract?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `union letter query exposes exact constant and handler owned social contract`() {
         val name = "GET_UNION_LETTER"
         val commandId = 9_015

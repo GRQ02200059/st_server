@@ -312,6 +312,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendStrictEmptyQueryProjection(ctx, msg)
             }
 
+            Cmd.SUMMER_FARM_GET_USER_LIST -> {
+                sendSummerFarmUserList(ctx, msg)
+            }
+
             Cmd.SUMMER_FARM_MESSAGE_RECORD,
             Cmd.SUMMER_FARM_VISIT_RECORD -> {
                 sendSummerFarmRecordQuery(ctx, msg)
@@ -1806,6 +1810,13 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             ?.get(0)
             ?.takeIf { it.isIntegralNumber && it.canConvertToLong() }
             ?.longValue()
+
+    private fun sendSummerFarmUserList(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val channelId = exactSingleInt(msg.bodyText)?.takeIf { it in 1..3 } ?: return
+        ctx.writeAndFlush(
+            DownPacket.json(msg.cmdId, "[$channelId,[]]", dataType = DownType.PLAIN),
+        )
+    }
 
     private fun sendSummerFarmRecordQuery(ctx: ChannelHandlerContext, msg: UpPacket) {
         val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
