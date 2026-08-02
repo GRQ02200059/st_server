@@ -839,6 +839,118 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `union plan chat history echoes only one Int32 plan id and remains repository free`() {
+        val commandId = 6_054
+        val accountKey = "union-plan-chat-history-boundary"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Union Plan Chat History User",
+        )
+        state.resources.money = 6_054_000
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Union Plan Chat History Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_027, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val invalidRequests = linkedMapOf(
+            "JSON null" to "null",
+            "empty text" to "",
+            "malformed JSON" to "[17",
+            "number scalar" to "17",
+            "string scalar" to """"17"""",
+            "boolean scalar" to "true",
+            "top-level object" to """{"planId":17}""",
+            "empty array" to "[]",
+            "more than one slot" to "[17,18]",
+            "null slot" to "[null]",
+            "string slot" to """["17"]""",
+            "boolean slot" to "[true]",
+            "floating point" to "[17.0]",
+            "exponential" to "[1e3]",
+            "nested array" to "[[17]]",
+            "object slot" to """[{"planId":17}]""",
+            "positive Int32 overflow" to "[2147483648]",
+            "negative Int32 overflow" to "[-2147483649]",
+            "trailing token" to "[17] []",
+        )
+        val validPlanIds = listOf(0, 17, -17, Int.MIN_VALUE, Int.MAX_VALUE)
+
+        fun assertStateUnchanged(stage: String) {
+            assertEquals(playerBefore, state.toSnapshot(), "$stage player state changed")
+            assertTrue(
+                persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+                "$stage persisted player bytes changed",
+            )
+            assertEquals(worldBefore, WorldStateRepository.projection(), "$stage world state changed")
+            assertEquals(unionsBefore, UnionStateRepository.all(), "$stage union state changed")
+        }
+
+        fun validPlanExecutable(planId: Int) = Executable {
+            val channel = newChannel()
+            try {
+                channel.writeInbound(
+                    upPacket(commandId, "[$planId]", userId = state.userId + 10_000),
+                )
+
+                val packet = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "planId=$planId emitted no response",
+                )
+                assertEquals(commandId, packet.cmd, "planId=$planId")
+                assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, packet.cmd, "planId=$planId")
+                assertEquals(DownType.PLAIN, packet.dataType, "planId=$planId")
+                assertTrue(
+                    "[$planId,[]]".toByteArray().contentEquals(packet.body),
+                    "planId=$planId emitted wrong wire bytes",
+                )
+                val parsed = mapper.readTree(packet.body)
+                assertTrue(parsed.isArray, "planId=$planId response is not an array")
+                assertEquals(2, parsed.size(), "planId=$planId response arity")
+                assertTrue(parsed[0].isIntegralNumber, "planId=$planId slot=0 is not integral")
+                assertTrue(parsed[0].canConvertToInt(), "planId=$planId slot=0 is not Int32")
+                assertEquals(planId, parsed[0].intValue(), "planId=$planId slot=0")
+                assertTrue(parsed[1].isArray, "planId=$planId slot=1 is not an array")
+                assertTrue(parsed[1].isEmpty, "planId=$planId slot=1 is not empty")
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "planId=$planId emitted an extra packet",
+                )
+                assertStateUnchanged("planId=$planId")
+            } finally {
+                channel.finishAndReleaseAll()
+            }
+        }
+
+        assertAll(
+            "union plan chat history",
+            Executable {
+                val channel = newChannel()
+                try {
+                    invalidRequests.forEach { (case, request) ->
+                        channel.writeInbound(
+                            upPacket(commandId, request, userId = state.userId + 10_000),
+                        )
+                        assertNull(
+                            channel.readOutbound<Any>(),
+                            "case=$case emitted an outbound packet",
+                        )
+                    }
+                    assertStateUnchanged("invalid requests")
+                } finally {
+                    channel.finishAndReleaseAll()
+                }
+            },
+            *validPlanIds.map(::validPlanExecutable).toTypedArray(),
+        )
+    }
+
+    @Test
     fun `union letter query accepts only modes zero and one and remains repository free`() {
         val commandId = 9_015
         val accountKey = "union-letter-query-boundary"

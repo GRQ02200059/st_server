@@ -315,6 +315,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendBattlefieldChatHistory(ctx, msg)
             }
 
+            Cmd.CHAT_UNION_PLAN_HISTORY -> {
+                sendUnionPlanChatHistory(ctx, msg)
+            }
+
             Cmd.UNION_MEMBER_CLAN_LIST,
             Cmd.GET_INVITE_LIST,
             Cmd.GET_ZHAOHUI_LIST,
@@ -1819,6 +1823,17 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             DownPacket.json(
                 Cmd.CHAT_GET_FIGHT_AREA_CHAT,
                 "[]",
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendUnionPlanChatHistory(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val planId = exactSingleInt(msg.bodyText) ?: return
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.CHAT_UNION_PLAN_HISTORY,
+                "[$planId,[]]",
                 dataType = DownType.PLAIN,
             ),
         )

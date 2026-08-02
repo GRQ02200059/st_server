@@ -195,6 +195,8 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalClientRequest(Cmd.CHAT_GET_FIGHT_AREA_CHAT)
                     .copy(domain = CommandDomain.SOCIAL),
+                provisionalClientRequest(Cmd.CHAT_UNION_PLAN_HISTORY)
+                    .copy(domain = CommandDomain.SOCIAL),
                 provisionalClientRequest(Cmd.CHAT_GET_SAND_TABLE_ROOM_MSG)
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalClientRequest(Cmd.FRIEND_SEARCH)

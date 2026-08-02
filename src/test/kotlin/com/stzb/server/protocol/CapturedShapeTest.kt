@@ -193,6 +193,22 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `union plan chat history stays outside captured shape fallback`() {
+        val commandId = 6_054
+
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "[17] synthetic-union-plan-chat-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `summer farm record queries stay outside captured shape fallback`() {
         val commands = listOf(5_120, 5_121)
 
