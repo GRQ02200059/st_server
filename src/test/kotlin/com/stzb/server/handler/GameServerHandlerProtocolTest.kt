@@ -723,6 +723,86 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `nearby clan list accepts only exact empty array and remains repository free`() {
+        val commandId = 2_701
+        val accountKey = "nearby-clan-list-boundary"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Nearby Clan Boundary User",
+        )
+        state.resources.money = 2_701_000
+        UnionStateRepository.create(state, "Nearby Clan Boundary Union", nowSec = 2)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_026, nowSec = 2))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val invalidRequests = linkedMapOf(
+            "JSON null" to "null",
+            "number scalar" to "2701",
+            "string scalar" to """"synthetic-nearby-clan-canary"""",
+            "boolean scalar" to "true",
+            "object" to """{"synthetic":"nearby-clan-canary"}""",
+            "nested array" to "[[]]",
+            "non-empty array" to "[0]",
+            "malformed JSON" to "[",
+            "empty text" to "",
+            "trailing token" to "[] {}",
+        )
+
+        fun assertStateUnchanged(stage: String) {
+            assertEquals(playerBefore, state.toSnapshot(), "$stage player state changed")
+            assertTrue(
+                persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+                "$stage persisted player bytes changed",
+            )
+            assertEquals(worldBefore, WorldStateRepository.projection(), "$stage world state changed")
+            assertEquals(unionsBefore, UnionStateRepository.all(), "$stage union state changed")
+        }
+
+        val channel = newChannel()
+        try {
+            invalidRequests.forEach { (case, request) ->
+                channel.writeInbound(
+                    upPacket(commandId, request, userId = state.userId + 10_000),
+                )
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "case=$case emitted an outbound packet",
+                )
+            }
+            assertStateUnchanged("invalid requests")
+
+            channel.writeInbound(
+                upPacket(commandId, "[]", userId = state.userId + 10_000),
+            )
+
+            val packet = assertIs<DownPacket>(
+                channel.readOutbound<Any>(),
+                "valid [] request emitted no response",
+            )
+            assertEquals(commandId, packet.cmd)
+            assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, packet.cmd)
+            assertEquals(DownType.PLAIN, packet.dataType)
+            assertTrue(
+                "[]".toByteArray().contentEquals(packet.body),
+                "valid [] request emitted wrong wire bytes",
+            )
+            val parsed = mapper.readTree(packet.body)
+            assertTrue(parsed.isArray)
+            assertTrue(parsed.isEmpty)
+            assertNull(channel.readOutbound<Any>(), "valid [] request emitted an extra packet")
+            assertStateUnchanged("valid request")
+        } finally {
+            channel.finishAndReleaseAll()
+        }
+    }
+
+    @Test
     fun `sampled empty list queries ignore arbitrary payloads without mutating repositories`() {
         val channel = newChannel()
         val accountKey = "sampled-empty-list-snapshot"

@@ -303,6 +303,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(msg.cmdId, "{}", dataType = DownType.PLAIN))
             }
 
+            Cmd.CLAN_NEARBY_CLAN_LIST,
             Cmd.GET_NZ_EFFECT_LAND_LIST,
             Cmd.GET_FIELD_RES_TOTAL_STORE,
             Cmd.QUERY_USER_MARKET_SCORE -> {
@@ -2194,6 +2195,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         if (request == null || !request.isArray || !request.isEmpty) return
 
         val response = when (msg.cmdId) {
+            Cmd.CLAN_NEARBY_CLAN_LIST,
             Cmd.GET_NZ_EFFECT_LAND_LIST -> "[]"
             Cmd.GET_FIELD_RES_TOTAL_STORE -> "{}"
             Cmd.QUERY_USER_MARKET_SCORE -> "[0,0]"

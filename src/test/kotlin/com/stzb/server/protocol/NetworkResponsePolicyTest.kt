@@ -12,6 +12,22 @@ class NetworkResponsePolicyTest {
     private val mapper = jacksonObjectMapper()
 
     @Test
+    fun `nearby clan list requires its explicit handler`() {
+        val commandId = 2_701
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "[] synthetic-nearby-clan-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `strict empty query projections require explicit handlers`() {
         val commands = listOf(3_845, 4_102, 6_089)
 
