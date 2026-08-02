@@ -777,66 +777,76 @@ class GameServerHandlerProtocolTest {
             assertEquals(unionsBefore, UnionStateRepository.all(), "$stage union state changed")
         }
 
-        assertAll(
-            "backflow empty list commands",
-            validRequestsByCommand.map { (commandId, validRequests) ->
+        val invalidRequestExecutables = invalidRequestsByCommand.map { (commandId, invalidRequests) ->
+            Executable {
+                val channel = newChannel()
+                try {
+                    invalidRequests.forEach { (case, request) ->
+                        channel.writeInbound(
+                            upPacket(commandId, request, userId = state.userId + 10_000),
+                        )
+                        assertNull(
+                            channel.readOutbound<Any>(),
+                            "cmd=$commandId case=$case emitted an outbound packet",
+                        )
+                    }
+                    assertStateUnchanged("cmd=$commandId invalid requests")
+                } finally {
+                    channel.finishAndReleaseAll()
+                }
+            }
+        }
+        val validRequestExecutables = validRequestsByCommand.flatMap { (commandId, validRequests) ->
+            validRequests.map { request ->
                 Executable {
                     val channel = newChannel()
                     try {
-                        invalidRequestsByCommand.getValue(commandId).forEach { (case, request) ->
-                            channel.writeInbound(
-                                upPacket(commandId, request, userId = state.userId + 10_000),
-                            )
-                            assertNull(
-                                channel.readOutbound<Any>(),
-                                "cmd=$commandId case=$case emitted an outbound packet",
-                            )
-                        }
-                        assertStateUnchanged("cmd=$commandId invalid requests")
+                        channel.writeInbound(
+                            upPacket(commandId, request, userId = state.userId + 10_000),
+                        )
 
-                        validRequests.forEach { request ->
-                            channel.writeInbound(
-                                upPacket(commandId, request, userId = state.userId + 10_000),
-                            )
-
-                            val packet = assertIs<DownPacket>(
-                                channel.readOutbound<Any>(),
-                                "cmd=$commandId valid request=$request emitted no response",
-                            )
-                            assertEquals(commandId, packet.cmd, "cmd=$commandId request=$request")
-                            assertNotEquals(
-                                Cmd.SYS_NOTIFY_DB_UPDATE,
-                                packet.cmd,
-                                "cmd=$commandId request=$request",
-                            )
-                            assertNotEquals(
-                                pairedCommands.getValue(commandId),
-                                packet.cmd,
-                                "cmd=$commandId request=$request emitted paired command",
-                            )
-                            assertEquals(
-                                DownType.PLAIN,
-                                packet.dataType,
-                                "cmd=$commandId request=$request",
-                            )
-                            assertTrue(
-                                "[]".toByteArray().contentEquals(packet.body),
-                                "cmd=$commandId request=$request emitted wrong wire bytes",
-                            )
-                            val parsed = mapper.readTree(packet.body)
-                            assertTrue(parsed.isArray, "cmd=$commandId request=$request")
-                            assertTrue(parsed.isEmpty, "cmd=$commandId request=$request")
-                            assertNull(
-                                channel.readOutbound<Any>(),
-                                "cmd=$commandId request=$request emitted an extra or paired packet",
-                            )
-                            assertStateUnchanged("cmd=$commandId valid request=$request")
-                        }
+                        val packet = assertIs<DownPacket>(
+                            channel.readOutbound<Any>(),
+                            "cmd=$commandId valid request=$request emitted no response",
+                        )
+                        assertEquals(commandId, packet.cmd, "cmd=$commandId request=$request")
+                        assertNotEquals(
+                            Cmd.SYS_NOTIFY_DB_UPDATE,
+                            packet.cmd,
+                            "cmd=$commandId request=$request",
+                        )
+                        assertNotEquals(
+                            pairedCommands.getValue(commandId),
+                            packet.cmd,
+                            "cmd=$commandId request=$request emitted paired command",
+                        )
+                        assertEquals(
+                            DownType.PLAIN,
+                            packet.dataType,
+                            "cmd=$commandId request=$request",
+                        )
+                        assertTrue(
+                            "[]".toByteArray().contentEquals(packet.body),
+                            "cmd=$commandId request=$request emitted wrong wire bytes",
+                        )
+                        val parsed = mapper.readTree(packet.body)
+                        assertTrue(parsed.isArray, "cmd=$commandId request=$request")
+                        assertTrue(parsed.isEmpty, "cmd=$commandId request=$request")
+                        assertNull(
+                            channel.readOutbound<Any>(),
+                            "cmd=$commandId request=$request emitted an extra or paired packet",
+                        )
+                        assertStateUnchanged("cmd=$commandId valid request=$request")
                     } finally {
                         channel.finishAndReleaseAll()
                     }
                 }
-            },
+            }
+        }
+
+        assertAll(
+            "backflow empty list commands",
+            invalidRequestExecutables + validRequestExecutables,
         )
     }
 
