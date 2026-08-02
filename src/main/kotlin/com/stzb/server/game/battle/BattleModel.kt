@@ -80,6 +80,10 @@ enum class DamageTag {
     IMPERIAL_SEAL_RELEASE,
 }
 
+enum class DamageTargetCondition {
+    LOWEST_TROOPS,
+}
+
 enum class BattleTargetingKind {
     NORMAL_ATTACK,
     ACTIVE_SKILL,
@@ -93,6 +97,9 @@ sealed interface BattleModifier {
         val origin: DamageOrigin? = null,
         val tag: DamageTag? = null,
         val percent: Int,
+        val skillId: Int? = null,
+        val skillIds: Set<Int> = emptySet(),
+        val targetCondition: DamageTargetCondition? = null,
     ) : BattleModifier
     data class DamageTakenPercent(
         val school: DamageSchool? = null,
@@ -100,11 +107,41 @@ sealed interface BattleModifier {
         val tag: DamageTag? = null,
         val percent: Int,
         val requiredStatus: BattleStatus? = null,
+        val requiredSourceInherentStatBelowTarget: BattleStat? = null,
+    ) : BattleModifier
+    data class OpeningDamageTakenPercent(
+        val school: DamageSchool,
+        val percent: Int,
+        val durationRounds: Int,
+        val skillId: Int,
+        val effectId: Int,
+        val detailId: Int,
+    ) : BattleModifier
+    data class OpeningControlDurationIncrease(
+        val rounds: Int,
+        val availableHits: Int,
+        val rootSkillId: Int,
+        val skillId: Int,
+        val effectId: Int,
+        val detailId: Int,
+    ) : BattleModifier
+    data class HurtStackingDamageTakenPercent(
+        val percentPerLayer: Int,
+    ) : BattleModifier
+    data class TroopLossRecoveryTakenPercent(
+        val percentPerLayer: Int,
+        val troopLossPercentPerLayer: Int = 15,
+        val maxLayers: Int = 6,
+    ) : BattleModifier
+    data object NormalAttackDisabled : BattleModifier
+    data class NextStrategyDamageAfterNormalAttackPercent(
+        val percent: Int,
     ) : BattleModifier
     data class SkillProbabilityPercent(
         val percent: Int,
         val skillId: Int? = null,
         val skillKind: SkillKind? = null,
+        val skillIds: Set<Int> = emptySet(),
     ) : BattleModifier
     data class EffectProbabilityPercent(
         val detailId: Int,
@@ -310,11 +347,18 @@ data class BattleRequest(
     val attacker: BattleTeam,
     val defender: BattleTeam,
     val maxRounds: Int = 8,
+    val skillRuleOverrides: Map<Int, BattleSkillRuleOverride> = emptyMap(),
 ) {
     init {
         require(maxRounds in 1..8) { "常规战斗回合数必须在 1..8" }
     }
 }
+
+data class BattleSkillRuleOverride(
+    val probability: Int? = null,
+    val prepareRounds: Int? = null,
+    val details: List<SkillDetailConfig>? = null,
+)
 
 data class BattleHeroRef(
     val side: Side,
@@ -597,6 +641,20 @@ class ActiveSkillEffect(
         exactLayerStrengths = exactLayerStrengths + layerStrengthExact
     }
 
+    internal fun setSingleLayerStrength(
+        layerStrength: Int,
+        layerStrengthExact: Double = layerStrength.toDouble(),
+    ) {
+        require(stacks == 1) {
+            "Cannot replace aggregate strength for stacked effect: stacks=$stacks"
+        }
+        require(layerStrength >= 0) {
+            "Effect strength must not be negative: $layerStrength"
+        }
+        layerStrengths = listOf(layerStrength)
+        exactLayerStrengths = listOf(layerStrengthExact.coerceAtLeast(0.0))
+    }
+
     internal fun detachedCopy(): ActiveSkillEffect =
         ActiveSkillEffect(
             source = source,
@@ -621,6 +679,7 @@ class ActiveSkillEffect(
             clearable = clearable,
         ).also { copy ->
             copy.layerStrengths = layerStrengths.toList()
+            copy.exactLayerStrengths = exactLayerStrengths.toList()
         }
 }
 

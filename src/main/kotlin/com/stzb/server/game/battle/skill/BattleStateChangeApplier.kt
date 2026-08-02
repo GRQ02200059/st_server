@@ -3,6 +3,7 @@ package com.stzb.server.game.battle.skill
 import com.stzb.server.game.battle.ActionPermission
 import com.stzb.server.game.battle.ActiveSkillEffect
 import com.stzb.server.game.battle.BattleEffectValueUnit
+import com.stzb.server.game.battle.BattleDamageCalculator
 import com.stzb.server.game.battle.BattleEvent
 import com.stzb.server.game.battle.BattleHero
 import com.stzb.server.game.battle.BattleHeroRef
@@ -41,6 +42,7 @@ sealed interface BattleStateOutput {
         val tags: Set<DamageTag>,
         val skillId: Int,
         val effectId: Int,
+        val calculation: DirectDamageCalculation? = null,
     ) : BattleStateOutput
 
     data class HurtReceived(
@@ -73,6 +75,15 @@ sealed interface BattleStateOutput {
 
     data class ModifierApplied(
         val change: DamageModifierChange,
+    ) : BattleStateOutput
+
+    data class RecoveryModifierApplied(
+        val source: BattleHeroRef,
+        val target: BattleHeroRef,
+        val skillId: Int,
+        val effectId: Int,
+        val percent: Int,
+        val durationRounds: Int,
     ) : BattleStateOutput
 
     data class DamageAbsorbed(
@@ -419,6 +430,8 @@ class BattleStateChangeApplier(
         val tag: DamageTag?,
         val sign: Int,
         val requiredTargetStatus: BattleStatus?,
+        val targetSkillId: Int?,
+        val targetSkillIds: Set<Int>,
     ) {
         fun matches(
             owner: BattleHeroRef,
@@ -480,6 +493,7 @@ class BattleStateChangeApplier(
     private var lastBegunRound = 0
     private var lastStartedRound = 0
     private var lastEndedRound = 0
+    private val lastActionStartedRound = mutableMapOf<BattleHeroRef, Int>()
 
     fun apply(
         changes: List<BattleStateChange>,
@@ -525,6 +539,7 @@ class BattleStateChangeApplier(
                 key.target == actor &&
                     modifier is BattleModifier.SkillProbabilityPercent &&
                     (modifier.skillId == null || modifier.skillId == skillId) &&
+                    (modifier.skillIds.isEmpty() || skillId in modifier.skillIds) &&
                     (modifier.skillKind == null || modifier.skillKind == skillKind)
             }
             .map { it.first }
@@ -655,7 +670,7 @@ class BattleStateChangeApplier(
         )
 
     fun applyActivated(
-        change: ScheduledEffectActivationChange,
+        change: BattleStateChange,
         due: SkillTimingDue,
         round: Int,
         hit: Int = 0,
@@ -664,7 +679,15 @@ class BattleStateChangeApplier(
         require(round > due.dueRound || round == due.dueRound && hit >= due.dueHit) {
             "Activation is early: current=($round,$hit) due=(${due.dueRound},${due.dueHit})"
         }
-        val changes = change.activationChanges()
+        val changes = when (change) {
+            is ScheduledEffectActivationChange -> change.activationChanges()
+            is ScheduledDamageEffectChange,
+            is ScheduledRecoveryEffectChange,
+            -> listOf(change)
+            else -> throw IllegalArgumentException(
+                "Unsupported delayed activation change=${change::class.simpleName}",
+            )
+        }
         changes.forEach { preflight(it, delayedActivation = true) }
         due.consume()
         return applyValidated(changes, round, delayedActivation = true)
@@ -690,6 +713,15 @@ class BattleStateChangeApplier(
         }
         if (round == lastBegunRound || round <= lastEndedRound) return BattleStateApplyResult()
         lastBegunRound = round
+        if (round > 1) {
+            state.view.heroes().forEach { ref ->
+                val hero = state.mutable(ref)
+                hero.woundedTroops = hero.woundedTroops.toLong()
+                    .times(WOUNDED_TROOP_RETENTION_PERCENT)
+                    .div(100)
+                    .toInt()
+            }
+        }
         pruneInactiveBehaviors()
         activeEntries(damageAbsorptions).forEach { (_, accumulator) ->
             accumulator.previousRoundAbsorbedDamage = accumulator.currentRoundAbsorbedDamage
@@ -749,43 +781,96 @@ class BattleStateChangeApplier(
         if (round == lastStartedRound || round <= lastEndedRound) return boundary
         lastStartedRound = round
         pruneInactiveBehaviors()
+        return boundary
+    }
+
+    fun onActionStart(
+        target: BattleHeroRef,
+        round: Int,
+    ): BattleStateApplyResult {
+        requireHero(target)
+        require(round > 0) { "round must be positive: $round" }
+        val currentRound = maxOf(
+            lastStartedRound,
+            lastEndedRound,
+            lastActionStartedRound[target] ?: 0,
+        )
+        require(round >= currentRound) {
+            "round moved backward: current=$currentRound requested=$round"
+        }
+        if (round == lastActionStartedRound[target] || round <= lastEndedRound) {
+            return BattleStateApplyResult()
+        }
+        lastActionStartedRound[target] = round
+        pruneInactiveBehaviors()
+
         val dueOngoingDamage = activeEntries(ongoingDamage)
+            .filter { (key, _) -> key.target == target }
+        val dueOngoingRecovery = activeEntries(ongoingRecovery)
+            .filter { (key, _) -> key.target == target }
         val changes = buildList {
             dueOngoingDamage.forEach { (_, behavior) ->
-                    add(
-                        behavior.change.tick(
-                            liveSource = behavior.sourceSnapshot,
-                            liveTarget = state.liveHero(behavior.change.target),
+                add(
+                    behavior.change.tick(
+                        liveSource = behavior.sourceSnapshot,
+                        liveTarget = state.liveHero(behavior.change.target),
+                        targetConditions = BattleDamageCalculator.targetConditions(
+                            target = state.liveHero(behavior.change.target),
+                            targetTeam = state.view.heroes()
+                                .filter { it.side == behavior.change.target.side }
+                                .map(state::liveHero),
                         ),
-                    )
-                }
-            activeEntries(ongoingRecovery).forEach { (_, change) ->
-                    addAll(
-                        change.tick(
-                            liveState = requireNotNull(state.view.state(change.target)),
-                            effectStore = state.effectStore,
-                        ),
-                    )
-                }
-        }
-        val ongoing = apply(changes, round)
-        val consumedHits = dueOngoingDamage.flatMap { (key, _) ->
-            val active = state.effectStore.effectsFor(key.target)
-                .singleOrNull { it.key() == key }
-            if (active?.remainingHits == null) {
-                emptyList()
-            } else {
-                synchronize(
-                    state.effectStore.consumeHit(
-                        target = key.target,
-                        effectId = key.effectId,
-                        source = key.source,
-                        detailId = key.detailId,
+                    ),
+                )
+            }
+            dueOngoingRecovery.forEach { (_, change) ->
+                addAll(
+                    change.tick(
+                        liveState = requireNotNull(state.view.state(change.target)),
+                        effectStore = state.effectStore,
                     ),
                 )
             }
         }
-        return BattleStateApplyResult(boundary.outputs + ongoing.outputs + consumedHits)
+        val ongoing = apply(changes, round)
+        val lifecycle = (
+            dueOngoingDamage.map { it.first } +
+                dueOngoingRecovery.map { it.first }
+            )
+            .distinct()
+            .flatMap(::consumeOngoingLifecycle)
+        return BattleStateApplyResult(ongoing.outputs + lifecycle)
+    }
+
+    private fun consumeOngoingLifecycle(
+        key: EffectKey,
+    ): List<BattleStateOutput> {
+        val outputs = mutableListOf<BattleStateOutput>()
+        var active = state.effectStore.effectsFor(key.target)
+            .singleOrNull { it.key() == key }
+        if (active?.remainingHits != null || active?.clearPerHit == true) {
+            outputs += synchronize(
+                state.effectStore.consumeHit(
+                    target = key.target,
+                    effectId = key.effectId,
+                    source = key.source,
+                    detailId = key.detailId,
+                ),
+            )
+            active = state.effectStore.effectsFor(key.target)
+                .singleOrNull { it.key() == key }
+        }
+        if (active?.remainingRounds != null) {
+            outputs += synchronize(
+                state.effectStore.consumeRound(
+                    target = key.target,
+                    effectId = key.effectId,
+                    source = key.source,
+                    detailId = key.detailId,
+                ),
+            )
+        }
+        return outputs
     }
 
     fun triggerAppliedOngoingDamage(
@@ -828,10 +913,15 @@ class BattleStateChangeApplier(
         target: BattleHeroRef,
         effectId: Int,
         round: Int,
+        source: BattleHeroRef? = null,
+        detailId: Int? = null,
     ): BattleStateApplyResult {
         val behavior = activeEntries(ongoingDamage)
             .lastOrNull { (key, _) ->
-                key.target == target && key.effectId == effectId
+                key.target == target &&
+                    key.effectId == effectId &&
+                    (source == null || key.source == source) &&
+                    (detailId == null || key.detailId == detailId)
             }
             ?.second
             ?: return BattleStateApplyResult()
@@ -853,7 +943,15 @@ class BattleStateChangeApplier(
         }
         if (round == lastEndedRound) return BattleStateApplyResult()
         lastEndedRound = round
-        val lifecycle = synchronize(state.effectStore.tick(EffectTickBoundary.ROUND_END))
+        val actionTickedKeys = (
+            activeEntries(ongoingDamage).map { it.first } +
+                activeEntries(ongoingRecovery).map { it.first }
+            ).toSet()
+        val lifecycle = synchronize(
+            state.effectStore.tick(EffectTickBoundary.ROUND_END) { effect ->
+                effect.key() !in actionTickedKeys
+            },
+        )
         recalculateStats()
         return BattleStateApplyResult(lifecycle)
     }
@@ -886,12 +984,23 @@ class BattleStateChangeApplier(
             pursuitOpportunityCount = if (base.canNormalAttack) base.normalAttackCount else 0,
             splitAttack = secondaryAttack,
             counterattack = base.counterattack,
-            canEvade = resolver.canEvade(actor),
+            canEvade = resolver.canEvade(actor, context = context),
             ignoresEvade = effects.any { it.effectId == 515 },
             firstAction = base.firstAction,
             damageRedirectTarget = redirect,
         )
     }
+
+    fun canEvade(
+        target: BattleHeroRef,
+        attacker: BattleHeroRef,
+        context: SkillBattleContext,
+    ): Boolean =
+        ActionPermissionResolver(state.effectStore).canEvade(
+            target = target,
+            attacker = attacker,
+            context = context,
+        )
 
     private fun preflight(
         change: BattleStateChange,
@@ -939,6 +1048,20 @@ class BattleStateChangeApplier(
                 }
                 require(change.percent != 0) { "damage modifier percent must not be zero" }
                 modifierEffect(change)
+            }
+            is UpdateDamageModifierStrengthChange -> {
+                requireHero(change.source)
+                requireHero(change.target)
+                require(change.percent <= 0) {
+                    "damage reduction strength update must not be positive"
+                }
+            }
+            is SetRecoveryTakenModifierLayersChange -> {
+                requireHero(change.source)
+                requireHero(change.target)
+                require(change.percentPerLayer > 0)
+                require(change.maxLayers > 0)
+                require(change.layers in 0..change.maxLayers)
             }
             is ModifierEffectChange -> validateSpec(change.spec, delayedActivation)
             is ApplyBattleEffectChange -> validateSpec(change.spec, delayedActivation)
@@ -1098,6 +1221,8 @@ class BattleStateChangeApplier(
                         change.tag,
                         if (change.percent < 0) -1 else 1,
                         change.requiredTargetStatus,
+                        change.targetSkillId,
+                        change.targetSkillIds,
                     )
                     state.effectModifiers[key] = change.toBattleModifier(
                         acceptedEffect.effectiveStrength,
@@ -1105,8 +1230,42 @@ class BattleStateChangeApplier(
                 }
                 if (accepted) outputs += BattleStateOutput.ModifierApplied(change)
             }
-            is ModifierEffectChange -> applyEffect(change.spec, outputs) { key, _ ->
-                state.effectModifiers[key] = change.modifier
+            is UpdateDamageModifierStrengthChange -> {
+                val key = damageModifiers.keys.singleOrNull { candidate ->
+                    candidate.source == change.source &&
+                        candidate.target == change.target &&
+                        candidate.skillId == change.skillId &&
+                        candidate.detailId == change.detailId &&
+                        candidate.effectId == change.effectId
+                } ?: error(
+                    "Missing damage modifier for strength update: " +
+                        "target=${change.target} source=${change.source} " +
+                        "skill=${change.skillId} detail=${change.detailId} " +
+                        "effect=${change.effectId}",
+                )
+                val behavior = requireNotNull(damageModifiers[key])
+                val updated = requireNotNull(
+                    state.effectStore.setSingleLayerStrength(
+                        target = change.target,
+                        source = change.source,
+                        skillId = change.skillId,
+                        detailId = change.detailId,
+                        effectId = change.effectId,
+                        strength = kotlin.math.abs(change.percent),
+                    ),
+                )
+                val applied = behavior.toChange(key, updated)
+                state.effectModifiers[key] = applied.toBattleModifier(
+                    updated.effectiveStrength,
+                )
+                outputs += BattleStateOutput.ModifierApplied(applied)
+            }
+            is SetRecoveryTakenModifierLayersChange ->
+                applyRecoveryTakenModifierLayers(change, outputs)
+            is ModifierEffectChange -> applyEffect(change.spec, outputs) { key, accepted ->
+                state.effectModifiers[key] = change.modifier.withEffectiveStrength(
+                    accepted.effectiveStrength,
+                )
             }
             is ApplyBattleEffectChange -> applyEffect(change.spec, outputs) { key, _ ->
                 statusFor(change.spec.effectId)?.let { state.effectStatuses[key] = it }
@@ -1315,7 +1474,10 @@ class BattleStateChangeApplier(
         }
         val amount = retainedAmount
         target.troops -= amount
-        target.woundedTroops += amount
+        target.woundedTroops += amount.toLong()
+            .times(WOUNDED_TROOP_CONVERSION_PERCENT)
+            .div(100)
+            .toInt()
         state.recordDamage(change.source, amount)
         outputs += BattleStateOutput.DamageDealt(
             change.source,
@@ -1326,6 +1488,7 @@ class BattleStateChangeApplier(
             change.tags.toSet(),
             change.skillId,
             change.effectId,
+            change.calculation,
         )
         outputs += BattleStateOutput.HurtReceived(
             change.source,
@@ -1378,6 +1541,62 @@ class BattleStateChangeApplier(
                     ),
                 )
             }
+    }
+
+    private fun applyRecoveryTakenModifierLayers(
+        change: SetRecoveryTakenModifierLayersChange,
+        outputs: MutableList<BattleStateOutput>,
+    ) {
+        outputs += synchronize(
+            state.effectStore.clearMatching(change.target) { effect ->
+                effect.source == change.source &&
+                    effect.detailId == change.detailId &&
+                    effect.effectId == change.effectId
+            },
+        )
+        repeat(change.layers) {
+            var appliedPercent: Int? = null
+            applyEffect(
+                PersistentEffectSpec(
+                    source = change.source,
+                    target = change.target,
+                    rootSkillId = change.rootSkillId,
+                    skillId = change.skillId,
+                    skillKind = SkillKind.PASSIVE,
+                    rawSkillType = 17,
+                    detailId = change.detailId,
+                    effectId = change.effectId,
+                    category = EffectCategory.NEUTRAL,
+                    conflict = 0,
+                    replaceType = 0,
+                    bindFlag = 0,
+                    maxStacks = change.maxLayers,
+                    delayRound = 0,
+                    delayHit = 0,
+                    availableRounds = Int.MAX_VALUE,
+                    availableHit = 0,
+                    clearPerHit = false,
+                    startBoundary = EffectStartBoundary.IMMEDIATE,
+                    potency = TypedBattlePotency.percent(change.percentPerLayer),
+                ),
+                outputs,
+            ) { key, accepted ->
+                appliedPercent = accepted.effectiveStrength
+                state.effectModifiers[key] = BattleModifier.RecoveryTakenPercent(
+                    accepted.effectiveStrength,
+                )
+            }
+            appliedPercent?.let { percent ->
+                outputs += BattleStateOutput.RecoveryModifierApplied(
+                    source = change.source,
+                    target = change.target,
+                    skillId = change.skillId,
+                    effectId = change.effectId,
+                    percent = percent,
+                    durationRounds = Int.MAX_VALUE,
+                )
+            }
+        }
     }
 
     private fun applyRecovery(
@@ -1559,6 +1778,8 @@ class BattleStateChangeApplier(
                 origin = origin,
                 tag = tag,
                 percent = signedStrength,
+                skillId = targetSkillId,
+                skillIds = targetSkillIds,
             )
             DamageModifierChange.Direction.TAKEN -> BattleModifier.DamageTakenPercent(
                 school = school,
@@ -1569,6 +1790,36 @@ class BattleStateChangeApplier(
             )
         }
     }
+
+    private fun BattleModifier.withEffectiveStrength(effectiveStrength: Int): BattleModifier =
+        when (this) {
+            is BattleModifier.RecoveryDealtPercent -> copy(percent = effectiveStrength)
+            is BattleModifier.RecoveryTakenPercent -> copy(percent = effectiveStrength)
+            else -> this
+        }
+
+    private fun DamageModifier.toChange(
+        key: EffectKey,
+        effect: ActiveSkillEffect,
+    ): DamageModifierChange =
+        DamageModifierChange(
+            source = key.source,
+            target = key.target,
+            direction = direction,
+            school = school,
+            origin = origin,
+            tag = tag,
+            percent = effect.effectiveStrength * sign,
+            durationRounds = effect.remainingRounds ?: 1,
+            skillId = key.skillId,
+            effectId = key.effectId,
+            detailId = key.detailId,
+            availableHits = effect.remainingHits ?: 0,
+            maxStacks = effect.maxStacks,
+            requiredTargetStatus = requiredTargetStatus,
+            targetSkillId = targetSkillId,
+            targetSkillIds = targetSkillIds,
+        )
 
     private fun synchronize(result: EffectLifecycleResult): List<BattleStateOutput> {
         synchronizeRemoved(result.expired + result.removed)
@@ -1662,6 +1913,11 @@ class BattleStateChangeApplier(
         BattleStatChange.Kind.SPEED -> precise(BattleStat.SPEED)
         BattleStatChange.Kind.SIEGE -> precise(BattleStat.SIEGE)
         BattleStatChange.Kind.ATTACK_RANGE -> hitRange.toDouble()
+    }
+
+    private companion object {
+        const val WOUNDED_TROOP_CONVERSION_PERCENT = 95
+        const val WOUNDED_TROOP_RETENTION_PERCENT = 87
     }
 }
 

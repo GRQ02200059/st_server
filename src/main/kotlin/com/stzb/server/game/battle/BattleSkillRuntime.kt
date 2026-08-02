@@ -133,7 +133,7 @@ class BattleSkillRuntime(
                     }
                     val selected = selectTargets(pool.values, detail, sourceRef, random, targetSide == TargetSide.SELF)
                     selected.forEach { target ->
-                        val damage = skillDamage(source, target, detail)
+                        val damage = skillDamage(source, target, detail, pool.values)
                         val newTarget = target.copy(troops = (target.troops - damage).coerceAtLeast(0))
                         pool[target.position] = newTarget
                         val refSide = if (targetSide == TargetSide.ENEMY) sourceRef.side.opposite() else sourceRef.side
@@ -284,12 +284,13 @@ class BattleSkillRuntime(
         }
 
     private fun effectiveProbability(source: BattleHero, configured: Int): Int {
-        val moraleAddition = (source.morale - 100).toDouble() / (100 + 0.5 * source.morale)
-        val moraleAdjusted = (configured * (1 + moraleAddition)).toInt()
         val equipmentAdjusted = source.modifiers
             .filterIsInstance<BattleModifier.SkillProbabilityPercent>()
             .sumOf { it.percent }
-        return (moraleAdjusted + equipmentAdjusted).coerceIn(0, 100)
+        val moraleAddition = (source.morale - 100).toDouble() / (100 + 0.5 * source.morale)
+        return ((configured + equipmentAdjusted) * (1 + moraleAddition))
+            .toInt()
+            .coerceIn(0, 100)
     }
 
     private fun selectTargets(
@@ -368,12 +369,28 @@ class BattleSkillRuntime(
         val disorderEffectIds = setOf(303, 304, 305, 306, 501, 502, 503, 552, 505)
     }
 
-    private fun skillDamage(source: BattleHero, target: BattleHero, detail: SkillDetailConfig): Int {
+    private fun skillDamage(
+        source: BattleHero,
+        target: BattleHero,
+        detail: SkillDetailConfig,
+        targetTeam: Collection<BattleHero>,
+    ): Int {
         val rate = skillRate(source, detail)
+        val targetConditions = BattleDamageCalculator.targetConditions(target, targetTeam)
         return if (detail.effectId == 302) {
-            BattleDamageCalculator.strategy(source, target, rate)
+            BattleDamageCalculator.strategy(
+                source,
+                target,
+                rate,
+                targetConditions = targetConditions,
+            )
         } else {
-            BattleDamageCalculator.physical(source, target, rate)
+            BattleDamageCalculator.physical(
+                source,
+                target,
+                rate,
+                targetConditions = targetConditions,
+            )
         }
     }
 

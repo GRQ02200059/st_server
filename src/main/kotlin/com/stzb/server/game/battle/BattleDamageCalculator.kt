@@ -16,9 +16,19 @@ object BattleDamageCalculator {
         attributeRandomTenths: Int = 35,
         origin: DamageOrigin? = null,
         tags: Set<DamageTag> = emptySet(),
+        skillId: Int? = null,
+        targetConditions: Set<DamageTargetCondition> = emptySet(),
     ): Int {
         val rate = ratePercent.coerceAtLeast(1) / 100.0
-        val damageFactor = modifierFactor(source, target, DamageSchool.PHYSICAL, origin, tags)
+        val damageFactor = modifierFactor(
+            source,
+            target,
+            DamageSchool.PHYSICAL,
+            origin,
+            tags,
+            skillId,
+            targetConditions,
+        )
         val troopDamage = source.troops * 373.0 / (7_700 + source.troops)
         val attributeDamage =
             source.stats.attack *
@@ -43,9 +53,19 @@ object BattleDamageCalculator {
         ongoing: Boolean = false,
         origin: DamageOrigin? = null,
         tags: Set<DamageTag> = emptySet(),
+        skillId: Int? = null,
+        targetConditions: Set<DamageTargetCondition> = emptySet(),
     ): Int {
         val rate = ratePercent.coerceAtLeast(1) / 100.0
-        val damageFactor = modifierFactor(source, target, DamageSchool.STRATEGY, origin, tags)
+        val damageFactor = modifierFactor(
+            source,
+            target,
+            DamageSchool.STRATEGY,
+            origin,
+            tags,
+            skillId,
+            targetConditions,
+        )
         val effectiveStrategy = ignoredTargetAttribute(source, target.stats.strategy, BattleStat.STRATEGY)
         val strategyFactor = strategyDefenseFactor(effectiveStrategy)
         val troopDamage = source.troops * 178.0 / (6_459 + source.troops) * if (ongoing) 1.0 / 3 else 1.0
@@ -66,14 +86,25 @@ object BattleDamageCalculator {
         school: DamageSchool,
         origin: DamageOrigin?,
         tags: Set<DamageTag>,
+        skillId: Int?,
+        targetConditions: Set<DamageTargetCondition>,
     ): Double {
         val dealt = source.modifiers
             .filterIsInstance<BattleModifier.DamageDealtPercent>()
-            .filter { it.matches(school, origin, tags) }
+            .filter { it.matches(school, origin, tags, skillId, targetConditions) }
             .sumOf { it.percent }
         val taken = target.modifiers
             .filterIsInstance<BattleModifier.DamageTakenPercent>()
-            .filter { it.matches(school, origin, tags, target.activeStatuses) }
+            .filter {
+                it.matches(
+                    school,
+                    origin,
+                    tags,
+                    target.activeStatuses,
+                    source,
+                    target,
+                )
+            }
             .sumOf { it.percent }
         val troopCounterDealt = source.modifiers
             .filterIsInstance<BattleModifier.TroopCounterDealtPercent>()
@@ -102,21 +133,33 @@ object BattleDamageCalculator {
         school: DamageSchool,
         origin: DamageOrigin?,
         tags: Set<DamageTag>,
+        skillId: Int?,
+        targetConditions: Set<DamageTargetCondition>,
     ): Boolean =
         (this.school == null || this.school == school) &&
             (this.origin == null || this.origin == origin) &&
-            (tag == null || tag in tags)
+            (tag == null || tag in tags) &&
+            (this.skillId == null || this.skillId == skillId) &&
+            (skillIds.isEmpty() || skillId != null && skillId in skillIds) &&
+            (targetCondition == null || targetCondition in targetConditions)
 
     private fun BattleModifier.DamageTakenPercent.matches(
         school: DamageSchool,
         origin: DamageOrigin?,
         tags: Set<DamageTag>,
         statuses: Set<BattleStatus>,
+        source: BattleHero,
+        target: BattleHero,
     ): Boolean =
         (this.school == null || this.school == school) &&
             (this.origin == null || this.origin == origin) &&
             (tag == null || tag in tags) &&
-            (requiredStatus == null || requiredStatus in statuses)
+            (requiredStatus == null || requiredStatus in statuses) &&
+            (
+                requiredSourceInherentStatBelowTarget == null ||
+                    source.inherentStats.precise(requiredSourceInherentStatBelowTarget) <
+                    target.inherentStats.precise(requiredSourceInherentStatBelowTarget)
+                )
 
     private fun attackDefenseFactor(attack: Int, defense: Int): Double {
         val difference = attack - defense
@@ -145,5 +188,21 @@ object BattleDamageCalculator {
             .sumOf { it.percent }
             .coerceIn(0, 100)
         return (targetAttribute * (100 - ignoredPercent) / 100.0).roundToInt()
+    }
+
+    fun targetConditions(
+        target: BattleHero,
+        targetTeam: Collection<BattleHero>,
+    ): Set<DamageTargetCondition> {
+        val minimumTroops = targetTeam.asSequence()
+            .map(BattleHero::troops)
+            .filter { it > 0 }
+            .minOrNull()
+            ?: return emptySet()
+        return if (target.troops == minimumTroops) {
+            setOf(DamageTargetCondition.LOWEST_TROOPS)
+        } else {
+            emptySet()
+        }
     }
 }

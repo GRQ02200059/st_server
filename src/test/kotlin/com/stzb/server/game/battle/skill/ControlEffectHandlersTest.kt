@@ -440,6 +440,18 @@ class ControlEffectHandlersTest {
     }
 
     @Test
+    fun `multiple double attack effects still grant exactly two normals`() {
+        val store = BattleEffectStore()
+        store.apply(active(544, target = source, category = EffectCategory.BENEFICIAL))
+        store.apply(active(744, target = source, category = EffectCategory.BENEFICIAL))
+
+        val permission = ActionPermissionResolver(store).permissionFor(source)
+
+        assertEquals(2, permission.normalAttackCount)
+        assertTrue(permission.grantsPursuitOpportunityPerNormal)
+    }
+
+    @Test
     fun `evade ignore evade and typed action intents remain distinct`() {
         val store = BattleEffectStore()
         store.apply(active(514, target = target, category = EffectCategory.BENEFICIAL))

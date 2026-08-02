@@ -42,20 +42,26 @@ data class CancelPreparedSkillsChange(
 data class CleanseEffectsChange(
     val spec: PersistentEffectSpec,
     val category: EffectCategory,
+    val skillKinds: Set<SkillKind>? = null,
 ) : BattleStateChange {
     fun apply(store: BattleEffectStore): EffectLifecycleResult =
-        store.clearMatching(spec.target) { it.category == category }
+        store.clearMatching(spec.target) {
+            it.category == category &&
+                (skillKinds == null || it.skillKind in skillKinds)
+        }
 }
 
 data class ScheduledEffectActivationChange(
     val spec: PersistentEffectSpec,
     val actionKind: ActionEffectKind? = null,
     val cleanseCategory: EffectCategory? = null,
+    val cleanseSkillKinds: Set<SkillKind>? = null,
     val status: BattleStatus? = null,
 ) : BattleStateChange {
     fun activationChanges(): List<BattleStateChange> {
         val primary = when {
-            cleanseCategory != null -> CleanseEffectsChange(spec, cleanseCategory)
+            cleanseCategory != null ->
+                CleanseEffectsChange(spec, cleanseCategory, cleanseSkillKinds)
             actionKind != null -> ActionEffectChange(spec, actionKind)
             else -> ApplyBattleEffectChange(spec)
         }
@@ -112,7 +118,7 @@ class ActionPermissionResolver(
         val cannotAct = effects.any { it.effectId in CONFUSION_IDS }
         val cannotCast = cannotAct || effects.any { it.effectId in HESITATION_IDS }
         val cannotNormal = cannotAct || effects.any { it.effectId in DISARM_IDS }
-        val extraAttackCount = effects.count { it.effectId in DOUBLE_ATTACK_IDS }
+        val hasDoubleAttack = effects.any { it.effectId in DOUBLE_ATTACK_IDS }
         val guard = intendedTarget?.let { guarded ->
             effectStore.effectsFor(guarded).lastOrNull { it.effectId in GUARD_IDS }?.source
         }
@@ -124,7 +130,8 @@ class ActionPermissionResolver(
             redirectTarget = taunt ?: guard,
             normalAttackCount = when {
                 cannotAct || cannotNormal -> 0
-                else -> 1 + extraAttackCount
+                hasDoubleAttack -> 2
+                else -> 1
             },
             grantsPursuitOpportunityPerNormal = !cannotAct && !cannotNormal,
             counterattack = effects.any { it.effectId == COUNTERATTACK_ID },
@@ -170,8 +177,24 @@ class ActionPermissionResolver(
     fun canEvade(
         target: BattleHeroRef,
         attacker: BattleHeroRef? = null,
+        context: SkillBattleContext? = null,
     ): Boolean =
-        effectStore.effectsFor(target).any { it.effectId in EVADE_IDS } &&
+        effectStore.effectsFor(target).any { effect ->
+            effect.effectId in EVADE_IDS &&
+                (
+                    effect.effectId !in PER_ROUND_PREPARED_EFFECT_IDS ||
+                        context == null ||
+                        context.runtime.preparedEffectActive(
+                            target = target,
+                            source = effect.source,
+                            detailId = effect.detailId,
+                            effectId = effect.effectId,
+                            round = context.round,
+                            probability = effect.effectiveStrength.coerceIn(0, 100),
+                            random = context.random,
+                        )
+                    )
+        } &&
             attacker?.let { source ->
                 effectStore.effectsFor(source).none { it.effectId == IGNORE_EVADE_ID }
             } != false
@@ -294,10 +317,10 @@ private class ControlEffectHandler(
             }
             val spec = persistentSpec(invocation, target)
             if (spec.startBoundary == EffectStartBoundary.AFTER_DELAY) {
-                changes += scheduledChange(spec)
+                changes += scheduledChange(spec, invocation.rule.raw.effectParam)
                 return@forEach
             }
-            changes += immediateChanges(spec)
+            changes += immediateChanges(spec, invocation.rule.raw.effectParam)
             statusFor(ownedEffectId)?.let { status ->
                 events += BattleEvent.StatusApplied(
                     round = invocation.context.round,
@@ -321,9 +344,18 @@ private class ControlEffectHandler(
         return EffectExecution(changes, events)
     }
 
-    private fun immediateChanges(spec: PersistentEffectSpec): List<BattleStateChange> {
+    private fun immediateChanges(
+        spec: PersistentEffectSpec,
+        effectParam: Int,
+    ): List<BattleStateChange> {
         if (ownedEffectId in CLEANSE_IDS) {
-            return listOf(cleanse(spec, EffectCategory.HARMFUL))
+            return listOf(
+                cleanse(
+                    spec,
+                    EffectCategory.HARMFUL,
+                    cleanseSkillKinds(effectParam),
+                ),
+            )
         }
         if (ownedEffectId in DISPEL_IDS) {
             return listOf(cleanse(spec, EffectCategory.BENEFICIAL))
@@ -339,7 +371,10 @@ private class ControlEffectHandler(
         }
     }
 
-    private fun scheduledChange(spec: PersistentEffectSpec) = ScheduledEffectActivationChange(
+    private fun scheduledChange(
+        spec: PersistentEffectSpec,
+        effectParam: Int,
+    ) = ScheduledEffectActivationChange(
         spec = spec,
         actionKind = actionKindFor(ownedEffectId),
         cleanseCategory = when {
@@ -347,6 +382,7 @@ private class ControlEffectHandler(
             ownedEffectId in DISPEL_IDS -> EffectCategory.BENEFICIAL
             else -> null
         },
+        cleanseSkillKinds = cleanseSkillKinds(effectParam),
         status = statusFor(ownedEffectId),
     )
 
@@ -358,7 +394,8 @@ private class ControlEffectHandler(
         val raw = invocation.rule.raw
         val source = invocation.liveSourceHero()
         val level = invocation.rootSkillLevel(source)
-        val potency = if (ownedEffectId in PER_ROUND_PREPARED_EFFECT_IDS) {
+        val lifecycle = invocation.lifecycle()
+        val potency = invocation.valueOverride ?: if (ownedEffectId in PER_ROUND_PREPARED_EFFECT_IDS) {
             TypedBattlePotency.percent(
                 (
                     raw.probabilityInit +
@@ -395,13 +432,13 @@ private class ControlEffectHandler(
             replaceType = invocation.rule.effectReplaceType,
             bindFlag = raw.bindFlag,
             maxStacks = raw.addCountMax + 1,
-            delayRound = raw.delayRound,
-            delayHit = raw.delayHit,
-            availableRounds = raw.availableRounds,
-            availableHit = raw.availableHit,
-            clearPerHit = raw.clearPerHit,
+            delayRound = lifecycle.delayRound,
+            delayHit = lifecycle.delayHit,
+            availableRounds = lifecycle.availableRounds,
+            availableHit = lifecycle.availableHit,
+            clearPerHit = lifecycle.clearPerHit,
             startBoundary =
-                if (raw.delayRound > 0 || raw.delayHit > 0) {
+                if (lifecycle.delayRound > 0 || lifecycle.delayHit > 0) {
                     EffectStartBoundary.AFTER_DELAY
                 } else {
                     EffectStartBoundary.IMMEDIATE
@@ -413,10 +450,18 @@ private class ControlEffectHandler(
     private fun cleanse(
         spec: PersistentEffectSpec,
         category: EffectCategory,
+        skillKinds: Set<SkillKind>? = null,
     ) = CleanseEffectsChange(
         spec = spec,
         category = category,
+        skillKinds = skillKinds,
     )
+
+    private fun cleanseSkillKinds(effectParam: Int): Set<SkillKind>? =
+        when (effectParam) {
+            34 -> setOf(SkillKind.ACTIVE, SkillKind.PURSUIT)
+            else -> null
+        }
 
     private fun blockingEffect(
         target: BattleHeroRef,

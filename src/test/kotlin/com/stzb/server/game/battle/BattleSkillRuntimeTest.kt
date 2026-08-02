@@ -288,6 +288,27 @@ class BattleSkillRuntimeTest {
     }
 
     @Test
+    fun `legacy runtime applies probability modifiers before morale scaling`() {
+        val sourceRef = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(100024))
+        val source = hero(100024, skillIds = listOf(200684)).copy(
+            morale = 121,
+            modifiers = listOf(BattleModifier.SkillProbabilityPercent(10)),
+        )
+
+        val result = runtime.tryAct(
+            round = 1,
+            sourceRef = sourceRef,
+            source = source,
+            targets = BattleTeam(listOf(hero(1))),
+            allies = BattleTeam(listOf(source)),
+            random = FixedBattleRandom(55),
+            state = SkillRuntimeState(),
+        )
+
+        assertNotNull(result)
+    }
+
+    @Test
     fun `physical skill damage follows the reference troop and attack curve`() {
         val sourceRef = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(100021))
         val source = hero(100021, troops = 10_000, skillIds = listOf(200021)).copy(

@@ -62,6 +62,24 @@ class BattleActionResolverTest {
     }
 
     @Test
+    fun `dead formation slots compress both sides of the normal attack distance`() {
+        val source = hero(1, position = 0, hitRange = 1, attack = 100)
+        val deadAlliedFront = hero(2, position = 2, hitRange = 1, attack = 10)
+            .copy(troops = 0)
+        val deadEnemyFront = hero(3, position = 2, hitRange = 1, attack = 10)
+            .copy(troops = 0)
+        val target = hero(4, position = 1, hitRange = 1, attack = 10)
+
+        val selected = resolver.selectNormalAttackTarget(
+            source = source,
+            enemies = listOf(deadEnemyFront, target),
+            allies = listOf(source, deadAlliedFront),
+        )
+
+        assertEquals(target.id, selected?.id)
+    }
+
+    @Test
     fun `normal attack skips targets immune to normal targeting`() {
         val source = hero(1, position = 2, hitRange = 3, attack = 100)
         val immuneFront = hero(2, position = 2, hitRange = 1, attack = 10).copy(

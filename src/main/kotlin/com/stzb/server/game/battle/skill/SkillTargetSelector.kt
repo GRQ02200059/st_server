@@ -56,7 +56,7 @@ class SkillTargetSelector(
                     emptyList()
                 }
             }
-            .filter { view.isTargetable(it) }
+            .filter { view.isTargetable(it, rule.effectId) }
             .filterNot { target -> view.hasTargetImmunity(target, rule.skillKind) }
             .filter { target ->
                 raw.attackType % 1000 == 0 ||
@@ -126,6 +126,7 @@ class SkillTargetSelector(
                                 rule.detailId / 100,
                             ),
                         ),
+                        view,
                     )
             }
         }
@@ -133,7 +134,9 @@ class SkillTargetSelector(
         return when (raw.selectType) {
             SELECT_RANDOM -> selectRandom(rule, candidates, limit, context)
             SELECT_MINIMUM -> selectByAttribute(candidates, raw.selectAttri, view, minimum = true)
-            SELECT_FARTHEST -> candidates.maxByOrNull { formationDistance(context.source, it) }?.let(::listOf).orEmpty()
+            SELECT_FARTHEST -> candidates.maxByOrNull {
+                formationDistance(context.source, it, view)
+            }?.let(::listOf).orEmpty()
             SELECT_BASE -> candidates.filter { it.position == BASE_POSITION }.take(1)
             SELECT_MIDDLE -> candidates.filter { it.position == MIDDLE_POSITION }.take(1)
             SELECT_FRONT -> candidates.filter { it.position == FRONT_POSITION }.take(1)
@@ -512,22 +515,50 @@ class SkillTargetSelector(
     ): Boolean {
         if (source.side == target.side) return true
         val range = view.currentAttackRange(source) ?: return false
-        return 5 - source.position - target.position <= range
+        return formationDistance(source, target, view) <= range
     }
 
     private fun inSkillRange(
         source: BattleHeroRef,
         target: BattleHeroRef,
         skillHitRange: Int?,
+        view: SkillBattleView,
     ): Boolean =
-        skillHitRange == null || formationDistance(source, target) <= skillHitRange
+        skillHitRange == null || formationDistance(source, target, view) <= skillHitRange
 
-    private fun formationDistance(source: BattleHeroRef, target: BattleHeroRef): Int =
+    private fun formationDistance(
+        source: BattleHeroRef,
+        target: BattleHeroRef,
+        view: SkillBattleView,
+    ): Int {
         if (source.side == target.side) {
-            kotlin.math.abs(source.position - target.position)
-        } else {
-            5 - source.position - target.position
+            return kotlin.math.abs(source.position - target.position)
         }
+        val formation = view.heroes().filter { ref ->
+            ref.side == source.side || ref.side == target.side
+        }
+        val states = formation.associateWith { ref ->
+            if (SkillBattleViewCapability.LIVE_STATE in view.capabilities) {
+                view.state(ref)
+            } else {
+                view.entryState(ref)
+            }
+        }
+        if (states.values.any { it == null }) {
+            return 5 - source.position - target.position
+        }
+        val sourceFront = formation.count { ref ->
+            ref.side == source.side &&
+                ref.position > source.position &&
+                requireNotNull(states[ref]).troops > 0
+        }
+        val targetFront = formation.count { ref ->
+            ref.side == target.side &&
+                ref.position > target.position &&
+                requireNotNull(states[ref]).troops > 0
+        }
+        return 1 + sourceFront + targetFront
+    }
 
     private fun attackTypeIgnoresRange(attackType: Int): Boolean =
         attackType % 1000 in setOf(81, 98, 99, 113)
@@ -536,8 +567,14 @@ class SkillTargetSelector(
         view.heroes().firstOrNull { it.side == side && it.position == BASE_POSITION }
             ?: error("Missing base hero for $side")
 
-    private fun SkillBattleView.isTargetable(ref: BattleHeroRef): Boolean =
-        targetabilityState(ref)?.let { it.troops > 0 || it.canReceiveEffectsWhenDefeated } == true
+    private fun SkillBattleView.isTargetable(
+        ref: BattleHeroRef,
+        effectId: Int,
+    ): Boolean =
+        targetabilityState(ref)?.let { state ->
+            state.troops > 0 ||
+                state.canReceiveEffectsWhenDefeated && effectId !in DAMAGE_EFFECT_IDS
+        } == true
 
     private fun SkillBattleView.targetabilityState(ref: BattleHeroRef): SkillBattleHeroState? =
         if (SkillBattleViewCapability.LIVE_STATE in capabilities) {
@@ -623,6 +660,7 @@ class SkillTargetSelector(
         const val ATTRIBUTE_SPEED = 4
         const val ATTRIBUTE_TROOPS = 8
 
+        val DAMAGE_EFFECT_IDS = 301..307
         val TARGET_TYPES = setOf(-30, -10, 0, 10, 20, 30, 42, 52, 53)
         val SELECT_TYPES = setOf(0, 1, 3, 4, 5, 6, 7, 8, 9, 11, 33, 34, 900, 901, 907, 908, 3002)
         val ATTRIBUTE_SELECTORS = setOf(1, 2, 3, 4, 8)

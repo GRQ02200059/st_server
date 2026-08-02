@@ -40,7 +40,8 @@ class BattleEffectStore {
             STACK -> conflict.sameOrigin(incoming)
             KEEP_EXISTING -> false
             REPLACE_BY_STRENGTH ->
-                incoming.effectiveStrength > conflict.effectiveStrength ||
+                conflict.canStackStrongest(incoming) ||
+                    incoming.effectiveStrength > conflict.effectiveStrength ||
                     incoming.effectiveStrength == conflict.effectiveStrength &&
                     conflict.sameOrigin(incoming)
             KEEP_EXISTING_ACROSS_SKILL_TYPES -> false
@@ -74,6 +75,30 @@ class BattleEffectStore {
 
     fun effectsFor(target: BattleHeroRef): List<ActiveSkillEffect> =
         immutableSnapshots(active[target].orEmpty())
+
+    fun setSingleLayerStrength(
+        target: BattleHeroRef,
+        source: BattleHeroRef,
+        skillId: Int,
+        detailId: Int,
+        effectId: Int,
+        strength: Int,
+    ): ActiveSkillEffect? {
+        require(strength >= 0) { "Effect strength must not be negative: $strength" }
+        val matches = active[target].orEmpty().filter {
+            it.source == source &&
+                it.skillId == skillId &&
+                it.detailId == detailId &&
+                it.effectId == effectId
+        }
+        require(matches.size <= 1) {
+            "Ambiguous active effect strength update: target=$target source=$source " +
+                "skill=$skillId detail=$detailId effect=$effectId"
+        }
+        val effect = matches.singleOrNull() ?: return null
+        effect.setSingleLayerStrength(strength)
+        return effect.snapshot()
+    }
 
     fun consumeHit(
         target: BattleHeroRef,
@@ -110,8 +135,39 @@ class BattleEffectStore {
         return lifecycle(updated = updated, expired = expired)
     }
 
+    fun consumeRound(
+        target: BattleHeroRef,
+        effectId: Int,
+        source: BattleHeroRef? = null,
+        detailId: Int? = null,
+    ): EffectLifecycleResult {
+        val effects = active[target] ?: return lifecycle()
+        val updated = mutableListOf<ActiveSkillEffect>()
+        val expired = mutableListOf<ActiveSkillEffect>()
+        effects
+            .filter {
+                it.effectId == effectId &&
+                    (source == null || it.source == source) &&
+                    (detailId == null || it.detailId == detailId) &&
+                    it.remainingRounds != null
+            }
+            .toList()
+            .forEach { effect ->
+                if (effect.remainingRounds == 1) {
+                    effects.remove(effect)
+                    expired += effect
+                } else {
+                    effect.remainingRounds = requireNotNull(effect.remainingRounds) - 1
+                    updated += effect
+                }
+            }
+        removeTargetIfEmpty(target)
+        return lifecycle(updated = updated, expired = expired)
+    }
+
     fun tick(
         boundary: EffectTickBoundary = EffectTickBoundary.ROUND_END,
+        shouldTick: (ActiveSkillEffect) -> Boolean = { true },
     ): EffectLifecycleResult {
         if (boundary != EffectTickBoundary.ROUND_END) return lifecycle()
 
@@ -119,12 +175,14 @@ class BattleEffectStore {
         val expired = mutableListOf<ActiveSkillEffect>()
         active.values.forEach { effects ->
             effects.toList().forEach { effect ->
-                if (effect.remainingRounds == 1) {
-                    effects.remove(effect)
-                    expired += effect
-                } else if (effect.remainingRounds != null) {
-                    effect.remainingRounds = effect.remainingRounds!! - 1
-                    updated += effect
+                if (shouldTick(effect)) {
+                    if (effect.remainingRounds == 1) {
+                        effects.remove(effect)
+                        expired += effect
+                    } else if (effect.remainingRounds != null) {
+                        effect.remainingRounds = effect.remainingRounds!! - 1
+                        updated += effect
+                    }
                 }
             }
         }
@@ -214,6 +272,8 @@ class BattleEffectStore {
         incoming: ActiveSkillEffect,
     ): EffectApplyResult =
         when {
+            existing.canStackStrongest(incoming) ->
+                stackOrRefresh(existing, incoming)
             incoming.effectiveStrengthExact > existing.effectiveStrengthExact ->
                 replace(effects, existing, incoming)
             incoming.effectiveStrengthExact == existing.effectiveStrengthExact -> {
@@ -226,6 +286,11 @@ class BattleEffectStore {
             }
             else -> applyResult(EffectApplyOutcome.REJECTED, existing)
         }
+
+    private fun ActiveSkillEffect.canStackStrongest(other: ActiveSkillEffect): Boolean =
+        maxStacks > 1 &&
+            other.maxStacks > 1 &&
+            sameOrigin(other)
 
     private fun replace(
         effects: MutableList<ActiveSkillEffect>,

@@ -104,6 +104,11 @@ object BattleEngine {
                 events += BattleEvent.HeroActionStart(round, actor)
                 val actorContext = context(round, actor, BattleTrigger.ACTION_BEFORE)
                 events += engine.trigger(BattleTrigger.ACTION_BEFORE, actorContext)
+                finishIfDefeated(round, actor)?.let { return it }
+                if ((engine.state.view.state(actor)?.troops ?: 0) <= 0) {
+                    events += BattleEvent.HeroActionEnd(round, actor)
+                    continue
+                }
                 var permission = engine.permissionFor(actor, actorContext)
                 if (permission.canAct) {
                     if (permission.canCastActive) {
@@ -125,21 +130,37 @@ object BattleEngine {
                                 }
                             }
                             val candidates = targetPool.map(engine::liveHero)
-                            var selected = actionResolver.selectNormalAttackTarget(currentActor, candidates, random)
+                            val allies = engine.state.view.heroes()
+                                .filter { it.side == actor.side }
+                                .map(engine::liveHero)
+                            var selected = actionResolver.selectNormalAttackTarget(
+                                currentActor,
+                                candidates,
+                                random,
+                                allies,
+                            )
                                 ?: break
                             var target = BattleHeroRef(
                                 targetPool.first().side,
                                 selected.position,
                                 selected.id,
                             )
-                            target = permission.redirectTarget
-                                ?: engine.forcedNormalAttackTarget(actor, target, random)
+                            target = engine.redirectNormalAttackTarget(
+                                actor,
+                                target,
+                                random,
+                            )
                             engine.recordTarget(actor, target)
                             events += engine.trigger(
                                 BattleTrigger.NORMAL_ATTACK_BEFORE,
                                 actorContext.copy(trigger = BattleTrigger.NORMAL_ATTACK_BEFORE),
                             )
-                            val evaded = engine.tryEvade(round, actor, target)
+                            val evaded = engine.tryEvade(
+                                round,
+                                actor,
+                                target,
+                                actorContext,
+                            )
                             if (evaded != null) {
                                 events += evaded
                             } else {
@@ -184,6 +205,7 @@ object BattleEngine {
                                     }
                                 }
                             }
+                            finishIfDefeated(round, actor)?.let { return it }
                             engine.state.runtime.recordBattleTriggerOccurrence(
                                 actor,
                                 BattleTrigger.NORMAL_ATTACK_AFTER,
@@ -568,12 +590,10 @@ object BattleEngine {
             .filter { ref -> currentHero(ref.side, ref.position, attacker, defender)?.troops ?: 0 > 0 }
             .sortedWith(
                 compareByDescending<BattleHeroRef> { ref ->
-                    if (statuses[ref].orEmpty().has(BattleStatus.FIRST_ACTION)) {
-                        Int.MAX_VALUE
-                    } else {
+                    statuses[ref].orEmpty().has(BattleStatus.FIRST_ACTION)
+                }.thenByDescending { ref ->
                     val hero = currentHero(ref.side, ref.position, attacker, defender)
                     hero?.withEffectiveStats(statuses[ref].orEmpty())?.stats?.speed ?: 0
-                    }
                 }.thenBy { it.side.ordinal }.thenBy { it.position },
             )
 
@@ -682,7 +702,15 @@ object BattleEngine {
             activeStatuses.filter { it.status.isDamageOverTime() }.forEach dotStatus@{ active ->
                 val target = currentHero(targetRef.side, targetRef.position, attacker, defender)
                     ?: return@dotStatus
-                val damage = ongoingDamage(active, target)
+                val damage = ongoingDamage(
+                    active,
+                    target,
+                    if (targetRef.side == Side.ATTACKER) {
+                        attacker.values
+                    } else {
+                        defender.values
+                    },
+                )
                 val newTarget = target.copy(troops = (target.troops - damage).coerceAtLeast(0))
                 if (targetRef.side == Side.ATTACKER) {
                     attacker[targetRef.position] = newTarget
@@ -710,7 +738,11 @@ object BattleEngine {
         statuses.entries.removeAll { it.value.isEmpty() }
     }
 
-    private fun ongoingDamage(status: ActiveBattleStatus, target: BattleHero): Int {
+    private fun ongoingDamage(
+        status: ActiveBattleStatus,
+        target: BattleHero,
+        targetTeam: Collection<BattleHero>,
+    ): Int {
         val source = status.sourceSnapshot
         if (source != null && status.power > 0) {
             return BattleDamageCalculator.strategy(
@@ -718,6 +750,7 @@ object BattleEngine {
                 target = target,
                 ratePercent = status.power,
                 ongoing = true,
+                targetConditions = BattleDamageCalculator.targetConditions(target, targetTeam),
             )
         }
         val base = when (status.status) {

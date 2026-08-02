@@ -270,6 +270,31 @@ class BattleEffectStoreTest {
     }
 
     @Test
+    fun `same origin strongest effect stacks when configuration allows layers`() {
+        val store = BattleEffectStore()
+        store.apply(effect(strength = 8, maxStacks = 4, remainingRounds = 1))
+
+        repeat(3) {
+            assertEquals(
+                EffectApplyOutcome.STACKED,
+                store.apply(
+                    effect(strength = 8, maxStacks = 4, remainingRounds = 3),
+                ).outcome,
+            )
+        }
+        assertEquals(
+            EffectApplyOutcome.REFRESHED,
+            store.apply(
+                effect(strength = 8, maxStacks = 4, remainingRounds = 5),
+            ).outcome,
+        )
+        val active = store.effectsFor(target).single()
+        assertEquals(4, active.stacks)
+        assertEquals(32, active.effectiveStrength)
+        assertEquals(5, active.remainingRounds)
+    }
+
+    @Test
     fun `strongest policy handles stronger equal and weaker effects across sources without hybrid attribution`() {
         val store = BattleEffectStore()
         store.apply(effect(strength = 20, remainingRounds = 1))

@@ -8,6 +8,7 @@ data class BattleHeroSpec(
     val heroId: Int,
     val position: Int,
     val troops: Int,
+    val initialSkillId: Int? = null,
     val extraSkillIds: List<Int> = emptyList(),
     val skillLevels: List<Int> = emptyList(),
     val troopFeatureIds: List<Int> = emptyList(),

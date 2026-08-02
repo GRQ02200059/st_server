@@ -28,6 +28,13 @@ class ClientBattleTextReplayProtocolTest {
         assertEquals(121, ClientBattleTextReplayProtocol.NORMAL_DAMAGE)
         assertTrue(
             setOf(
+                ClientBattleTextReplayProtocol.PANIC_ONGOING_DAMAGE,
+                ClientBattleTextReplayProtocol.ONGOING_DAMAGE,
+                ClientBattleTextReplayProtocol.HEX_ONGOING_DAMAGE,
+            ).all(ids::contains),
+        )
+        assertTrue(
+            setOf(
                 ClientBattleTextReplayProtocol.HERO_NAME,
                 ClientBattleTextReplayProtocol.HERO_INFO,
                 ClientBattleTextReplayProtocol.NORMAL_ATTACK,

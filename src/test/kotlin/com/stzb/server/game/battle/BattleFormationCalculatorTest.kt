@@ -247,6 +247,212 @@ class BattleFormationCalculatorTest {
     }
 
     @Test
+    fun `equipment feature static attributes preserve percent and flat scaling`() {
+        val baseline = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                ),
+            ),
+        ).heroes.single()
+        val hero = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                    equipmentFeatureSkillIds = listOf(
+                        450002,
+                        450003,
+                        450006,
+                        450008,
+                    ),
+                    equipmentFeatureSkillLevels = listOf(10, 12, 14, 16),
+                ),
+            ),
+        ).heroes.single()
+        fun percentDelta(stat: BattleStat, percent: Int): Double =
+            (baseline.stats.precise(stat) * percent).toInt() / 100.0
+
+        assertEquals(
+            percentDelta(BattleStat.ATTACK, 10),
+            hero.stats.precise(BattleStat.ATTACK) -
+                baseline.stats.precise(BattleStat.ATTACK),
+            0.001,
+        )
+        assertEquals(
+            24.0,
+            hero.stats.precise(BattleStat.SPEED) -
+                baseline.stats.precise(BattleStat.SPEED),
+            0.001,
+        )
+        assertEquals(
+            percentDelta(BattleStat.DEFENSE, 14),
+            hero.stats.precise(BattleStat.DEFENSE) -
+                baseline.stats.precise(BattleStat.DEFENSE),
+            0.001,
+        )
+        assertEquals(
+            percentDelta(BattleStat.STRATEGY, 16),
+            hero.stats.precise(BattleStat.STRATEGY) -
+                baseline.stats.precise(BattleStat.STRATEGY),
+            0.001,
+        )
+    }
+
+    @Test
+    fun `ganzhi equipment feature adds its configured flat strategy`() {
+        val baseline = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                ),
+            ),
+        ).heroes.single()
+        val hero = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                    equipmentFeatureSkillIds = listOf(450036),
+                    equipmentFeatureSkillLevels = listOf(12),
+                ),
+            ),
+        ).heroes.single()
+
+        assertEquals(
+            24.0,
+            hero.stats.precise(BattleStat.STRATEGY) -
+                baseline.stats.precise(BattleStat.STRATEGY),
+            0.001,
+        )
+    }
+
+    @Test
+    fun `equipment feature probability bonus is scoped to the inherent skill`() {
+        val hero = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                    initialSkillId = 200884,
+                    equipmentFeatureSkillIds = listOf(450037),
+                    equipmentFeatureSkillLevels = listOf(8),
+                ),
+            ),
+        ).heroes.single()
+
+        assertEquals(
+            BattleModifier.SkillProbabilityPercent(
+                percent = 8,
+                skillId = 200884,
+            ),
+            hero.modifiers.filterIsInstance<BattleModifier.SkillProbabilityPercent>()
+                .single(),
+        )
+    }
+
+    @Test
+    fun `equipment feature active damage reduction uses its feature level`() {
+        val hero = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                    equipmentFeatureSkillIds = listOf(450028),
+                    equipmentFeatureSkillLevels = listOf(12),
+                ),
+            ),
+        ).heroes.single()
+
+        assertEquals(
+            BattleModifier.DamageTakenPercent(
+                origin = DamageOrigin.ACTIVE,
+                percent = -12,
+            ),
+            hero.modifiers.filterIsInstance<BattleModifier.DamageTakenPercent>()
+                .single { it.origin == DamageOrigin.ACTIVE },
+        )
+    }
+
+    @Test
+    fun `weishi feature preserves its inherent defense condition and level`() {
+        val hero = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                    equipmentFeatureSkillIds = listOf(450018),
+                    equipmentFeatureSkillLevels = listOf(14),
+                ),
+            ),
+        ).heroes.single()
+
+        assertEquals(
+            BattleModifier.DamageTakenPercent(
+                percent = -14,
+                requiredSourceInherentStatBelowTarget = BattleStat.DEFENSE,
+            ),
+            hero.modifiers.filterIsInstance<BattleModifier.DamageTakenPercent>().single(),
+        )
+    }
+
+    @Test
+    fun `buqu feature preserves its per hurt damage reduction level`() {
+        val hero = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                    equipmentFeatureSkillIds = listOf(450020),
+                    equipmentFeatureSkillLevels = listOf(3),
+                ),
+            ),
+        ).heroes.single()
+
+        assertEquals(
+            BattleModifier.HurtStackingDamageTakenPercent(3),
+            hero.modifiers
+                .filterIsInstance<BattleModifier.HurtStackingDamageTakenPercent>()
+                .single(),
+        )
+    }
+
+    @Test
+    fun `equipment and feature defense ignore effects preserve configured attribute and scale`() {
+        val hero = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                    equipmentSkillIds = listOf(400019, 400051),
+                    equipmentSkillLevels = listOf(6, 1),
+                    equipmentFeatureSkillIds = listOf(450021, 450023),
+                    equipmentFeatureSkillLevels = listOf(10, 10),
+                ),
+            ),
+        ).heroes.single()
+        val modifiers = hero.modifiers.filterIsInstance<BattleModifier.DefenseIgnorePercent>()
+
+        assertEquals(
+            listOf(16, 20),
+            listOf(BattleStat.DEFENSE, BattleStat.STRATEGY).map { stat ->
+                modifiers.filter { it.stat == stat }.sumOf { it.percent }
+            },
+        )
+    }
+
+    @Test
     fun `equipment damage modifiers preserve configured tags and command origin`() {
         val hero = calculator.calculate(
             listOf(
@@ -288,6 +494,128 @@ class BattleFormationCalculatorTest {
                 it is BattleModifier.DamageDealtPercent ||
                     it is BattleModifier.DamageTakenPercent
             },
+        )
+    }
+
+    @Test
+    fun `direct equipment feature damage modifiers preserve configured origins`() {
+        val hero = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 1_000,
+                    equipmentFeatureSkillIds = listOf(
+                        450009,
+                        450015,
+                        450024,
+                        450035,
+                    ),
+                    equipmentFeatureSkillLevels = listOf(10, 12, 10, 14),
+                ),
+            ),
+        ).heroes.single()
+        val dealt = hero.modifiers.filterIsInstance<BattleModifier.DamageDealtPercent>()
+        val taken = hero.modifiers.filterIsInstance<BattleModifier.DamageTakenPercent>()
+
+        assertEquals(
+            12,
+            dealt.filter { it.origin == DamageOrigin.NORMAL }.sumOf { it.percent },
+        )
+        assertEquals(
+            24,
+            dealt.filter { it.origin == DamageOrigin.ACTIVE }.sumOf { it.percent },
+        )
+        assertEquals(
+            10,
+            dealt.filter { it.origin == DamageOrigin.PURSUIT }.sumOf { it.percent },
+        )
+        assertEquals(
+            -10,
+            taken.filter { it.origin == DamageOrigin.NORMAL }.sumOf { it.percent },
+        )
+    }
+
+    @Test
+    fun `equipment child damage modifiers apply only to the lowest troop enemy`() {
+        val baseline = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 10_000,
+                ),
+            ),
+        ).heroes.single()
+        val equipped = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 10_000,
+                    equipmentSkillIds = listOf(400066),
+                    equipmentSkillLevels = listOf(6),
+                ),
+            ),
+        ).heroes.single()
+        val low = baseline.copy(
+            id = BattleHeroId(200001),
+            position = 2,
+            troops = 2_000,
+            maxTroops = 10_000,
+        )
+        val high = baseline.copy(
+            id = BattleHeroId(200002),
+            position = 1,
+            troops = 8_000,
+            maxTroops = 10_000,
+        )
+        val enemies = listOf(low, high)
+        val resolver = BattleActionResolver()
+        val expectedLowDamage = resolver.normalAttackDamage(
+            source = baseline.copy(
+                modifiers = baseline.modifiers + BattleModifier.DamageDealtPercent(
+                    school = DamageSchool.PHYSICAL,
+                    percent = 15,
+                ),
+            ),
+            target = low,
+            random = FixedBattleRandom(0),
+            enemies = enemies,
+        )
+        val baselineHighDamage = resolver.normalAttackDamage(
+            source = baseline,
+            target = high,
+            random = FixedBattleRandom(0),
+            enemies = enemies,
+        )
+
+        assertEquals(
+            expectedLowDamage,
+            resolver.normalAttackDamage(
+                source = equipped,
+                target = low,
+                random = FixedBattleRandom(0),
+                enemies = enemies,
+            ),
+        )
+        assertEquals(
+            baselineHighDamage,
+            resolver.normalAttackDamage(
+                source = equipped,
+                target = high,
+                random = FixedBattleRandom(0),
+                enemies = enemies,
+            ),
+        )
+        assertEquals(
+            setOf<Pair<DamageSchool?, Int>>(
+                DamageSchool.PHYSICAL to 15,
+                DamageSchool.STRATEGY to 15,
+            ),
+            equipped.modifiers
+                .filterIsInstance<BattleModifier.DamageDealtPercent>()
+                .mapTo(mutableSetOf()) { it.school to it.percent },
         )
     }
 

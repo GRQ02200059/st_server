@@ -241,6 +241,8 @@ data class TriggerSpecifiedEffectChange(
     val detailId: Int,
     val triggeredEffectId: Int,
     val parameters: MetaEffectParameters,
+    val triggeredSource: BattleHeroRef? = null,
+    val triggeredDetailId: Int? = null,
 ) : BattleStateChange
 
 data class TransformAndCastRandomActiveSkillChange(
@@ -344,6 +346,7 @@ enum class ReferenceEffectMode {
     NORMAL,
     ATTRIBUTE_SCALED,
     DAMAGE_RELEASE,
+    TRIGGER_EXISTING,
 }
 
 data class TriggerReferencedEffectChange(
@@ -1042,6 +1045,11 @@ private class MetaEffectHandler(
                         selectedTargets = targets,
                         mode = when (ownedEffectId) {
                             153 -> ReferenceEffectMode.ATTRIBUTE_SCALED
+                            151 -> if (referenced.effectId in 303..306) {
+                                ReferenceEffectMode.TRIGGER_EXISTING
+                            } else {
+                                ReferenceEffectMode.NORMAL
+                            }
                             else -> ReferenceEffectMode.NORMAL
                         },
                         valueOverride = if (ownedEffectId == 153) configuredPotency(invocation) else null,

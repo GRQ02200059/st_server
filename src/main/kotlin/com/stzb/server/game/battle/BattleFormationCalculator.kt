@@ -18,6 +18,12 @@ class BattleFormationCalculator(
     private val troopTypeRepository: ClientTroopTypeRepository =
         ClientTroopTypeRepository.loadDefault(),
 ) {
+    private data class EquipmentRuntimeDetail(
+        val detail: SkillDetailConfig,
+        val level: Int,
+        val targetCondition: DamageTargetCondition?,
+    )
+
     fun calculate(specs: List<BattleHeroSpec>): BattleTeam {
         require(specs.map { it.position }.distinct().size == specs.size) { "同一部队内站位不能重复" }
         require(specs.all { it.position in 0..2 }) { "武将站位必须在 0..2" }
@@ -34,6 +40,7 @@ class BattleFormationCalculator(
                 troopTypeEffects(resolvedSpecs) +
                 troopFeatureEffects(troopFeatureSources) +
                 equipmentEffects(resolvedSpecs) +
+                equipmentFeatureEffects(resolvedSpecs) +
                 surfaceEffects(resolvedSpecs)
         val heroes = resolvedSpecs.map { spec ->
             val heroConfig = config.hero(spec.heroId) ?: error("未知武将配置: ${spec.heroId}")
@@ -42,7 +49,8 @@ class BattleFormationCalculator(
             val level = spec.level.coerceAtLeast(1)
             val advance = spec.advanceLevel.coerceAtLeast(0)
             val equippedSkillIds =
-                listOf(heroConfig.initialSkillId).filter { it > 0 } + spec.extraSkillIds
+                listOf(spec.initialSkillId ?: heroConfig.initialSkillId)
+                    .filter { it > 0 } + spec.extraSkillIds
             val equippedSkillLevels =
                 spec.skillLevels.take(equippedSkillIds.size).let { levels ->
                     levels + List((equippedSkillIds.size - levels.size).coerceAtLeast(0)) {
@@ -393,6 +401,36 @@ class BattleFormationCalculator(
             }
         }
 
+    private fun equipmentFeatureEffects(specs: List<BattleHeroSpec>): List<StaticEffect> =
+        specs.flatMap { spec ->
+            spec.equipmentFeatureSkillIds.flatMapIndexed { index, skillId ->
+                val level = spec.equipmentFeatureSkillLevels.getOrElse(index) { 0 }
+                config.skillDetails(skillId).mapNotNull { detail ->
+                    val stat = detail.effectId.toBattleStat() ?: return@mapNotNull null
+                    val percent =
+                        detail.effectId != 106 &&
+                            kotlin.math.abs(detail.constantParam) >= PERCENT_ATTRIBUTE_SCALE
+                    val strength = when {
+                        detail.effectId == 106 -> detail.constantParam.toDouble() * level
+                        percent ->
+                            detail.constantParam.toDouble() / PERCENT_ATTRIBUTE_SCALE * level
+                        else -> detail.constantParam.toDouble() / FLAT_ATTRIBUTE_SCALE * level
+                    }
+                    StaticEffect(
+                        stage = BattlePreparationStage.EQUIPMENT,
+                        sourceId = skillId,
+                        containerSourceId = spec.equipmentIds.firstOrNull() ?: skillId,
+                        sourcePosition = spec.position,
+                        targetPosition = spec.position,
+                        stat = stat,
+                        strength = strength.toInt(),
+                        strengthExact = strength,
+                        percent = percent,
+                    )
+                }
+            }
+        }
+
     private fun equipmentPreparationModifiers(
         specs: List<BattleHeroSpec>,
     ): List<BattlePreparationModifier> =
@@ -423,9 +461,15 @@ class BattleFormationCalculator(
     private fun equipmentRuntimeModifiers(spec: BattleHeroSpec): List<BattleModifier> =
         spec.equipmentSkillIds.flatMapIndexed { index, skillId ->
             val level = spec.equipmentSkillLevels.getOrElse(index) { DEFAULT_EQUIPMENT_LEVEL }
-            config.skillDetails(skillId).mapNotNull { detail ->
-                val amount = detail.constantParam * level
+            equipmentRuntimeDetails(skillId, level).mapNotNull { projected ->
+                val detail = projected.detail
+                val amount = detail.constantParam * projected.level
                 when (detail.effectId) {
+                    161 -> defenseIgnoreModifier(
+                        detail.effectParam,
+                        detail.constantParam,
+                        projected.level,
+                    )
                     251 -> specialDamageTag(detail.effectParam)?.let { tag ->
                         BattleModifier.DamageDealtPercent(
                             tag = tag,
@@ -467,10 +511,12 @@ class BattleFormationCalculator(
                     531 -> BattleModifier.DamageDealtPercent(
                         school = DamageSchool.PHYSICAL,
                         percent = amount,
+                        targetCondition = projected.targetCondition,
                     )
                     533 -> BattleModifier.DamageDealtPercent(
                         school = DamageSchool.STRATEGY,
                         percent = amount,
+                        targetCondition = projected.targetCondition,
                     )
                     522 -> BattleModifier.DamageTakenPercent(
                         school = DamageSchool.PHYSICAL,
@@ -485,28 +531,165 @@ class BattleFormationCalculator(
             }.distinct()
         }
 
+    private fun equipmentRuntimeDetails(
+        skillId: Int,
+        level: Int,
+        inheritedTargetCondition: DamageTargetCondition? = null,
+        visited: Set<Int> = emptySet(),
+    ): List<EquipmentRuntimeDetail> {
+        if (skillId in visited) return emptyList()
+        val path = visited + skillId
+        return config.skillDetails(skillId).flatMap { detail ->
+            val targetCondition = when {
+                detail.calcPos == LOWEST_TROOPS_TARGET_CALC_POSITION ->
+                    DamageTargetCondition.LOWEST_TROOPS
+                else -> inheritedTargetCondition
+            }
+            if (
+                detail.effectId in EQUIPMENT_RUNTIME_CHILD_EFFECT_IDS &&
+                detail.constantParam > 0 &&
+                targetCondition != null
+            ) {
+                equipmentRuntimeDetails(
+                    skillId = detail.constantParam,
+                    level = CHILD_SKILL_LEVEL,
+                    inheritedTargetCondition = targetCondition,
+                    visited = path,
+                )
+            } else {
+                listOf(
+                    EquipmentRuntimeDetail(
+                        detail = detail,
+                        level = level,
+                        targetCondition = inheritedTargetCondition,
+                    ),
+                )
+            }
+        }
+    }
+
     private fun equipmentFeatureRuntimeModifiers(spec: BattleHeroSpec): List<BattleModifier> =
         spec.equipmentFeatureSkillIds.flatMapIndexed { index, skillId ->
             val level = spec.equipmentFeatureSkillLevels.getOrElse(index) { 0 }
             config.skillDetails(skillId).mapNotNull { detail ->
                 val amount = detail.constantParam * level
                 when (detail.effectId) {
+                    122 -> when (skillId) {
+                        450018 -> BattleModifier.DamageTakenPercent(
+                            percent = -level,
+                            requiredSourceInherentStatBelowTarget =
+                                BattleStat.DEFENSE,
+                        )
+                        450020 -> BattleModifier.HurtStackingDamageTakenPercent(level)
+                        450038 ->
+                            BattleModifier.NextStrategyDamageAfterNormalAttackPercent(level)
+                        450042 ->
+                            BattleModifier.TroopLossRecoveryTakenPercent(level)
+                        in 460061..460064 ->
+                            config.skillDetails(detail.constantParam)
+                                .singleOrNull { child -> child.effectId == 311 }
+                                ?.let { child ->
+                                    BattleModifier.OpeningControlDurationIncrease(
+                                        rounds = kotlin.math.abs(child.constantParam)
+                                            .coerceAtLeast(1),
+                                        availableHits = child.availableHit.coerceAtLeast(1),
+                                        rootSkillId = skillId,
+                                        skillId = detail.constantParam,
+                                        effectId = child.effectId,
+                                        detailId = child.detailId,
+                                    )
+                                }
+                        else -> null
+                    }
+                    131 -> (
+                        spec.initialSkillId
+                            ?: config.hero(spec.heroId)?.initialSkillId
+                        )?.takeIf { it > 0 }?.let { initialSkillId ->
+                        BattleModifier.SkillProbabilityPercent(
+                            percent = level,
+                            skillId = initialSkillId,
+                        )
+                    }
+                    161 -> defenseIgnoreModifier(
+                        detail.effectParam,
+                        detail.constantParam,
+                        level,
+                    )
                     251 -> specialDamageTag(detail.effectParam)?.let { tag ->
                         BattleModifier.DamageDealtPercent(
                             tag = tag,
                             percent = amount,
                         )
                     }
+                    321 -> BattleModifier.DamageDealtPercent(
+                        origin = DamageOrigin.NORMAL,
+                        percent = level,
+                    )
+                    322 -> BattleModifier.DamageDealtPercent(
+                        origin = DamageOrigin.ACTIVE,
+                        percent = level,
+                    )
+                    325 -> BattleModifier.DamageDealtPercent(
+                        origin = DamageOrigin.PURSUIT,
+                        percent = level,
+                    )
+                    351 -> BattleModifier.DamageTakenPercent(
+                        origin = DamageOrigin.NORMAL,
+                        percent = -level,
+                    )
+                    352 -> BattleModifier.DamageTakenPercent(
+                        origin = DamageOrigin.ACTIVE,
+                        percent = -amount,
+                    )
                     354 -> BattleModifier.DamageTakenPercent(
                         origin = DamageOrigin.COMMAND,
                         percent = -amount,
                     )
                     271 -> BattleModifier.RecoveryDealtPercent(amount)
                     281 -> BattleModifier.RecoveryTakenPercent(amount)
+                    952 -> BattleModifier.NormalAttackDisabled
+                    522, 524 -> {
+                        val school = if (detail.effectId == 522) {
+                            DamageSchool.PHYSICAL
+                        } else {
+                            DamageSchool.STRATEGY
+                        }
+                        if (detail.availableRounds > 0) {
+                            BattleModifier.OpeningDamageTakenPercent(
+                                school = school,
+                                percent = -level,
+                                durationRounds = detail.availableRounds,
+                                skillId = skillId,
+                                effectId = detail.effectId,
+                                detailId = detail.detailId,
+                            )
+                        } else {
+                            BattleModifier.DamageTakenPercent(
+                                school = school,
+                                percent = -level,
+                            )
+                        }
+                    }
                     else -> null
                 }
             }.distinct()
         }
+
+    private fun defenseIgnoreModifier(
+        effectParam: Int,
+        constantParam: Int,
+        level: Int,
+    ): BattleModifier.DefenseIgnorePercent? {
+        val stat = when (effectParam) {
+            2 -> BattleStat.DEFENSE
+            3 -> BattleStat.STRATEGY
+            else -> return null
+        }
+        return BattleModifier.DefenseIgnorePercent(
+            percent = constantParam * level / 1_000,
+            stat = stat,
+        )
+    }
 
     private fun specialDamageTag(effectParam: Int): DamageTag? =
         when (effectParam) {
@@ -747,9 +930,12 @@ class BattleFormationCalculator(
             setOf(31, 311, 981, 991, 992, 995, 3_116, 999_999)
         const val DEFAULT_SKILL_LEVEL = 1
         const val DEFAULT_EQUIPMENT_LEVEL = 1
+        const val CHILD_SKILL_LEVEL = 1
+        const val LOWEST_TROOPS_TARGET_CALC_POSITION = 991
         const val COUNTRY_BONUS_PERCENT = 10
         const val FLAT_ATTRIBUTE_SCALE = 100.0
         const val PERCENT_ATTRIBUTE_SCALE = 1_000_000.0
+        val EQUIPMENT_RUNTIME_CHILD_EFFECT_IDS = setOf(122, 123)
         val PREPARATION_MODIFIER_EFFECTS = setOf(522, 524, 531, 533)
         val SURFACE_MODIFIER_EFFECTS = setOf(522, 524, 531, 533)
         val PRIMARY_STATS = listOf(

@@ -199,7 +199,17 @@ class OfficialPreparationReportDiffTest {
         )
         assertTrue(
             whiteClothesDamage.any { it.round == 3 },
-            "white clothes delayed damage must execute after its two-round delay",
+            "white clothes delayed damage must execute after its two-round delay: " +
+                "actual=${whiteClothesDamage.map { it to firstResult.events.indexOf(it) }} " +
+                "roundStarts=${firstResult.events.mapIndexedNotNull { index, event ->
+                    (event as? BattleEvent.RoundStart)?.let { it.round to index }
+                }} preparation302=${firstResult.events
+                    .takeWhile { it !is BattleEvent.RoundStart }
+                    .filter {
+                        it is BattleEvent.StatusApplied &&
+                            it.skillId == 200648 &&
+                            it.effectId == 302
+                    }} outcome=${firstResult.outcome}",
         )
 
         val generatedPreparation =

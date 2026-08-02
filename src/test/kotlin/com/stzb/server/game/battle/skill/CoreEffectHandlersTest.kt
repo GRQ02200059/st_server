@@ -365,6 +365,37 @@ class CoreEffectHandlersTest {
     }
 
     @Test
+    fun `zero duration calc zero burn deals immediate strategy damage`() {
+        val config = BattleConfigRepository.loadDefault()
+        val graph = SkillRuleCatalog.build(
+            SkillScope(
+                fiveStarInitialSkillIds = setOf(200722),
+                learnableSaSkillIds = emptySet(),
+            ),
+            config,
+        )
+        val detail = graph.detail(20072201)
+        val result = BattleEffectRegistry.strict(graph)
+            .registerCoreEffects(BattleEffectStore())
+            .execute(
+                detail,
+                context().copy(
+                    rootSkillId = 200722,
+                    currentSkillId = 200722,
+                    trigger = BattleTrigger.PURSUIT_ATTEMPT,
+                ),
+                preselectedTargets = listOf(targetRef),
+            )
+
+        val damage = result.stateChanges.single()
+        assertIs<TroopDamageChange>(damage)
+        assertEquals(DamageSchool.STRATEGY, damage.school)
+        assertEquals(DamageOrigin.PURSUIT, damage.origin)
+        assertEquals(setOf(DamageTag.BURN), damage.tags)
+        assertTrue(damage.amount > 0)
+    }
+
+    @Test
     fun `real delayed burn preserves full identity and recalculates every tick from live combatants`() {
         val config = BattleConfigRepository.loadDefault()
         val graph = SkillRuleCatalog.build(
@@ -649,7 +680,7 @@ class CoreEffectHandlersTest {
             rule(531, constant = 8, addCountMax = 7),
             context(),
         ).stateChanges.single() as DamageModifierChange
-        assertEquals(7, stackable.maxStacks)
+        assertEquals(8, stackable.maxStacks)
     }
 
     @Test

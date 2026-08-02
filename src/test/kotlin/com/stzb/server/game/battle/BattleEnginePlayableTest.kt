@@ -174,6 +174,211 @@ class BattleEnginePlayableTest {
     }
 
     @Test
+    fun `normal attack that defeats the enemy base does not open pursuit`() {
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(
+                    listOf(
+                        hero(
+                            heroId = 100026,
+                            position = 2,
+                            attack = 500,
+                            skillIds = listOf(200206),
+                        ),
+                    ),
+                ),
+                defender = BattleTeam(
+                    listOf(
+                        hero(
+                            heroId = 1,
+                            position = 2,
+                            defense = 0,
+                            troops = 1,
+                        ),
+                    ),
+                ),
+                maxRounds = 1,
+            ),
+            repo,
+            FixedBattleRandom(0),
+        )
+
+        assertEquals(BattleOutcome.ATTACKER_WIN, result.outcome)
+        assertEquals(
+            0,
+            result.events.filterIsInstance<BattleEvent.NormalAttack>()
+                .single { it.source.heroId == BattleHeroId(100026) }
+                .targetTroopsAfter,
+        )
+        assertEquals(
+            1,
+            result.events.filterIsInstance<BattleEvent.NormalAttack>()
+                .count { it.source.heroId == BattleHeroId(100026) },
+        )
+        assertTrue(
+            result.events.none {
+                it is BattleEvent.TriggerPoint &&
+                    it.source.heroId == BattleHeroId(100026) &&
+                    it.trigger in setOf(
+                        com.stzb.server.game.battle.skill.BattleTrigger.NORMAL_ATTACK_AFTER,
+                        com.stzb.server.game.battle.skill.BattleTrigger.ACTION_AFTER,
+                    )
+            },
+        )
+        assertTrue(
+            result.events.none {
+                it is BattleEvent.HeroActionEnd &&
+                    it.source.heroId == BattleHeroId(100026)
+            },
+        )
+        assertTrue(
+            result.events.none {
+                it is BattleEvent.SkillTriggered &&
+                    it.source.heroId == BattleHeroId(100026) &&
+                    it.skillId == 200206
+            },
+        )
+        assertTrue(
+            result.events.none {
+                it is BattleEvent.SkillDamage &&
+                    it.source.heroId == BattleHeroId(100026) &&
+                    it.skillId == 200206
+            },
+        )
+        assertEquals(
+            1,
+            result.events.filterIsInstance<BattleEvent.TriggerPoint>().count {
+                it.trigger ==
+                    com.stzb.server.game.battle.skill.BattleTrigger.BASE_HERO_DEFEATED
+            },
+        )
+        assertEquals(1, result.events.filterIsInstance<BattleEvent.BattleEnd>().size)
+    }
+
+    @Test
+    fun `secondary attack that defeats the enemy base ends before normal attack after`() {
+        val attacker = BattleTeamBuilder(
+            repo,
+            BattleEquipmentRepository.loadDefault(),
+        ).build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100017,
+                    position = 2,
+                    troops = 10_000,
+                    extraSkillIds = listOf(200233),
+                    skillLevels = listOf(10, 1),
+                    troopFeatureIds = listOf(3108),
+                ),
+            ),
+        )
+        val source = attacker.heroes.single()
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = attacker,
+                defender = BattleTeam(
+                    listOf(
+                        hero(heroId = 1, position = 0, defense = 0, troops = 1),
+                        hero(
+                            heroId = 2,
+                            position = 2,
+                            defense = 500,
+                            troops = 100_000,
+                        ),
+                    ),
+                ),
+                maxRounds = 1,
+            ),
+            repo,
+            FixedBattleRandom(0),
+        )
+
+        assertTrue(
+            result.events.filterIsInstance<BattleEvent.SkillDamage>().any {
+                it.source.heroId == source.id &&
+                    it.target.heroId == BattleHeroId(1) &&
+                    it.effectId == 545 &&
+                    it.targetTroopsAfter == 0
+            },
+            "events=${result.events}",
+        )
+        assertEquals(BattleOutcome.ATTACKER_WIN, result.outcome)
+        assertTrue(
+            result.events.none {
+                it is BattleEvent.TriggerPoint &&
+                    it.source.heroId == source.id &&
+                    it.trigger ==
+                    com.stzb.server.game.battle.skill.BattleTrigger.NORMAL_ATTACK_AFTER
+            },
+        )
+        assertEquals(1, result.events.filterIsInstance<BattleEvent.BattleEnd>().size)
+    }
+
+    @Test
+    fun `counterattack that defeats the attacking base ends before normal attack after`() {
+        val source = hero(
+            heroId = 100026,
+            position = 0,
+            attack = 10,
+            defense = 0,
+            speed = 200,
+            troops = 1,
+            skillIds = listOf(200206),
+        )
+        val counterattacker = hero(
+            heroId = 100010,
+            position = 0,
+            attack = 500,
+            speed = 100,
+            troops = 10_000,
+            skillIds = listOf(200010),
+        )
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(listOf(source)),
+                defender = BattleTeam(listOf(counterattacker)),
+                maxRounds = 1,
+            ),
+            repo,
+            FixedBattleRandom(0),
+        )
+
+        assertEquals(BattleOutcome.DEFENDER_WIN, result.outcome)
+        assertTrue(
+            result.events.filterIsInstance<BattleEvent.SkillDamage>().any {
+                it.source.heroId == counterattacker.id &&
+                    it.target.heroId == source.id &&
+                    it.effectId == 551 &&
+                    it.targetTroopsAfter == 0
+            },
+            "events=${result.events}",
+        )
+        assertTrue(
+            result.events.none {
+                it is BattleEvent.TriggerPoint &&
+                    it.source.heroId == source.id &&
+                    it.trigger ==
+                    com.stzb.server.game.battle.skill.BattleTrigger.NORMAL_ATTACK_AFTER
+            },
+        )
+        assertTrue(
+            result.events.none {
+                it is BattleEvent.SkillTriggered &&
+                    it.source.heroId == source.id &&
+                    it.skillId == 200206
+            },
+        )
+        assertEquals(
+            1,
+            result.events.filterIsInstance<BattleEvent.TriggerPoint>().count {
+                it.trigger ==
+                    com.stzb.server.game.battle.skill.BattleTrigger.BASE_HERO_DEFEATED
+            },
+        )
+        assertEquals(1, result.events.filterIsInstance<BattleEvent.BattleEnd>().size)
+    }
+
+    @Test
     fun `double attack performs two normal attacks and two pursuit attempts`() {
         val result = BattleEngine.resolve(
             BattleRequest(
@@ -302,6 +507,56 @@ class BattleEnginePlayableTest {
         assertTrue(statChangedEvents.isNotEmpty(), "expected stat-change events, got: ${buffResult.events}")
         assertTrue(dotEvents.all { it.skillId == 200002 })
         assertTrue(statChangedEvents.all { it.skillId == 200001 })
+    }
+
+    @Test
+    fun `target action damage defeats the base before it can act`() {
+        val targetId = BattleHeroId(1)
+        val result = BattleEngine.resolve(
+            BattleRequest(
+                attacker = BattleTeam(
+                    listOf(
+                        hero(
+                            heroId = 100035,
+                            position = 2,
+                            attack = 500,
+                            strategy = 500,
+                            speed = 200,
+                            skillIds = listOf(200684),
+                            statuses = setOf(BattleStatus.DISARM),
+                        ),
+                    ),
+                ),
+                defender = BattleTeam(
+                    listOf(
+                        hero(
+                            heroId = targetId.value,
+                            position = 2,
+                            defense = 0,
+                            speed = 50,
+                            troops = 1,
+                        ),
+                    ),
+                ),
+                maxRounds = 1,
+            ),
+            repo,
+            FixedBattleRandom(0),
+        )
+
+        assertEquals(BattleOutcome.ATTACKER_WIN, result.outcome)
+        assertTrue(
+            result.events.any {
+                it is BattleEvent.HeroActionStart && it.source.heroId == targetId
+            },
+            "events=${result.events}",
+        )
+        assertTrue(
+            result.events.none {
+                it is BattleEvent.NormalAttack && it.source.heroId == targetId
+            },
+            "events=${result.events}",
+        )
     }
 
     private fun controlledResult(

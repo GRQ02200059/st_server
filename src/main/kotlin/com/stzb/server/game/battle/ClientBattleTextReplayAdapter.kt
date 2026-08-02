@@ -215,14 +215,13 @@ internal object ClientBattleTextReplayAdapter {
                 is BattleEvent.OngoingDamage -> {
                     if (event.skillId > 0) {
                         actions += ClientReportAction(
-                            ClientBattleTextReplayProtocol.ONGOING_DAMAGE,
+                            ClientBattleTextReplayProtocol.ongoingDamageAction(event.status),
                             listOf(
+                                ClientBattleTextReplayProtocol.position(event.target),
                                 ClientBattleTextReplayProtocol.position(event.source),
                                 event.skillId,
-                                ClientBattleTextReplayProtocol.position(event.target),
                                 event.damage,
                                 event.targetTroopsAfter,
-                                ClientBattleTextReplayProtocol.effectId(event.status),
                             ),
                         )
                     }

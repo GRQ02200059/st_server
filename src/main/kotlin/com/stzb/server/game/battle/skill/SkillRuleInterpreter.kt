@@ -161,7 +161,6 @@ private data class TargetSelectionSignature(
     val selectFlag: Int,
     val bindFlag: Int,
     val skillHitRange: Int?,
-    val effectBuffType: Int,
 )
 
 class SkillRuleInterpreter private constructor(
@@ -243,6 +242,18 @@ class SkillRuleInterpreter private constructor(
             SkillExecutionResult.EMPTY
         }
 
+    internal fun retriggerSkillForEngine(
+        skillId: Int,
+        trigger: BattleTrigger,
+        context: SkillBattleContext,
+    ): SkillExecutionResult =
+        executeSkill(
+            skillId = skillId,
+            trigger = trigger,
+            parentContext = context,
+            probabilityOwnership = ChildProbabilityOwnership.FORCED_SUCCESS,
+        )
+
     internal fun executeDetailStreamingForEngine(
         detail: SkillEffectRule,
         context: SkillBattleContext,
@@ -257,7 +268,8 @@ class SkillRuleInterpreter private constructor(
     internal fun detailProbabilitySucceedsForEngine(
         detail: SkillEffectRule,
         context: SkillBattleContext,
-    ): Boolean = detailProbabilitySucceeds(detail, context)
+        configuredProbability: Int? = null,
+    ): Boolean = detailProbabilitySucceeds(detail, context, configuredProbability)
 
     private fun executeSkill(
         skillId: Int,
@@ -315,13 +327,23 @@ class SkillRuleInterpreter private constructor(
             )
             stepSink?.invoke(result)
             val detailOverrides = mutableMapOf<Int, ReferencedDetailExecutionOverride>()
-            val executableDetails =
+            val configuredExecutableDetails =
                 rule.details.filterNot { it.detailId in referencedTemplateDetailIds }
-            val lockableTargetSignatures = executableDetails
-                .groupingBy { it.targetSelectionSignature() }
-                .eachCount()
-                .filterValues { it > 1 }
-                .keys
+            val executableDetails = selectExecutableDetails(
+                skillId,
+                configuredExecutableDetails,
+                context,
+            )
+            val lockableTargetSignatures =
+                if (skillId == HEINEI_SHIZE_SKILL_ID) {
+                    emptySet()
+                } else {
+                    executableDetails
+                        .groupingBy { it.targetSelectionSignature() }
+                        .eachCount()
+                        .filterValues { it > 1 }
+                        .keys
+                }
             val lockedTargets =
                 mutableMapOf<TargetSelectionSignature, List<BattleHeroRef>>()
             executableDetails.forEach { detail ->
@@ -341,6 +363,33 @@ class SkillRuleInterpreter private constructor(
         } finally {
             parentContext.runtime.exit(skillId)
         }
+    }
+
+    private fun selectExecutableDetails(
+        skillId: Int,
+        details: List<SkillEffectRule>,
+        context: SkillBattleContext,
+    ): List<SkillEffectRule> {
+        if (skillId == QIZUOGUIMOU_SKILL_ID) {
+            val controlDetails = details.filter {
+                it.detailId in QIZUOGUIMOU_CONTROL_DETAIL_IDS
+            }
+            require(controlDetails.size == QIZUOGUIMOU_CONTROL_DETAIL_IDS.size) {
+                "Unexpected skill 200692 control details=${controlDetails.map { it.detailId }}"
+            }
+            return details.filterNot(controlDetails::contains) +
+                controlDetails[context.random.nextInt(controlDetails.size)]
+        }
+        if (skillId == HEINEI_SHIZE_SKILL_ID) {
+            val pools = details.groupBy { it.raw.selectFlag }
+            require(pools.keys == HEINEI_SHIZE_POOL_IDS) {
+                "Unexpected skill 200847 child pools=${pools.keys.sorted()}"
+            }
+            return pools.toSortedMap().values.map { pool ->
+                pool[context.random.nextInt(pool.size)]
+            }
+        }
+        return details
     }
 
     private fun executeBranch(
@@ -536,7 +585,6 @@ class SkillRuleInterpreter private constructor(
             selectFlag = raw.selectFlag,
             bindFlag = raw.bindFlag,
             skillHitRange = skillHitRange,
-            effectBuffType = effectBuffType,
         )
 
     private fun executeChildren(
@@ -625,7 +673,11 @@ class SkillRuleInterpreter private constructor(
                             detail = detail,
                             context = context,
                             preselectedTargets = change.inheritedPreselectedTargets
-                                ?.takeIf { detail.raw.attackType in INHERITED_TARGET_ATTACK_TYPES },
+                                ?.takeIf {
+                                    detail.raw.attackType in INHERITED_TARGET_ATTACK_TYPES ||
+                                        change.detailId == SHESHEN_DAMAGE_REFERENCE_DETAIL_ID &&
+                                        detail.detailId == SHESHEN_DAMAGE_DETAIL_ID
+                                },
                             valueOverride = change.valueOverride,
                             executionOverride = detailOverrides.remove(detail.detailId),
                             stepSink = stepSink,
@@ -708,25 +760,42 @@ class SkillRuleInterpreter private constructor(
         if (!conditionInterpreter.matches(detail, context.trigger, context)) {
             return SkillExecutionResult.EMPTY
         }
-        return if (change.probabilityAlreadyAccepted || detailProbabilitySucceeds(detail, context)) {
-            executeDetail(
-                detail = detail,
-                context = context,
-                preselectedTargets =
-                    if (change.detailId in FENJI_LINKED_REFERENCE_DETAILS &&
-                        change.selectedTargets.isEmpty()
-                    ) {
-                        null
-                    } else {
-                        change.selectedTargets
-                    },
-                valueOverride = change.valueOverride,
-                executionOverride = change.executionOverride,
-                stepSink = stepSink,
-            )
-        } else {
-            SkillExecutionResult.EMPTY
+        if (!change.probabilityAlreadyAccepted && !detailProbabilitySucceeds(detail, context)) {
+            return SkillExecutionResult.EMPTY
         }
+        if (change.mode == ReferenceEffectMode.TRIGGER_EXISTING) {
+            return SkillExecutionResult.immutable(
+                stateChanges = change.selectedTargets.map { target ->
+                    TriggerSpecifiedEffectChange(
+                        source = change.source,
+                        target = target,
+                        rootSkillId = change.rootSkillId,
+                        skillId = change.skillId,
+                        detailId = change.detailId,
+                        triggeredEffectId = change.referencedEffectId,
+                        parameters = change.parameters,
+                        triggeredSource = change.source,
+                        triggeredDetailId = change.referencedDetailId,
+                    )
+                },
+                events = emptyList(),
+                executedSkillIds = emptyList(),
+                diagnostics = emptyList(),
+            )
+        }
+        return executeDetail(
+            detail = detail,
+            context = context,
+            preselectedTargets =
+                if (change.detailId in FENJI_LINKED_REFERENCE_DETAILS) {
+                    null
+                } else {
+                    change.selectedTargets
+                },
+            valueOverride = change.valueOverride,
+            executionOverride = change.executionOverride,
+            stepSink = stepSink,
+        )
     }
 
     private fun transformAndCastRandomActiveSkill(
@@ -845,17 +914,10 @@ class SkillRuleInterpreter private constructor(
         context: SkillBattleContext,
     ): Boolean {
         val source = requestHero(context, context.source)
-        val morale =
-            if (SkillBattleViewCapability.LIVE_MORALE in context.battleView.capabilities) {
-                context.battleView.currentMorale(context.source) ?: source.morale
-            } else {
-                source.morale
-            }
-        val moraleAddition = (morale - 100).toDouble() / (100 + 0.5 * morale)
-        val moraleAdjusted = (rule.probability * (1 + moraleAddition)).toInt()
         val matchingModifiers = liveModifiers(context, source)
             .filterIsInstance<BattleModifier.SkillProbabilityPercent>()
             .filter { it.skillId == null || it.skillId == rule.skillId }
+            .filter { it.skillIds.isEmpty() || rule.skillId in it.skillIds }
             .filter { it.skillKind == null || it.skillKind == rule.kind }
         val modifier = matchingModifiers.sumOf { it.percent }
         if (matchingModifiers.isNotEmpty()) {
@@ -865,13 +927,18 @@ class SkillRuleInterpreter private constructor(
                 rule.kind,
             )
         }
-        val probability = (moraleAdjusted + modifier).coerceIn(0, 100)
+        val probability = moraleAdjustedProbability(
+            configured = rule.probability + modifier,
+            source = source,
+            context = context,
+        )
         return context.random.nextInt(100) < probability
     }
 
     private fun detailProbabilitySucceeds(
         detail: SkillEffectRule,
         context: SkillBattleContext,
+        configuredProbability: Int? = null,
     ): Boolean {
         if (
             detail.effectId == 81 ||
@@ -889,16 +956,49 @@ class SkillRuleInterpreter private constructor(
             context = context,
             callPath = context.runtime.currentCallPath(),
         ).rootSkillLevel(source)
-        val configured = (
+        val configured = configuredProbability?.coerceIn(0, 100) ?: (
             detail.raw.probabilityInit +
                 (level - 1) * (detail.raw.probabilityMax - detail.raw.probabilityInit) / 9.0
             ).toInt().coerceIn(0, 100)
         if (configured >= 100) return true
+        val moraleAdjusted = moraleAdjustedProbability(
+            configured = configured,
+            source = source,
+            context = context,
+        )
         val modifier = liveModifiers(context, source)
             .filterIsInstance<BattleModifier.EffectProbabilityPercent>()
             .filter { it.detailId == detail.detailId }
             .sumOf { it.percent }
-        return context.random.nextInt(100) < (configured + modifier).coerceIn(0, 100)
+        return context.random.nextInt(100) < (moraleAdjusted + modifier).coerceIn(0, 100)
+    }
+
+    internal fun moraleAdjustedProbabilityForEngine(
+        configured: Int,
+        context: SkillBattleContext,
+    ): Int {
+        val bounded = configured.coerceIn(0, 100)
+        if (bounded >= 100) return 100
+        return moraleAdjustedProbability(
+            configured = bounded,
+            source = requestHero(context, context.source),
+            context = context,
+        )
+    }
+
+    private fun moraleAdjustedProbability(
+        configured: Int,
+        source: BattleHero,
+        context: SkillBattleContext,
+    ): Int {
+        val morale =
+            if (SkillBattleViewCapability.LIVE_MORALE in context.battleView.capabilities) {
+                context.battleView.currentMorale(context.source) ?: source.morale
+            } else {
+                source.morale
+            }
+        val moraleAddition = (morale - 100).toDouble() / (100 + 0.5 * morale)
+        return (configured * (1 + moraleAddition)).toInt().coerceIn(0, 100)
     }
 
     private fun liveModifiers(
@@ -936,10 +1036,17 @@ class SkillRuleInterpreter private constructor(
         }
 
     companion object {
+        private const val QIZUOGUIMOU_SKILL_ID = 200692
+        private val QIZUOGUIMOU_CONTROL_DETAIL_IDS =
+            setOf(20069223, 20069224, 20069225, 20069226)
+        private const val HEINEI_SHIZE_SKILL_ID = 200847
+        private val HEINEI_SHIZE_POOL_IDS = setOf(1, 2)
         private val FENJI_LINKED_REFERENCE_DETAILS = setOf(21096101, 21096102)
         private val FENJI_PER_TARGET_CHILD_DETAILS = setOf(21296113, 21296114)
         private val REFERENCED_TEMPLATE_EFFECT_IDS = setOf(125, 408)
         private val INHERITED_TARGET_ATTACK_TYPES = setOf(43, 98)
+        private const val SHESHEN_DAMAGE_REFERENCE_DETAIL_ID = 21199312
+        private const val SHESHEN_DAMAGE_DETAIL_ID = 21299301
         private const val EMERGENCY_RECOVERY_CALC_POSITION = 995
 
         fun safe(

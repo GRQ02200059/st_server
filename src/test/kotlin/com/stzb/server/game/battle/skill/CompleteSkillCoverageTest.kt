@@ -9,9 +9,9 @@ class CompleteSkillCoverageTest {
         val report = SkillCoverageReport.generateDefault()
 
         assertEquals(308, report.mainSkills)
-        assertEquals(666, report.executionNodes)
+        assertEquals(673, report.executionNodes)
         assertEquals(111, report.effectIds)
-        assertEquals(1933, report.detailRules)
+        assertEquals(1942, report.detailRules)
         assertEquals(emptySet(), report.unsupportedEffects)
         assertEquals(emptySet(), report.unconsumedMetaEffects)
         assertEquals(emptySet(), report.unknownSelectors)

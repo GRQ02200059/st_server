@@ -1,16 +1,22 @@
 package com.stzb.server.game.battle.skill
 
 import com.stzb.server.game.battle.BattleConfigRepository
+import com.stzb.server.game.battle.BattleSkillRuleOverride
 import com.stzb.server.game.battle.SkillDetailConfig
 
 object SkillRuleCatalog {
-    fun build(scope: SkillScope, config: BattleConfigRepository): SkillRuleGraph {
+    fun build(
+        scope: SkillScope,
+        config: BattleConfigRepository,
+        overrides: Map<Int, BattleSkillRuleOverride> = emptyMap(),
+    ): SkillRuleGraph {
         val rules = linkedMapOf<Int, SkillRule>()
 
         fun visit(skillId: Int) {
             if (skillId in rules) return
             val skill = config.skill(skillId) ?: return
-            val details = config.skillDetails(skillId).map { detail ->
+            val override = overrides[skillId]
+            val details = (override?.details ?: config.skillDetails(skillId)).map { detail ->
                 val effect = config.skillEffect(detail.effectId)
                 SkillEffectRule(
                     detailId = detail.detailId,
@@ -29,8 +35,8 @@ object SkillRuleCatalog {
                 skillId = skill.id,
                 kind = skill.kind,
                 rawSkillType = skill.rawSkillType,
-                probability = skill.probabilityMax,
-                prepareRounds = skill.prepareRounds,
+                probability = override?.probability ?: skill.probabilityMax,
+                prepareRounds = override?.prepareRounds ?: skill.prepareRounds,
                 hitRange = skill.hitRange,
                 details = details,
             )
@@ -61,10 +67,18 @@ object SkillRuleCatalog {
     ): Set<Int> {
         val candidates = when (detail.effectId) {
             122, 123 -> listOf(detail.constantParam)
-            else -> emptyList()
+            else -> IMPLICIT_CHILD_SKILL_IDS[detail.detailId].orEmpty()
         }
         return candidates
             .filter { config.skill(it) != null }
             .toSet()
     }
+
+    private val IMPLICIT_CHILD_SKILL_IDS = mapOf(
+        20003402 to listOf(210034),
+        20024901 to listOf(214249),
+        20024902 to listOf(214249),
+        20024911 to listOf(215249),
+        20024912 to listOf(215249),
+    )
 }

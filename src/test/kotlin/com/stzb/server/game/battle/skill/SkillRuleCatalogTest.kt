@@ -16,13 +16,17 @@ class SkillRuleCatalogTest {
             com.stzb.server.game.battle.BattleConfigRepository.loadDefault(),
         )
 
-        assertEquals(666, graph.executionNodeIds.size)
+        assertEquals(673, graph.executionNodeIds.size)
         assertEquals(
             111,
             graph.effectIds.size,
             "unresolved=${graph.details.map { it.effectId }.toSet() - graph.effectIds}",
         )
-        assertEquals(1933, graph.details.size)
+        assertEquals(1942, graph.details.size)
+        assertTrue(
+            setOf(210249, 211249, 212249, 213249, 214249, 215249)
+                .all { graph.rule(it) != null },
+        )
         val diagnostics = graph.validate()
         assertTrue(diagnostics.isEmpty(), diagnostics.joinToString())
     }

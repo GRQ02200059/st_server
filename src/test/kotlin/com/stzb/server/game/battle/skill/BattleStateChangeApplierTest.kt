@@ -73,7 +73,7 @@ class BattleStateChangeApplierTest {
             ),
             round = 0,
         )
-        assertEquals(50, fixture.state.view.state(target)?.troops)
+        assertEquals(48, fixture.state.view.state(target)?.troops)
         assertEquals(0, fixture.state.view.state(target)?.woundedTroops)
     }
 
@@ -396,7 +396,7 @@ class BattleStateChangeApplierTest {
     }
 
     @Test
-    fun `ongoing damage ticks from live state and expires with its effect`() {
+    fun `ongoing damage ticks from live state only before its target action`() {
         val fixture = fixture(targetTroops = 1_000)
         fixture.applier.apply(
             listOf(
@@ -420,17 +420,125 @@ class BattleStateChangeApplierTest {
         )
 
         val roundOne = fixture.applier.onRoundStart(1)
+        assertTrue(roundOne.outputs.none { it is BattleStateOutput.DamageDealt })
+        assertEquals(1_000, fixture.state.view.state(target)?.troops)
+
+        val firstAction = fixture.applier.onActionStart(target, 1)
         val afterOne = fixture.state.view.state(target)?.troops
-        assertTrue(roundOne.outputs.any { it is BattleStateOutput.DamageDealt })
+        assertTrue(firstAction.outputs.any { it is BattleStateOutput.DamageDealt })
+        assertTrue(fixture.applier.onActionStart(target, 1).outputs.isEmpty())
         fixture.applier.onRoundEnd(1)
-        fixture.applier.onRoundStart(2)
+
+        val roundTwo = fixture.applier.onRoundStart(2)
+        assertTrue(roundTwo.outputs.none { it is BattleStateOutput.DamageDealt })
+        fixture.applier.onActionStart(target, 2)
         val afterTwo = fixture.state.view.state(target)?.troops
         fixture.applier.onRoundEnd(2)
-        val roundThree = fixture.applier.onRoundStart(3)
+
+        fixture.applier.onRoundStart(3)
+        val roundThree = fixture.applier.onActionStart(target, 3)
 
         assertTrue(requireNotNull(afterTwo) < requireNotNull(afterOne))
         assertTrue(roundThree.outputs.none { it is BattleStateOutput.DamageDealt })
         assertTrue(fixture.state.effectStore.effectsFor(target).none { it.effectId == 304 })
+    }
+
+    @Test
+    fun `action start ticks ongoing effects only for that target`() {
+        val fixture = fixture(targetTroops = 1_000)
+        fun ongoing(
+            effectTarget: BattleHeroRef,
+            effectSource: BattleHeroRef,
+            detailId: Int,
+        ) = ScheduledDamageEffectChange(
+            spec = spec(
+                effectId = 304,
+                category = EffectCategory.HARMFUL,
+                rounds = 2,
+                potency = TypedBattlePotency.rate(100),
+            ).copy(
+                source = effectSource,
+                target = effectTarget,
+                detailId = detailId,
+            ),
+            school = DamageSchool.STRATEGY,
+            origin = DamageOrigin.COMMAND,
+            tags = setOf(DamageTag.ONGOING),
+            status = BattleStatus.PANIC,
+            coefficientSource = BattleCoefficientSource.NONE,
+            rawCoefficient = 0,
+            calculationTypes = emptyList(),
+        )
+        fixture.applier.apply(
+            listOf(
+                ongoing(target, source, 1_304),
+                ongoing(source, target, 2_304),
+            ),
+            round = 0,
+        )
+
+        fixture.applier.onRoundStart(1)
+        val targetAction = fixture.applier.onActionStart(target, 1)
+
+        assertEquals(
+            listOf(target),
+            targetAction.outputs.filterIsInstance<BattleStateOutput.DamageDealt>()
+                .map { it.target },
+        )
+        assertEquals(1_000, fixture.state.view.state(source)?.troops)
+        assertTrue(fixture.applier.onActionStart(target, 1).outputs.isEmpty())
+
+        val sourceAction = fixture.applier.onActionStart(source, 1)
+        assertEquals(
+            listOf(source),
+            sourceAction.outputs.filterIsInstance<BattleStateOutput.DamageDealt>()
+                .map { it.target },
+        )
+    }
+
+    @Test
+    fun `ongoing recovery ticks only before its target action and consumes exact rounds`() {
+        val fixture = fixture(targetTroops = 900, targetWounded = 80)
+        fixture.applier.apply(
+            listOf(
+                ScheduledRecoveryEffectChange(
+                    spec = spec(
+                        effectId = 402,
+                        rounds = 2,
+                        potency = TypedBattlePotency.flat(50),
+                    ),
+                    potency = TypedBattlePotency.flat(50),
+                ),
+            ),
+            round = 0,
+        )
+
+        val roundOne = fixture.applier.onRoundStart(1)
+        assertTrue(roundOne.outputs.none { it is BattleStateOutput.TroopsRecovered })
+        assertEquals(900, fixture.state.view.state(target)?.troops)
+
+        val firstAction = fixture.applier.onActionStart(target, 1)
+        assertEquals(
+            listOf(50),
+            firstAction.outputs.filterIsInstance<BattleStateOutput.TroopsRecovered>()
+                .map { it.amount },
+        )
+        assertEquals(950, fixture.state.view.state(target)?.troops)
+        assertEquals(30, fixture.state.view.state(target)?.woundedTroops)
+        assertTrue(fixture.applier.onActionStart(target, 1).outputs.isEmpty())
+        fixture.applier.onRoundEnd(1)
+
+        fixture.applier.onRoundStart(2)
+        val secondAction = fixture.applier.onActionStart(target, 2)
+
+        assertEquals(
+            listOf(26),
+            secondAction.outputs.filterIsInstance<BattleStateOutput.TroopsRecovered>()
+                .map { it.amount },
+        )
+        assertEquals(976, fixture.state.view.state(target)?.troops)
+        assertEquals(0, fixture.state.view.state(target)?.woundedTroops)
+        assertTrue(fixture.state.effectStore.effectsFor(target).none { it.effectId == 402 })
     }
 
     @Test
@@ -473,6 +581,57 @@ class BattleStateChangeApplierTest {
             listOf(305),
             result.outputs.filterIsInstance<BattleStateOutput.DamageDealt>()
                 .map { it.effectId },
+        )
+    }
+
+    @Test
+    fun `specified ongoing trigger matches the exact source and detail`() {
+        val fixture = fixture(targetTroops = 1_000)
+        fun ongoing(
+            effectSource: BattleHeroRef,
+            detailId: Int,
+            skillId: Int,
+        ) = ScheduledDamageEffectChange(
+            spec = spec(
+                effectId = 303,
+                category = EffectCategory.HARMFUL,
+                rounds = 0,
+                potency = TypedBattlePotency.rate(100),
+            ).copy(
+                source = effectSource,
+                rootSkillId = skillId,
+                skillId = skillId,
+                detailId = detailId,
+                availableHit = 3,
+            ),
+            school = DamageSchool.PHYSICAL,
+            origin = DamageOrigin.ACTIVE,
+            tags = setOf(DamageTag.ONGOING, DamageTag.SHAKE),
+            status = BattleStatus.SHAKE,
+            coefficientSource = BattleCoefficientSource.NONE,
+            rawCoefficient = 0,
+            calculationTypes = emptyList(),
+        )
+        fixture.applier.apply(
+            listOf(
+                ongoing(source, detailId = 1_303, skillId = 10),
+                ongoing(target, detailId = 2_303, skillId = 20),
+            ),
+            round = 0,
+        )
+
+        val result = fixture.applier.triggerSpecifiedOngoingDamage(
+            target = target,
+            effectId = 303,
+            source = source,
+            detailId = 1_303,
+            round = 1,
+        )
+
+        assertEquals(
+            listOf(10),
+            result.outputs.filterIsInstance<BattleStateOutput.DamageDealt>()
+                .map { it.skillId },
         )
     }
 
@@ -691,7 +850,8 @@ class BattleStateChangeApplierTest {
             applied.outputs.filterIsInstance<BattleStateOutput.EffectApplied>().map { it.spec },
         )
         assertTrue(BattleStatus.PANIC in requireNotNull(fixture.state.view.state(target)).statuses)
-        val firstTick = fixture.applier.onRoundStart(1)
+        fixture.applier.onRoundStart(1)
+        val firstTick = fixture.applier.onActionStart(target, 1)
             .outputs.filterIsInstance<BattleStateOutput.DamageDealt>().single()
         assertTrue(firstTick.amount < 500)
 
@@ -701,8 +861,10 @@ class BattleStateChangeApplierTest {
         )
         assertTrue(fixture.state.effectStore.effectsFor(target).isEmpty())
         assertFalse(BattleStatus.PANIC in requireNotNull(fixture.state.view.state(target)).statuses)
+        fixture.applier.onRoundStart(2)
         assertTrue(
-            fixture.applier.onRoundStart(2).outputs.none { it is BattleStateOutput.DamageDealt },
+            fixture.applier.onActionStart(target, 2)
+                .outputs.none { it is BattleStateOutput.DamageDealt },
         )
     }
 
@@ -1431,7 +1593,7 @@ class BattleStateChangeApplierTest {
             ),
             round = 0,
         )
-        assertEquals(15, fixture.state.view.state(target)?.woundedTroops)
+        assertEquals(14, fixture.state.view.state(target)?.woundedTroops)
 
         fixture.applier.apply(
             listOf(
@@ -1440,7 +1602,7 @@ class BattleStateChangeApplierTest {
             ),
             round = 0,
         )
-        assertEquals(15, fixture.state.view.state(target)?.troops)
+        assertEquals(14, fixture.state.view.state(target)?.troops)
         assertEquals(0, fixture.state.view.state(target)?.woundedTroops)
 
         val capacityFixture = fixture(targetTroops = 995, targetWounded = 50)
@@ -1453,6 +1615,36 @@ class BattleStateChangeApplierTest {
         )
         assertEquals(1_000, capacityFixture.state.view.state(target)?.troops)
         assertEquals(45, capacityFixture.state.view.state(target)?.woundedTroops)
+    }
+
+    @Test
+    fun `damage creates ninety five percent wounded and next round preserves eighty seven percent`() {
+        val fixture = fixture(targetTroops = 1_000, targetWounded = 0)
+
+        fixture.applier.onRoundStart(1)
+        fixture.applier.apply(
+            listOf(
+                TroopDamageChange(
+                    source = source,
+                    target = target,
+                    amount = 215,
+                    troopsAfter = 785,
+                    school = DamageSchool.PHYSICAL,
+                    origin = DamageOrigin.NORMAL,
+                    tags = emptySet(),
+                    skillId = 0,
+                    effectId = 0,
+                ),
+            ),
+            round = 1,
+        )
+
+        assertEquals(204, fixture.state.view.state(target)?.woundedTroops)
+
+        fixture.applier.onRoundEnd(1)
+        fixture.applier.onRoundStart(2)
+
+        assertEquals(177, fixture.state.view.state(target)?.woundedTroops)
     }
 
     @Test
@@ -1823,12 +2015,17 @@ class BattleStateChangeApplierTest {
             round = 0,
         )
 
-        assertTrue(fixture.applier.onRoundStart(1).outputs.isNotEmpty())
         assertTrue(fixture.applier.onRoundStart(1).outputs.isEmpty())
+        assertTrue(fixture.applier.onRoundStart(1).outputs.isEmpty())
+        assertTrue(fixture.applier.onActionStart(target, 1).outputs.isNotEmpty())
+        assertTrue(fixture.applier.onActionStart(target, 1).outputs.isEmpty())
         fixture.applier.onRoundEnd(1)
         fixture.applier.onRoundEnd(1)
         fixture.applier.onRoundStart(2)
         assertFailsWith<IllegalArgumentException> { fixture.applier.onRoundStart(1) }
+        assertFailsWith<IllegalArgumentException> {
+            fixture.applier.onActionStart(target, 1)
+        }
         assertFailsWith<IllegalArgumentException> { fixture.applier.onRoundEnd(1) }
     }
 

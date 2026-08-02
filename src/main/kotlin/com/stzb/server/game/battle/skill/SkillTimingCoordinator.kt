@@ -91,7 +91,7 @@ data class TimingPosition(
 )
 
 class SkillTimingDue internal constructor(
-    val change: ScheduledEffectActivationChange,
+    val change: BattleStateChange,
     val activatedChanges: List<BattleStateChange>,
     val dueRound: Int,
     val dueHit: Int,
@@ -106,7 +106,7 @@ class SkillTimingDue internal constructor(
 
     companion object {
         internal fun mint(
-            change: ScheduledEffectActivationChange,
+            change: BattleStateChange,
             activatedChanges: List<BattleStateChange>,
             dueRound: Int,
             dueHit: Int,
@@ -120,11 +120,25 @@ class SkillTimingDue internal constructor(
         )
 
         internal fun mint(
-            change: ScheduledEffectActivationChange,
+            change: BattleStateChange,
             dueRound: Int,
             dueHit: Int,
             sequence: Long,
-        ): SkillTimingDue = mint(change, change.activationChanges(), dueRound, dueHit, sequence)
+        ): SkillTimingDue = mint(
+            change = change,
+            activatedChanges = when (change) {
+                is ScheduledEffectActivationChange -> change.activationChanges()
+                is ScheduledDamageEffectChange,
+                is ScheduledRecoveryEffectChange,
+                -> listOf(change)
+                else -> error(
+                    "Unsupported delayed activation token change=${change::class.simpleName}",
+                )
+            },
+            dueRound = dueRound,
+            dueHit = dueHit,
+            sequence = sequence,
+        )
     }
 }
 
@@ -474,8 +488,14 @@ class CompleteTimingCoordinator(
         delayed: DelayedEffect,
     ): SkillExecutionResult =
         activate(change, round).let { activated ->
-            if (change !is ScheduledEffectActivationChange) activated
-            else SkillExecutionResult.immutable(
+            if (
+                change !is ScheduledEffectActivationChange &&
+                change !is ScheduledDamageEffectChange &&
+                change !is ScheduledRecoveryEffectChange
+            ) {
+                activated
+            } else {
+                SkillExecutionResult.immutable(
                 activated.stateChanges,
                 activated.events,
                 activated.executedSkillIds,
@@ -490,6 +510,7 @@ class CompleteTimingCoordinator(
                     ),
                 ),
             )
+            }
         }
 
     private fun timingOf(change: BattleStateChange): Triple<Int, Int, DelayedEffect>? =

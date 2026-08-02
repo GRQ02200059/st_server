@@ -1,5 +1,6 @@
 package com.stzb.server.game.battle
 
+import com.fasterxml.jackson.core.json.JsonReadFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.game.battle.skill.BattleTargetDecisionSource
 import com.stzb.server.game.ClientTroopFeatureRepository
@@ -46,6 +47,9 @@ internal object OfficialReportFixture {
     )
 
     private val mapper = jacksonObjectMapper()
+    private val customSkillMapper = jacksonObjectMapper().enable(
+        JsonReadFeature.ALLOW_UNQUOTED_FIELD_NAMES.mappedFeature(),
+    )
 
     fun read(path: Path): List<Action> =
         parseText(mapper.readTree(path.toFile())[1]["report"].asText())
@@ -108,13 +112,22 @@ internal object OfficialReportFixture {
                     }
                     damageBySide.add(sideForPosition(sourcePosition), action.intParam(1))
                 }
-                ClientBattleTextReplayProtocol.ONGOING_DAMAGE,
+                ClientBattleTextReplayProtocol.ATTACK_SKILL_DAMAGE,
                 ClientBattleTextReplayProtocol.SKILL_DAMAGE,
                 -> {
                     val sourcePosition = action.intParam(0)
                     damageBySide.add(sideForPosition(sourcePosition), action.intParam(3))
                 }
-                ClientBattleTextReplayProtocol.RECOVERY -> {
+                ClientBattleTextReplayProtocol.PANIC_ONGOING_DAMAGE,
+                ClientBattleTextReplayProtocol.ONGOING_DAMAGE,
+                ClientBattleTextReplayProtocol.HEX_ONGOING_DAMAGE,
+                -> {
+                    val sourcePosition = action.intParam(1)
+                    damageBySide.add(sideForPosition(sourcePosition), action.intParam(3))
+                }
+                ClientBattleTextReplayProtocol.RECOVERY,
+                ClientBattleTextReplayProtocol.ONGOING_RECOVERY,
+                -> {
                     val sourcePosition = action.intParam(0)
                     recoveryBySide.add(sideForPosition(sourcePosition), action.intParam(3))
                 }
@@ -226,6 +239,20 @@ internal object OfficialReportFixture {
         config: BattleConfigRepository,
     ): BattleRequest {
         val preparation = preparation(actions)
+        fun recordedMorale(actionId: Int): Int {
+            val values = preparation
+                .filter { it.id == actionId }
+                .map { it.intParam(0) }
+                .distinct()
+            require(values.size <= 1) {
+                "conflicting paper morale values for action=${actionId.toString(36)}: $values"
+            }
+            return values.singleOrNull() ?: 100
+        }
+        val moraleBySide = mapOf(
+            Side.ATTACKER to recordedMorale("44".toInt(36)),
+            Side.DEFENDER to recordedMorale("45".toInt(36)),
+        )
         val heroIdsByClientPosition = preparation
             .filter { it.id == ClientBattleTextReplayProtocol.HERO_NAME }
             .associate { it.intParam(0) to it.intParam(1) }
@@ -234,14 +261,27 @@ internal object OfficialReportFixture {
             .groupBy { it.intParam(0) }
             .mapValues { (_, sources) -> sources.map { it.intParam(1) }.distinct() }
         val explicitEquipmentFeaturesByClientPosition = preparation
-            .filter {
-                it.id in setOf("8x".toInt(36), "9c".toInt(36)) &&
-                    it.params.size >= 4 &&
-                    it.intParam(1) in 450_000..459_999
+            .mapNotNull { action ->
+                if (action.params.size < 4) return@mapNotNull null
+                val position = action.params[0].toIntOrNull()
+                    ?.takeIf { it in 1..6 }
+                    ?: return@mapNotNull null
+                val featureSkillId = action.params[1].toIntOrNull()
+                    ?.takeIf { it / 1_000 in setOf(450, 460) }
+                    ?: return@mapNotNull null
+                val level = action.params.drop(3).asReversed()
+                    .firstNotNullOfOrNull { value ->
+                        value.toIntOrNull()?.takeIf { it in 1..30 }
+                    }
+                    ?: return@mapNotNull null
+                position to (featureSkillId to level)
             }
-            .groupBy { it.intParam(0) }
-            .mapValues { (_, actions) ->
-                actions.map { action -> action.intParam(1) to action.params.last().toInt() }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, features) ->
+                features.groupBy(Pair<Int, Int>::first)
+                    .map { (featureSkillId, levels) ->
+                        featureSkillId to levels.minOf(Pair<Int, Int>::second)
+                    }
             }
         val featureParentByChild = config.allSkillIds()
             .asSequence()
@@ -253,18 +293,49 @@ internal object OfficialReportFixture {
             }
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, parents) -> parents.distinct().single() }
+        val derivedFeatureLevels = jaTuples(actions)
+            .filter { it.amount > 0 }
+            .groupBy { tuple -> tuple.sourcePosition to tuple.sourceId }
+            .mapValues { (_, tuples) -> tuples.minOf(JaTuple::amount) }
         val derivedEquipmentFeaturesByClientPosition = preparation
             .filter { it.id == "8c".toInt(36) && it.params.size == 2 }
             .mapNotNull { action ->
-                val parentId = featureParentByChild[action.intParam(1)] ?: return@mapNotNull null
-                action.intParam(0) to (parentId to 1)
+                val position = action.intParam(0)
+                val childId = action.intParam(1)
+                val parentId = featureParentByChild[childId] ?: return@mapNotNull null
+                val level = derivedFeatureLevels[position to childId] ?: 1
+                position to (parentId to level)
             }
             .groupBy({ it.first }, { it.second })
+        val battlePhaseEquipmentFeaturesByClientPosition = actions
+            .filter { it.params.size >= 4 }
+            .mapNotNull { action ->
+                val position = action.params.getOrNull(0)?.toIntOrNull()
+                    ?.takeIf { it in 1..6 }
+                    ?: return@mapNotNull null
+                val childId = action.params.getOrNull(1)?.toIntOrNull()
+                    ?: return@mapNotNull null
+                val parentId = featureParentByChild[childId]
+                    ?: return@mapNotNull null
+                val level = action.params.last().toIntOrNull()
+                    ?.takeIf { it > 0 }
+                    ?: return@mapNotNull null
+                position to (parentId to level)
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, features) ->
+                features.groupBy(Pair<Int, Int>::first)
+                    .map { (parentId, levels) ->
+                        parentId to levels.minOf(Pair<Int, Int>::second)
+                    }
+            }
         val equipmentFeaturesByClientPosition =
             (explicitEquipmentFeaturesByClientPosition.keys +
-                derivedEquipmentFeaturesByClientPosition.keys).associateWith { position ->
+                derivedEquipmentFeaturesByClientPosition.keys +
+                battlePhaseEquipmentFeaturesByClientPosition.keys).associateWith { position ->
                 (explicitEquipmentFeaturesByClientPosition[position].orEmpty() +
-                    derivedEquipmentFeaturesByClientPosition[position].orEmpty())
+                    derivedEquipmentFeaturesByClientPosition[position].orEmpty() +
+                    battlePhaseEquipmentFeaturesByClientPosition[position].orEmpty())
                     .distinctBy(Pair<Int, Int>::first)
             }
         val learnedTroopSkillsByClientPosition = preparation
@@ -304,6 +375,7 @@ internal object OfficialReportFixture {
                     },
                     position = formationPosition(clientPosition),
                     troops = heroInfo.intParam(2),
+                    initialSkillId = skillIds.first(),
                     extraSkillIds = skillIds.drop(1),
                     skillLevels = listOf(
                         heroInfo.intParam(4),
@@ -333,6 +405,9 @@ internal object OfficialReportFixture {
                             .orEmpty()
                             .map(Pair<Int, Int>::second),
                     level = heroInfo.intParam(1),
+                    morale = moraleBySide.getValue(
+                        if (clientPosition <= 3) Side.ATTACKER else Side.DEFENDER,
+                    ),
                 )
             }
 
@@ -426,7 +501,7 @@ internal object OfficialReportFixture {
                 },
             )
         }
-        return BattleRequest(
+        val request = BattleRequest(
             attacker = withPaperPreparationValues(
                 withPreciseStats(
                     teamBuilder.build((1..3).mapNotNull(specsByClientPosition::get)),
@@ -441,8 +516,260 @@ internal object OfficialReportFixture {
                 ),
                 Side.DEFENDER,
             ),
+            skillRuleOverrides = customSkillRuleOverrides(actions, config),
+        )
+        val authoritativeStrategyPositions = (
+            preciseStats.entry.filterValues { BattleStat.STRATEGY in it }.keys +
+                commandEntryStats.filterValues { BattleStat.STRATEGY in it }.keys
+            ).toSet()
+        return inferHiddenRecoveryStrategies(
+            request = request,
+            actions = actions,
+            config = config,
+            authoritativeStrategyPositions = authoritativeStrategyPositions,
         )
     }
+
+    private fun customSkillRuleOverrides(
+        actions: List<Action>,
+        config: BattleConfigRepository,
+    ): Map<Int, BattleSkillRuleOverride> {
+        val overrides = linkedMapOf<Int, BattleSkillRuleOverride>()
+
+        fun register(skillId: Int, override: BattleSkillRuleOverride) {
+            val previous = overrides[skillId]
+            require(previous == null || previous == override) {
+                "paper contains conflicting custom definitions for skill=$skillId"
+            }
+            overrides[skillId] = override
+        }
+
+        actions
+            .filter { it.id == "fq".toInt(36) }
+            .forEach { action ->
+                val payload = customSkillMapper.readTree(action.raw.drop(2))
+                payload.fields().asSequence().forEach { (_, slots) ->
+                    slots.elements().asSequence()
+                        .filterNot { it.isNull }
+                        .forEach { customSkill ->
+                            val rootSkillId = customSkill.path("skill_id").asInt()
+                            val rootSkill = requireNotNull(config.skill(rootSkillId)) {
+                                "missing static custom root skill=$rootSkillId"
+                            }
+                            val customDetails = customSkill
+                                .path("mpWorkCustomSkillDetail")
+                                .fields()
+                                .asSequence()
+                                .associate { (detailId, node) -> detailId.toInt() to node }
+                            require(customDetails.isNotEmpty()) {
+                                "custom root skill=$rootSkillId has no configured details"
+                            }
+                            val childSkillIds = customDetails.values
+                                .mapTo(linkedSetOf()) { it.path("skill_id").asInt() }
+                            val containerSkillId = config.skillDetails(rootSkillId)
+                                .asSequence()
+                                .filter { it.effectId in setOf(122, 123) }
+                                .map { it.constantParam }
+                                .filter { config.skill(it) != null }
+                                .distinct()
+                                .single()
+                            val containerDetails = config.skillDetails(containerSkillId)
+                                .filter {
+                                    it.effectId in setOf(122, 123) &&
+                                        it.constantParam in childSkillIds
+                                }
+                            require(
+                                containerDetails.mapTo(linkedSetOf()) { it.constantParam } ==
+                                    childSkillIds,
+                            ) {
+                                "custom root skill=$rootSkillId cannot link children=$childSkillIds"
+                            }
+
+                            register(
+                                rootSkillId,
+                                BattleSkillRuleOverride(
+                                    probability = customSkill.path("probability_max")
+                                        .asInt(rootSkill.probabilityMax),
+                                    prepareRounds = customSkill.path("prepare")
+                                        .asInt(rootSkill.prepareRounds),
+                                ),
+                            )
+                            register(
+                                containerSkillId,
+                                BattleSkillRuleOverride(details = containerDetails),
+                            )
+
+                            customDetails.entries
+                                .groupBy { (_, node) -> node.path("skill_id").asInt() }
+                                .forEach { (childSkillId, entries) ->
+                                    val customByDetailId = entries.associate { it.key to it.value }
+                                    val staticDetails = config.skillDetails(childSkillId)
+                                    require(
+                                        customByDetailId.keys.all { detailId ->
+                                            staticDetails.any { it.detailId == detailId }
+                                        },
+                                    ) {
+                                        "custom skill=$childSkillId references unknown details=" +
+                                            customByDetailId.keys
+                                    }
+                                    register(
+                                        childSkillId,
+                                        BattleSkillRuleOverride(
+                                            details = staticDetails.map { detail ->
+                                                val custom = customByDetailId[detail.detailId]
+                                                    ?: return@map detail
+                                                detail.copy(
+                                                    availableHit = custom.path("available_hit")
+                                                        .asInt(detail.availableHit),
+                                                    availableRounds = custom.path("available_round")
+                                                        .asInt(detail.availableRounds),
+                                                    constantParam = custom.path("constant_param")
+                                                        .asInt(detail.constantParam),
+                                                    intelParam = custom.path("intel_param")
+                                                        .asInt(detail.intelParam),
+                                                    probabilityInit =
+                                                        custom.path("prob_init_param")
+                                                            .asInt(detail.probabilityInit),
+                                                    probabilityMax =
+                                                        custom.path("prob_max_param")
+                                                            .asInt(detail.probabilityMax),
+                                                )
+                                            },
+                                        ),
+                                    )
+                                }
+                        }
+                }
+            }
+
+        return overrides.toMap()
+    }
+
+    private fun inferHiddenRecoveryStrategies(
+        request: BattleRequest,
+        actions: List<Action>,
+        config: BattleConfigRepository,
+        authoritativeStrategyPositions: Set<Int>,
+    ): BattleRequest {
+        val heroesByPosition = buildMap {
+            request.attacker.heroes.forEach { hero ->
+                put(ClientBattleTextReplayProtocol.position(Side.ATTACKER, hero.position), hero)
+            }
+            request.defender.heroes.forEach { hero ->
+                put(ClientBattleTextReplayProtocol.position(Side.DEFENDER, hero.position), hero)
+            }
+        }
+        val recoveriesBySource = actions
+            .filter { it.id == ClientBattleTextReplayProtocol.RECOVERY && it.intParam(3) > 0 }
+            .groupBy { it.intParam(0) }
+        val inferredStrategies = heroesByPosition.mapNotNull { (sourcePosition, source) ->
+            if (sourcePosition in authoritativeStrategyPositions) return@mapNotNull null
+            val inferred = recoveriesBySource[sourcePosition]
+                .orEmpty()
+                .groupBy { it.intParam(1) }
+                .mapNotNull { (skillId, recoveries) ->
+                    inferRecoveryStrategy(
+                        source = source,
+                        skillId = skillId,
+                        recoveries = recoveries,
+                        heroesByPosition = heroesByPosition,
+                        config = config,
+                    )
+                }
+                .distinct()
+                .singleOrNull()
+                ?: return@mapNotNull null
+            sourcePosition to inferred
+        }.toMap()
+
+        fun update(team: BattleTeam, side: Side): BattleTeam = team.copy(
+            heroes = team.heroes.map { hero ->
+                val position = ClientBattleTextReplayProtocol.position(side, hero.position)
+                inferredStrategies[position]?.let { inferred ->
+                    hero.withInferredStrategy(inferred)
+                } ?: hero
+            },
+        )
+        return request.copy(
+            attacker = update(request.attacker, Side.ATTACKER),
+            defender = update(request.defender, Side.DEFENDER),
+        )
+    }
+
+    private fun inferRecoveryStrategy(
+        source: BattleHero,
+        skillId: Int,
+        recoveries: List<Action>,
+        heroesByPosition: Map<Int, BattleHero>,
+        config: BattleConfigRepository,
+    ): Int? {
+        if (config.skill(skillId)?.kind != SkillKind.COMMAND) return null
+        val detail = config.skillDetails(skillId).singleOrNull {
+            it.effectId in setOf(401, 402) &&
+                it.intelParam > 0 &&
+                it.calculationTypes.isEmpty()
+        } ?: return null
+        val skillIndex = source.skillIds.indexOf(skillId).takeIf { it >= 0 } ?: return null
+        val skillLevel = source.skillLevels.getOrElse(skillIndex) { 1 }.coerceIn(1, 10)
+        val requestedAmounts = recoveries.mapNotNull { recovery ->
+            val target = heroesByPosition[recovery.intParam(2)] ?: return@mapNotNull null
+            val recoveryPercent = source.modifiers
+                .filterIsInstance<BattleModifier.RecoveryDealtPercent>()
+                .sumOf(BattleModifier.RecoveryDealtPercent::percent) +
+                target.modifiers
+                    .filterIsInstance<BattleModifier.RecoveryTakenPercent>()
+                    .sumOf(BattleModifier.RecoveryTakenPercent::percent)
+            val modifier = (100 + recoveryPercent).coerceAtLeast(0)
+            if (modifier == 0) return@mapNotNull null
+            ceilDiv(recovery.intParam(3).toLong() * 100, modifier.toLong()).toInt()
+        }
+        val fullRequestedAmount = requestedAmounts
+            .groupingBy { it }
+            .eachCount()
+            .filterValues { it >= 2 }
+            .keys
+            .maxOrNull()
+            ?: return null
+        val troopBase = (
+            source.troops * 300.0 / (3_500 + source.troops)
+            ).roundToInt()
+        val levelRatio =
+            detail.initEffectRatio + (skillLevel - 1) * (100 - detail.initEffectRatio) / 9.0
+        return (0..1_000).firstOrNull { strategy ->
+            val recoveryRate = kotlin.math.floor(
+                levelRatio *
+                    (detail.constantParam + detail.intelParam * strategy / 200.0) /
+                    100.0,
+            ).toInt().coerceAtLeast(1)
+            troopBase * recoveryRate / 100 == fullRequestedAmount
+        }?.takeIf { it > source.stats.strategy }
+    }
+
+    private fun BattleHero.withInferredStrategy(strategy: Int): BattleHero {
+        val currentHundredths = (stats.precise(BattleStat.STRATEGY) * 100).roundToInt()
+        val inferredHundredths = strategy * 100
+        val deltaHundredths = inferredHundredths - currentHundredths
+        return copy(
+            stats = stats.withStrategyHundredths(inferredHundredths),
+            inherentStats = inherentStats.withStrategyHundredths(
+                (inherentStats.precise(BattleStat.STRATEGY) * 100).roundToInt() +
+                    deltaHundredths,
+            ),
+        )
+    }
+
+    private fun BattleStats.withStrategyHundredths(strategy: Int): BattleStats =
+        BattleStats.fromHundredths(
+            attack = (precise(BattleStat.ATTACK) * 100).roundToInt(),
+            defense = (precise(BattleStat.DEFENSE) * 100).roundToInt(),
+            strategy = strategy,
+            speed = (precise(BattleStat.SPEED) * 100).roundToInt(),
+            siege = (precise(BattleStat.SIEGE) * 100).roundToInt(),
+            hitRange = hitRange,
+        )
+
+    private fun ceilDiv(value: Long, divisor: Long): Long =
+        (value + divisor - 1) / divisor
 
     fun targetDecisions(actions: List<Action>): BattleTargetDecisionSource {
         val queues = linkedMapOf<DecisionKey, ArrayDeque<List<Int>>>()
@@ -508,15 +835,49 @@ internal object OfficialReportFixture {
         }
         flushStatuses()
 
-        return BattleTargetDecisionSource { request ->
+        actions.forEach { action ->
+            val effectId = when (action.id) {
+                ClientBattleTextReplayProtocol.ATTACK_SKILL_DAMAGE -> 301
+                ClientBattleTextReplayProtocol.SKILL_DAMAGE -> 302
+                ClientBattleTextReplayProtocol.PANIC_ONGOING_DAMAGE -> 304
+                ClientBattleTextReplayProtocol.ONGOING_DAMAGE -> 305
+                ClientBattleTextReplayProtocol.HEX_ONGOING_DAMAGE -> 306
+                else -> return@forEach
+            }
             val key = DecisionKey(
-                ClientBattleTextReplayProtocol.position(request.context.source.side, request.context.source.position),
-                request.context.rootSkillId,
-                request.rule.effectId,
+                sourcePosition = action.intParam(0),
+                skillId = action.intParam(1),
+                effectId = effectId,
             )
-            val queue = queues[key] ?: return@BattleTargetDecisionSource null
-            require(queue.isNotEmpty()) { "Paper target decisions exhausted for $key" }
-            val targetPositions = queue.removeFirst()
+            queues.getOrPut(key, ::ArrayDeque).addLast(
+                listOf(action.intParam(2)),
+            )
+        }
+
+        return BattleTargetDecisionSource { request ->
+            val sourcePosition = ClientBattleTextReplayProtocol.position(
+                request.context.source.side,
+                request.context.source.position,
+            )
+            val keys = listOf(
+                request.context.rootSkillId,
+                request.context.currentSkillId,
+            ).distinct().map { skillId ->
+                DecisionKey(sourcePosition, skillId, request.rule.effectId)
+            }
+            val (key, queue) = keys.firstNotNullOfOrNull { candidate ->
+                queues[candidate]?.let { candidate to it }
+            } ?: return@BattleTargetDecisionSource null
+            if (queue.isEmpty()) return@BattleTargetDecisionSource null
+            val targetPositions = buildList {
+                addAll(queue.removeFirst())
+                while (
+                    size < request.limit &&
+                    queue.firstOrNull()?.size == 1
+                ) {
+                    addAll(queue.removeFirst())
+                }
+            }
             targetPositions.map { position ->
                 requireNotNull(
                     request.candidates.find { candidate ->

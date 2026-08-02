@@ -14,8 +14,9 @@ class BattleActionResolver {
         source: BattleHero,
         enemies: Collection<BattleHero>,
         random: BattleRandom? = null,
+        allies: Collection<BattleHero>? = null,
     ): BattleHero? {
-        val candidates = normalAttackTargetsInRange(source, enemies)
+        val candidates = normalAttackTargetsInRange(source, enemies, allies)
         val rangedAttack = source.modifiers
             .filterIsInstance<BattleModifier.RangedNormalAttack>()
             .lastOrNull()
@@ -30,13 +31,16 @@ class BattleActionResolver {
     fun normalAttackTargetsInRange(
         source: BattleHero,
         enemies: Collection<BattleHero>,
+        allies: Collection<BattleHero>? = null,
     ): List<Pair<BattleHero, Int>> =
         enemies
             .filter { it.troops > 0 }
             .filterNot { target ->
                 BattleModifier.TargetImmunity(BattleTargetingKind.NORMAL_ATTACK) in target.modifiers
             }
-            .map { it to formationDistance(source.position, it.position) }
+            .map { target ->
+                target to formationDistance(source, target, allies, enemies)
+            }
             .filter { (_, distance) -> distance <= source.stats.hitRange }
             .sortedWith(compareBy<Pair<BattleHero, Int>> { it.second }.thenByDescending { it.first.position })
 
@@ -44,13 +48,15 @@ class BattleActionResolver {
         source: BattleHero,
         target: BattleHero,
         random: BattleRandom? = null,
+        allies: Collection<BattleHero>? = null,
+        enemies: Collection<BattleHero> = listOf(target),
     ): Int {
         val rangedAttack = source.modifiers
             .filterIsInstance<BattleModifier.RangedNormalAttack>()
             .lastOrNull()
         val distanceBonus = rangedAttack
             ?.damagePercentPerDistance
-            ?.times(formationDistance(source.position, target.position))
+            ?.times(formationDistance(source, target, allies, enemies))
             ?.coerceAtLeast(0)
             ?: 0
         val effectiveSource = if (distanceBonus == 0) {
@@ -68,6 +74,7 @@ class BattleActionResolver {
             target = target,
             attributeRandomTenths = 30 + (random?.nextInt(10) ?: 5),
             origin = DamageOrigin.NORMAL,
+            targetConditions = BattleDamageCalculator.targetConditions(target, enemies),
         )
     }
 
@@ -77,9 +84,10 @@ class BattleActionResolver {
         source: BattleHero,
         enemies: Collection<BattleHero>,
         random: BattleRandom? = null,
+        allies: Collection<BattleHero>? = null,
     ): NormalAttackResult? {
-        val target = selectNormalAttackTarget(source, enemies, random) ?: return null
-        val damage = normalAttackDamage(source, target, random)
+        val target = selectNormalAttackTarget(source, enemies, random, allies) ?: return null
+        val damage = normalAttackDamage(source, target, random, allies, enemies)
         val updated = target.copy(troops = (target.troops - damage).coerceAtLeast(0))
         return NormalAttackResult(
             target = updated,
@@ -93,7 +101,16 @@ class BattleActionResolver {
         )
     }
 
-    private fun formationDistance(sourcePosition: Int, targetPosition: Int): Int =
-        5 - sourcePosition - targetPosition
+    private fun formationDistance(
+        source: BattleHero,
+        target: BattleHero,
+        allies: Collection<BattleHero>?,
+        enemies: Collection<BattleHero>,
+    ): Int {
+        if (allies == null) return 5 - source.position - target.position
+        val alliedFront = allies.count { it.troops > 0 && it.position > source.position }
+        val enemyFront = enemies.count { it.troops > 0 && it.position > target.position }
+        return 1 + alliedFront + enemyFront
+    }
 
 }

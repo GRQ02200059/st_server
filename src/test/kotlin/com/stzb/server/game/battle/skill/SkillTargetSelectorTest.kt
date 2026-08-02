@@ -742,6 +742,26 @@ class SkillTargetSelectorTest {
     }
 
     @Test
+    fun `skill range compresses when the enemy front formation slot is defeated`() {
+        val states = defaultStates().toMutableMap().apply {
+            put(enemyFront, state(troops = 0))
+        }
+        val context = context(view(states = states, sourceRange = 1))
+
+        assertEquals(
+            listOf(enemyMiddle),
+            select(
+                rule(
+                    selectType = 34,
+                    attackMax = 3,
+                    skillHitRange = 1,
+                ),
+                context,
+            ),
+        )
+    }
+
+    @Test
     fun `entry snapshot advertises only snapshot capabilities and rejects unavailable live data`() {
         val request = com.stzb.server.game.battle.BattleRequest(
             attacker = com.stzb.server.game.battle.BattleTeam(
@@ -928,7 +948,7 @@ class SkillTargetSelectorTest {
     }
 
     @Test
-    fun `defeated heroes are excluded unless live state explicitly permits targeting`() {
+    fun `only non damage effects can explicitly target a defeated hero`() {
         val states = defaultStates().toMutableMap().apply {
             put(enemyBase, state(troops = 0))
             put(enemyMiddle, state(troops = 0, canReceiveEffectsWhenDefeated = true))
@@ -937,7 +957,11 @@ class SkillTargetSelectorTest {
 
         assertEquals(
             listOf(enemyFront, enemyMiddle),
-            select(rule(selectType = 34, attackMax = 3), context),
+            select(rule(effectId = 101, selectType = 34, attackMax = 3), context),
+        )
+        assertEquals(
+            listOf(enemyFront),
+            select(rule(effectId = 301, selectType = 34, attackMax = 3), context),
         )
     }
 
@@ -1186,6 +1210,7 @@ class SkillTargetSelectorTest {
 
     private fun rule(
         detailId: Int = 1,
+        effectId: Int = 301,
         attackType: Int = 43,
         targetType: Int = 0,
         selectType: Int = 0,
@@ -1201,11 +1226,11 @@ class SkillTargetSelectorTest {
         skillKind: SkillKind = SkillKind.UNKNOWN,
     ) = SkillEffectRule(
         detailId = detailId,
-        effectId = 301,
+        effectId = effectId,
         childSkillIds = emptySet(),
         raw = SkillDetailConfig(
             detailId = detailId,
-            effectId = 301,
+            effectId = effectId,
             attackType = attackType,
             targetType = targetType,
             selectType = selectType,

@@ -1163,6 +1163,35 @@ class ClientBattleTextReplayAdapterTest {
     }
 
     @Test
+    fun `projects panic burn and hex damage with their distinct client actions`() {
+        val source = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val target = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(4))
+        val result = eventResult().copy(
+            events = listOf(
+                BattleEvent.OngoingDamage(
+                    1, source, target, BattleStatus.PANIC, 30, 970, 200020,
+                ),
+                BattleEvent.OngoingDamage(
+                    1, source, target, BattleStatus.BURN, 40, 930, 200020,
+                ),
+                BattleEvent.OngoingDamage(
+                    1, source, target, BattleStatus.HEX, 50, 880, 200020,
+                ),
+            ),
+        )
+
+        val ongoingDamageActions = ClientBattleTextReplayAdapter.adapt(result)
+            .filter {
+                it.params.size == 5 &&
+                    it.params[0] == 6 &&
+                    it.params[1] == 1 &&
+                    it.params[2] == 200020
+            }
+
+        assertEquals(listOf(62, 242, 243), ongoingDamageActions.map(ClientReportAction::id))
+    }
+
+    @Test
     fun `projects preparation start with the real client action`() {
         val source = BattleHeroRef(Side.ATTACKER, 1, BattleHeroId(1))
         val result = twoRoundResult().copy(
@@ -1219,8 +1248,8 @@ class ClientBattleTextReplayAdapterTest {
         assertEquals(ClientBattleTextReplayProtocol.SKILL_CAST, actions[statusIndex - 1].id)
         assertEquals(ClientBattleTextReplayProtocol.SKILL_END, actions[statusIndex + 1].id)
         assertTrue(actions.any {
-            it.id == ClientBattleTextReplayProtocol.ONGOING_DAMAGE &&
-                it.params == listOf<Any>(1, 200002, 6, 60, 640, 305)
+            it.id == "6q".toInt(36) &&
+                it.params == listOf<Any>(6, 1, 200002, 60, 640)
         })
         assertTrue(actions.any {
             it.id == ClientBattleTextReplayProtocol.DAMAGE_EVADED &&

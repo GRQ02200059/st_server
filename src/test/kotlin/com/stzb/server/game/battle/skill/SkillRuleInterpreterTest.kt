@@ -27,6 +27,32 @@ import kotlin.test.assertTrue
 
 class SkillRuleInterpreterTest {
     @Test
+    fun `detail probability applies the same morale adjustment as root skills`() {
+        val detail = effectRule(
+            detailId = 101,
+            effectId = 77,
+            probabilityInit = 50,
+            probabilityMax = 50,
+        )
+        val graph = graph(rule(1, detail))
+        val random = CountingRandom(55)
+        val context = context(
+            skillId = 1,
+            random = random,
+            sourceSkillLevel = 10,
+            sourceMorale = 122,
+        )
+
+        val result = interpreter(graph).executeDetailForEngine(
+            detail = graph.details.single { it.detailId == 101 },
+            context = context,
+        )
+
+        assertEquals(1, result.stateChanges.filterIsInstance<MarkerEffectChange>().size)
+        assertEquals(1, random.calls)
+    }
+
+    @Test
     fun `details with the same target signature reuse one random selection`() {
         val graph = graph(
             rule(
@@ -36,13 +62,13 @@ class SkillRuleInterpreterTest {
                     effectId = 521,
                     attackType = 43,
                     attackMax = 2,
-                ),
+                ).copy(effectBuffType = 0),
                 effectRule(
                     detailId = 102,
                     effectId = 523,
                     attackType = 43,
                     attackMax = 2,
-                ),
+                ).copy(effectBuffType = 1),
                 kind = SkillKind.COMMAND,
             ),
         )
@@ -243,6 +269,29 @@ class SkillRuleInterpreterTest {
             sourceModifiers = listOf(
                 com.stzb.server.game.battle.BattleModifier.SkillProbabilityPercent(20),
             ),
+        )
+
+        val result = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context,
+        )
+
+        assertEquals(listOf(1), result.executedSkillIds)
+        assertEquals(1, random.calls)
+    }
+
+    @Test
+    fun `skill probability modifiers are applied before morale scaling`() {
+        val random = CountingRandom(55)
+        val graph = graph(rule(1, effectRule(101, 0), probability = 40))
+        val context = context(
+            skillId = 1,
+            random = random,
+            sourceModifiers = listOf(
+                BattleModifier.SkillProbabilityPercent(10),
+            ),
+            sourceMorale = 121,
         )
 
         val result = interpreter(graph).execute(
@@ -1189,6 +1238,49 @@ class SkillRuleInterpreterTest {
             listOf(ref(Side.ATTACKER, 0, 1), ref(Side.ATTACKER, 1, 2)),
             markers.map { it.target },
         )
+    }
+
+    @Test
+    fun `effect 151 triggers an existing referenced ongoing effect without reapplying it`() {
+        val graph = graph(
+            rule(
+                1,
+                effectRule(
+                    detailId = 101,
+                    effectId = 151,
+                    effectParam = 201,
+                    attackType = 41,
+                ),
+            ),
+            rule(
+                2,
+                effectRule(
+                    detailId = 201,
+                    effectId = 303,
+                    constantParam = 130,
+                    attackType = 41,
+                    availableHit = 3,
+                    availableRounds = 0,
+                    calcPos = 311,
+                ),
+            ),
+        )
+        val context = context(skillId = 1)
+
+        val result = interpreter(graph).execute(
+            1,
+            BattleTrigger.ACTIVE_SKILL_ATTEMPT,
+            context,
+        )
+
+        val trigger = result.stateChanges
+            .filterIsInstance<TriggerSpecifiedEffectChange>()
+            .single()
+        assertEquals(context.source, trigger.triggeredSource)
+        assertEquals(201, trigger.triggeredDetailId)
+        assertEquals(303, trigger.triggeredEffectId)
+        assertEquals(ref(Side.DEFENDER, 0, 3), trigger.target)
+        assertTrue(result.stateChanges.none { it is ScheduledDamageEffectChange })
     }
 
     @Test
@@ -2404,6 +2496,7 @@ class SkillRuleInterpreterTest {
         enemySkillIds: List<Int> = emptyList(),
         sourceStrategy: Int = 100,
         sourceSkillLevel: Int = 1,
+        sourceMorale: Int = 100,
     ): SkillBattleContext {
         val source = hero(
             1,
@@ -2412,7 +2505,7 @@ class SkillRuleInterpreterTest {
             skillLevels = listOf(sourceSkillLevel),
             modifiers = sourceModifiers,
             strategy = sourceStrategy,
-        )
+        ).copy(morale = sourceMorale)
         val ally = hero(2, 1, skillIds = alliedSkillIds)
         val enemy = hero(3, 0, skillIds = enemySkillIds)
         return SkillBattleContext(

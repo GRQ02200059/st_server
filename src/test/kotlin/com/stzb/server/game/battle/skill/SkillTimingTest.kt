@@ -324,7 +324,8 @@ class SkillTimingTest {
             currentHit = 0,
         )
 
-        val due = fixture.coordinator.onRound(context().copy(round = 2)).stateChanges
+        val dueResult = fixture.coordinator.onRound(context().copy(round = 2))
+        val due = dueResult.stateChanges
 
         assertEquals(listOf(1_303, 1_402), due.map {
             when (it) {
@@ -335,6 +336,8 @@ class SkillTimingTest {
         })
         assertEquals(damageSpec, (due[0] as ScheduledDamageEffectChange).spec)
         assertEquals(recoverySpec, (due[1] as ScheduledRecoveryEffectChange).spec)
+        assertEquals(2, dueResult.timingDues.size)
+        assertEquals(due, dueResult.timingDues.map(SkillTimingDue::change))
     }
 
     @Test

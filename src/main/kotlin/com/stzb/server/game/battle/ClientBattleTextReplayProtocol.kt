@@ -40,9 +40,13 @@ internal object ClientBattleTextReplayProtocol {
     const val PREPARATION_EFFECT_END = 223
     const val SKILL_CAST = 301
     const val DERIVED_SKILL_TRIGGERED = 300
+    const val ATTACK_SKILL_DAMAGE = 59
     const val SKILL_DAMAGE = 60
-    const val ONGOING_DAMAGE = 59
+    const val PANIC_ONGOING_DAMAGE = 62
+    const val ONGOING_DAMAGE = 242
+    const val HEX_ONGOING_DAMAGE = 243
     const val RECOVERY = 63
+    const val ONGOING_RECOVERY = 64
     const val STATUS = 102
     const val STATUS_REMOVED = 102
     const val DAMAGE_EVADED = 110
@@ -164,6 +168,12 @@ internal object ClientBattleTextReplayProtocol {
         BattleStatus.DOUBLE_ATTACK -> 84
         BattleStatus.DISARM -> 87
         else -> 301
+    }
+
+    fun ongoingDamageAction(status: BattleStatus): Int = when (status) {
+        BattleStatus.PANIC -> PANIC_ONGOING_DAMAGE
+        BattleStatus.HEX -> HEX_ONGOING_DAMAGE
+        else -> ONGOING_DAMAGE
     }
 
     fun initialAttributeAction(stat: BattleStat): Int = when (stat) {
