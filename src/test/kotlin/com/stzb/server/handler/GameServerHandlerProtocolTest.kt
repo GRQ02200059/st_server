@@ -89,6 +89,8 @@ class GameServerHandlerProtocolTest {
             Cmd.LOG_MUSIC_OPEN to "true",
             Cmd.RESFILE_LOG_HUB_RECORD to "null",
             Cmd.DAILY_REPORT_LOG to "null",
+            Cmd.HELP_GUIDE_TIPS_LOG to "200",
+            Cmd.UPDATE_GUIDE_RECORD to "200",
         )
         val syntheticPayloads = listOf(
             """["synthetic-alpha",{"opaque":17}]""",

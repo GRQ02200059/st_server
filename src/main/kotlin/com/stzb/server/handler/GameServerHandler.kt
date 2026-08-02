@@ -177,6 +177,14 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(Cmd.DAILY_REPORT_LOG, "null", dataType = DownType.PLAIN))
             }
 
+            Cmd.HELP_GUIDE_TIPS_LOG -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.HELP_GUIDE_TIPS_LOG, "200", dataType = DownType.PLAIN))
+            }
+
+            Cmd.UPDATE_GUIDE_RECORD -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.UPDATE_GUIDE_RECORD, "200", dataType = DownType.PLAIN))
+            }
+
             Cmd.PRE_SERVER_QUERY_USER_OP -> {
                 sendPreServerQueryUserOp(ctx, msg)
             }

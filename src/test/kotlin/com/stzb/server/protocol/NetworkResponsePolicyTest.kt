@@ -95,6 +95,17 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `guide log acknowledgements require explicit handlers`() {
+        listOf(
+            Cmd.HELP_GUIDE_TIPS_LOG,
+            Cmd.UPDATE_GUIDE_RECORD,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `pre login and external commands require explicit handlers`() {
         listOf(
             Cmd.PRE_SERVER_QUERY_USER_OP,
@@ -141,8 +152,7 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
-    fun `recorded scalar and tuple commands keep their wire shapes`() {
-        assertEquals("200", NetworkResponsePolicy.observedShapeBody(5091))
+    fun `recorded tuple commands keep their wire shapes`() {
         assertEquals("[1001]", NetworkResponsePolicy.observedShapeBody(3877))
         assertEquals("[false,[]]", NetworkResponsePolicy.observedShapeBody(4968))
         assertEquals("[[],0]", NetworkResponsePolicy.observedShapeBody(6092))

@@ -66,6 +66,22 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `guide log commands expose readable handler owned client request contracts`() {
+        assertEquals(5_069, Cmd.HELP_GUIDE_TIPS_LOG)
+        assertEquals(5_091, Cmd.UPDATE_GUIDE_RECORD)
+
+        listOf(
+            Cmd.HELP_GUIDE_TIPS_LOG,
+            Cmd.UPDATE_GUIDE_RECORD,
+        ).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `union group commands expose readable ids`() {
         assertEquals(142, Cmd.UNION_GET_GROUP_LIST)
         assertEquals(143, Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT)

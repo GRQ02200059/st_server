@@ -105,6 +105,8 @@ object CommandContractCatalog {
                 Cmd.LOG_MUSIC_OPEN,
                 Cmd.RESFILE_LOG_HUB_RECORD,
                 Cmd.DAILY_REPORT_LOG,
+                Cmd.HELP_GUIDE_TIPS_LOG,
+                Cmd.UPDATE_GUIDE_RECORD,
                 Cmd.PRE_SERVER_QUERY_USER_OP,
                 Cmd.IP_USER_COUNT_PRE,
                 Cmd.DAILY_REPORT_GET_DETAIL,
