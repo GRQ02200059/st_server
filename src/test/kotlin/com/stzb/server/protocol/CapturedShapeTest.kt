@@ -38,6 +38,22 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `clan log get stays outside captured shape fallback`() {
+        val commandId = 2_678
+
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "[0,20000] synthetic-clan-log-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `nearby clan list stays outside captured shape fallback`() {
         val commandId = 2_701
 

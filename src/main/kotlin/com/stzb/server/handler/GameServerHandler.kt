@@ -303,6 +303,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(msg.cmdId, "{}", dataType = DownType.PLAIN))
             }
 
+            Cmd.CLAN_LOG_GET -> {
+                sendClanLogGet(ctx, msg)
+            }
+
             Cmd.GET_INVITE_LIST,
             Cmd.GET_ZHAOHUI_LIST,
             Cmd.CLAN_NEARBY_CLAN_LIST,
@@ -2239,6 +2243,25 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
     private fun sendReadOnlyEmptyList(ctx: ChannelHandlerContext, cmdId: Int) {
         ctx.writeAndFlush(DownPacket.json(cmdId, "[]", dataType = DownType.PLAIN))
+    }
+
+    private fun sendClanLogGet(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
+            ?.takeIf { it.isArray && it.size() == 2 }
+            ?: return
+        val logIdCur = request[0]
+            .takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: return
+        val logNum = request[1]
+            .takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: return
+        if (logIdCur != 0 || logNum != 20_000) return
+
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.CLAN_LOG_GET, "[]", dataType = DownType.PLAIN),
+        )
     }
 
     private fun sendStrictEmptyQueryProjection(ctx: ChannelHandlerContext, msg: UpPacket) {

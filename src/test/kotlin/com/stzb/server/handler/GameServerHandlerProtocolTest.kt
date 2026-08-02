@@ -1217,6 +1217,112 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `clan log get accepts only exact fixed tuple and remains repository free`() {
+        val commandId = 2_678
+        val accountKey = "clan-log-get-boundary"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Clan Log Boundary User",
+        )
+        state.resources.money = 2_678_000
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Clan Log Boundary Union", nowSec = 6)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_030, nowSec = 6))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val invalidRequests = linkedMapOf(
+            "JSON null" to "null",
+            "empty text" to "",
+            "malformed JSON" to "[",
+            "number scalar" to "2678",
+            "string scalar" to """"synthetic-clan-log-canary"""",
+            "boolean scalar" to "true",
+            "top-level object" to """{"synthetic":"clan-log-canary"}""",
+            "empty array" to "[]",
+            "one-slot array" to "[0]",
+            "nested first slot" to "[[],20000]",
+            "nested second slot" to "[0,[]]",
+            "extra slot" to "[0,20000,1]",
+            "wrong first value" to "[1,20000]",
+            "wrong second value" to "[0,19999]",
+            "null first slot" to "[null,20000]",
+            "null second slot" to "[0,null]",
+            "string first slot" to """["0",20000]""",
+            "string second slot" to """[0,"20000"]""",
+            "boolean first slot" to "[true,20000]",
+            "boolean second slot" to "[0,false]",
+            "object first slot" to """[{"synthetic":"first"},20000]""",
+            "object second slot" to """[0,{"synthetic":"second"}]""",
+            "floating first slot" to "[0.0,20000]",
+            "floating second slot" to "[0,20000.0]",
+            "exponential first slot" to "[0e0,20000]",
+            "exponential second slot" to "[0,2e4]",
+            "positive Int32 overflow first slot" to "[2147483648,20000]",
+            "negative Int32 overflow first slot" to "[-2147483649,20000]",
+            "positive Int32 overflow second slot" to "[0,2147483648]",
+            "negative Int32 overflow second slot" to "[0,-2147483649]",
+            "trailing token" to "[0,20000] []",
+        )
+
+        fun assertStateUnchanged(stage: String) {
+            assertEquals(playerBefore, state.toSnapshot(), "$stage player state changed")
+            assertTrue(
+                persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+                "$stage persisted player bytes changed",
+            )
+            assertEquals(worldBefore, WorldStateRepository.projection(), "$stage world state changed")
+            assertEquals(unionsBefore, UnionStateRepository.all(), "$stage union state changed")
+        }
+
+        val channel = newChannel()
+        try {
+            invalidRequests.forEach { (case, request) ->
+                channel.writeInbound(
+                    upPacket(commandId, request, userId = state.userId + 10_000),
+                )
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "case=$case emitted an outbound packet",
+                )
+            }
+            assertStateUnchanged("invalid requests")
+
+            channel.writeInbound(
+                upPacket(commandId, "[0,20000]", userId = state.userId + 10_000),
+            )
+
+            val packet = assertIs<DownPacket>(
+                channel.readOutbound<Any>(),
+                "valid [0,20000] request emitted no response",
+            )
+            assertEquals(commandId, packet.cmd)
+            assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, packet.cmd)
+            assertNotEquals(6_069, packet.cmd)
+            assertEquals(DownType.PLAIN, packet.dataType)
+            assertTrue(
+                "[]".toByteArray().contentEquals(packet.body),
+                "valid [0,20000] request emitted wrong wire bytes",
+            )
+            val parsed = mapper.readTree(packet.body)
+            assertTrue(parsed.isArray)
+            assertTrue(parsed.isEmpty)
+            assertNull(
+                channel.readOutbound<Any>(),
+                "valid request emitted an unsolicited, cmd 90005, cmd 6069, or extra packet",
+            )
+            assertStateUnchanged("valid request")
+        } finally {
+            channel.finishAndReleaseAll()
+        }
+    }
+
+    @Test
     fun `nearby clan list accepts only exact empty array and remains repository free`() {
         val commandId = 2_701
         val accountKey = "nearby-clan-list-boundary"
