@@ -307,6 +307,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendClanLogGet(ctx, msg)
             }
 
+            Cmd.UNION_MEMBER_CLAN_LIST,
             Cmd.GET_INVITE_LIST,
             Cmd.GET_ZHAOHUI_LIST,
             Cmd.UNION_LEADER_CLAN_CITY_LIST,
@@ -2272,6 +2273,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         if (!acceptsNull && !acceptsEmptyArray) return
 
         val response = when (msg.cmdId) {
+            Cmd.UNION_MEMBER_CLAN_LIST,
             Cmd.GET_INVITE_LIST,
             Cmd.GET_ZHAOHUI_LIST,
             Cmd.UNION_LEADER_CLAN_CITY_LIST,
