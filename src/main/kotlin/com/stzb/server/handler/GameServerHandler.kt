@@ -179,6 +179,16 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(Cmd.DAILY_REPORT_LOG, "null", dataType = DownType.PLAIN))
             }
 
+            Cmd.CCLIVE_MAIN_BTN_OPEN_LOG,
+            Cmd.LOG_SHIELD_WORDS,
+            Cmd.FEED_CLICKED_LOG,
+            Cmd.ACTIVITY_SCENE_DIALOG_LOG,
+            Cmd.ANNIVERSARY_COMPETITION_FOR_LOG,
+            Cmd.TRIAL_SAND_TABLE_LOG,
+            Cmd.REPORT_NEWBIE_GUIDE -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "null", dataType = DownType.PLAIN))
+            }
+
             Cmd.HELP_GUIDE_TIPS_LOG -> {
                 ctx.writeAndFlush(DownPacket.json(Cmd.HELP_GUIDE_TIPS_LOG, "200", dataType = DownType.PLAIN))
             }

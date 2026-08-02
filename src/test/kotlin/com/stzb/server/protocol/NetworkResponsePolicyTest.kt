@@ -262,6 +262,20 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `body blind telemetry acknowledgements require explicit handlers`() {
+        listOf(2_524, 3_402, 3_604, 4_019, 5_202, 5_242, 8_040).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+            assertNull(
+                NetworkResponsePolicy.observedShapeBody(cmd, "not-json private-marker"),
+                "cmd=$cmd",
+            )
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `guide log acknowledgements require explicit handlers`() {
         listOf(
             Cmd.HELP_GUIDE_TIPS_LOG,

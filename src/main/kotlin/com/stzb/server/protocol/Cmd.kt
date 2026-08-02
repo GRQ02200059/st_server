@@ -91,6 +91,7 @@ object Cmd {
     const val GEAR_FORGET = 1227
     const val FENGLU_LEVEL_STATUS = 1265
     const val HERO_ACTIVE_FACADE = 2520
+    const val CCLIVE_MAIN_BTN_OPEN_LOG = 2524
     const val NOTIFY_CHAT_MSG = 2100
     const val SET_CHANNEL_CERTIFICATION = 2311
     const val XUANFUQIU_RECEIVED_MSG = 2402
@@ -113,13 +114,16 @@ object Cmd {
     const val PROGRESS_GET_NPC_OCCUPY_INFO = 873
     const val PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX = 874
     const val SET_CLIENT_RED_DOT_DATA = 3400
+    const val LOG_SHIELD_WORDS = 3402
     const val UNION_SEARCH_UNION_LIST = 3410
     const val UNION_SEARCH_PLAYER_LIST = 3411
+    const val FEED_CLICKED_LOG = 3604
     const val GET_HOMEPAGE_INFO = 3686
     const val MAIL_NOTIFY_GET_ALL = 3758
     const val FRIEND_GROUP_GET_HISTORY_CHAT = 3846
     const val FILE_PICKER_GET_TOKEN_DEFAULT = 3928
     const val BUILD_FACADE_APPLY_BUILD_SCHEME = 3945
+    const val ACTIVITY_SCENE_DIALOG_LOG = 4019
     const val CHECK_HAVE_UNION_TO_JOIN = 4087
     const val RESFILE_LOG_HUB_RECORD = 4326
     const val GET_USER_NPC_ARMY = 4329
@@ -136,7 +140,9 @@ object Cmd {
     const val DAILY_REPORT_GET_DETAIL = 5070
     const val STRATEGY_HELP_GET = 5082
     const val UPDATE_GUIDE_RECORD = 5091
+    const val ANNIVERSARY_COMPETITION_FOR_LOG = 5202
     const val GET_HERO_RECOMMEND_2 = 5210
+    const val TRIAL_SAND_TABLE_LOG = 5242
     const val SOLDIER_GIFT_ACTIVATE = 6030
     const val FIRST_STATE_COOUPY_MSG = 6037
     const val CHAT_UNION_PLAN_HISTORY_ID = 6053
@@ -156,6 +162,7 @@ object Cmd {
     const val WORLD_BOSS_SAVE_TEAM = 8005
     const val WORLD_BOSS_TOP_THREE_RANK = 8009
     const val EXERCISE_DAILY_SAVE_TEAM = 8011
+    const val REPORT_NEWBIE_GUIDE = 8040
     const val NORMAL_TEAM_COMPOSITION = 9026
     const val HERO_TEAM_LIBRARY = 9029
     const val PRE_SERVER_QUERY_USER_OP = 40003

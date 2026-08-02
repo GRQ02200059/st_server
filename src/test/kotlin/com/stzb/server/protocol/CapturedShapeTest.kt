@@ -77,6 +77,20 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `handler owned body blind telemetry acknowledgements are absent from observed shape fallback`() {
+        listOf(2_524, 3_402, 3_604, 4_019, 5_202, 5_242, 8_040).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+            assertNull(
+                NetworkResponsePolicy.observedShapeBody(cmd, "not-json private-marker"),
+                "cmd=$cmd",
+            )
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `handler owned revenue commands are absent from observed shape fallback`() {
         listOf(Cmd.REVENUE, Cmd.REVENUE_DOUBLE).forEach { cmd ->
             assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")

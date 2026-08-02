@@ -333,6 +333,79 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `telemetry null acknowledgements are body blind and repository free`() {
+        val channel = newChannel()
+        val accountKey = "telemetry-null-ack"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Telemetry Null Ack User",
+        )
+        state.resources.money = 7_654_321
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Telemetry Null Ack Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_021, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val commands = listOf(2_524, 3_402, 3_604, 4_019, 5_202, 5_242, 8_040)
+        val requestBodies = listOf(
+            "null",
+            "[]",
+            "[17]",
+            """[17,{"opaque":42},false]""",
+            "{}",
+            """{"synthetic":"private-marker","values":[false,42]}""",
+            "0",
+            "true",
+            """"synthetic private-marker"""",
+            "not-json synthetic private-marker",
+            "[] {}",
+        )
+        val expectedBody = "null".toByteArray()
+
+        commands.forEach { commandId ->
+            requestBodies.forEach { request ->
+                channel.writeInbound(upPacket(commandId, request, userId = state.userId + 10_000))
+
+                val response = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "cmd=$commandId request=$request",
+                )
+                assertEquals(commandId, response.cmd, "cmd=$commandId request=$request")
+                assertEquals(DownType.PLAIN, response.dataType, "cmd=$commandId request=$request")
+                assertTrue(
+                    expectedBody.contentEquals(response.body),
+                    "cmd=$commandId request=$request did not emit exact wire null",
+                )
+                assertTrue(
+                    mapper.readTree(response.body).isNull,
+                    "cmd=$commandId request=$request did not emit JSON null",
+                )
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "cmd=$commandId request=$request emitted an extra packet",
+                )
+            }
+        }
+
+        assertEquals(playerBefore, state.toSnapshot())
+        assertTrue(
+            persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+            "persisted player bytes changed",
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `sampled empty list queries ignore arbitrary payloads without mutating repositories`() {
         val channel = newChannel()
         val accountKey = "sampled-empty-list-snapshot"

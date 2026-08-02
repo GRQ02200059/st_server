@@ -8,6 +8,33 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `body blind telemetry commands expose exact handler owned provisional contracts`() {
+        val commands = linkedMapOf(
+            "CCLIVE_MAIN_BTN_OPEN_LOG" to 2_524,
+            "LOG_SHIELD_WORDS" to 3_402,
+            "FEED_CLICKED_LOG" to 3_604,
+            "ACTIVITY_SCENE_DIALOG_LOG" to 4_019,
+            "ANNIVERSARY_COMPETITION_FOR_LOG" to 5_202,
+            "TRIAL_SAND_TABLE_LOG" to 5_242,
+            "REPORT_NEWBIE_GUIDE" to 8_040,
+        )
+
+        commands.forEach { (name, expectedId) ->
+            val field = assertNotNull(
+                runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+                "missing Cmd.$name",
+            )
+            assertEquals(expectedId, field.getInt(null), name)
+            val contract = CommandContractCatalog.registry.contract(expectedId)
+            assertEquals(listOf(name), contract?.names, "cmd=$expectedId")
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$expectedId")
+            assertEquals(CommandDomain.UNKNOWN, contract?.domain, "cmd=$expectedId")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$expectedId")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$expectedId")
+        }
+    }
+
+    @Test
     fun `revenue commands expose handler owned provisional city contracts`() {
         val commands = mapOf(
             Cmd.REVENUE to (750 to "REVENUE"),
