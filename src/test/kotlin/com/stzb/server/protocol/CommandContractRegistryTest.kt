@@ -122,6 +122,24 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `union letter query exposes exact constant and handler owned social contract`() {
+        val name = "GET_UNION_LETTER"
+        val commandId = 9_015
+        val field = assertNotNull(
+            runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+            "missing Cmd.$name",
+        )
+
+        assertEquals(commandId, field.getInt(null))
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(listOf(name), contract?.names)
+        assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction)
+        assertEquals(CommandDomain.SOCIAL, contract?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `nobility officer record query exposes exact constant and handler owned social duplex contract`() {
         val name = "NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD"
         val commandId = 5_212

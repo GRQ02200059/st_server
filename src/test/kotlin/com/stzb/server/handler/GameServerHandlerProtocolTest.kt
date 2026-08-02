@@ -723,6 +723,119 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `union letter query accepts only modes zero and one and remains repository free`() {
+        val commandId = 9_015
+        val accountKey = "union-letter-query-boundary"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Union Letter Query User",
+        )
+        state.resources.money = 9_015_000
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Union Letter Query Union", nowSec = 5)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_029, nowSec = 5))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val invalidRequests = linkedMapOf(
+            "JSON null" to "null",
+            "empty text" to "",
+            "malformed JSON" to "[",
+            "number scalar" to "0",
+            "string scalar" to """"synthetic-letter-canary"""",
+            "boolean scalar" to "false",
+            "top-level object" to """{"synthetic":"letter-canary"}""",
+            "empty array" to "[]",
+            "nested array" to "[[]]",
+            "more than one slot" to "[0,1]",
+            "null slot" to "[null]",
+            "string slot" to """["synthetic-letter-canary"]""",
+            "boolean slot" to "[true]",
+            "object slot" to """[{"synthetic":"letter-canary"}]""",
+            "mode below range" to "[-1]",
+            "mode above range" to "[2]",
+            "positive Int32 overflow" to "[2147483648]",
+            "negative Int32 overflow" to "[-2147483649]",
+            "floating point" to "[0.0]",
+            "exponential" to "[1e0]",
+            "trailing token" to "[0] []",
+        )
+
+        fun assertStateUnchanged(stage: String) {
+            assertEquals(playerBefore, state.toSnapshot(), "$stage player state changed")
+            assertTrue(
+                persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+                "$stage persisted player bytes changed",
+            )
+            assertEquals(worldBefore, WorldStateRepository.projection(), "$stage world state changed")
+            assertEquals(unionsBefore, UnionStateRepository.all(), "$stage union state changed")
+        }
+
+        fun validModeExecutable(mode: Int) = Executable {
+            val channel = newChannel()
+            try {
+                channel.writeInbound(
+                    upPacket(commandId, "[$mode]", userId = state.userId + 10_000),
+                )
+
+                val packet = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "mode=$mode emitted no response",
+                )
+                assertEquals(commandId, packet.cmd, "mode=$mode")
+                assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, packet.cmd, "mode=$mode")
+                assertEquals(DownType.PLAIN, packet.dataType, "mode=$mode")
+                assertTrue(
+                    """["",""]""".toByteArray().contentEquals(packet.body),
+                    "mode=$mode emitted wrong wire bytes",
+                )
+                val parsed = mapper.readTree(packet.body)
+                assertTrue(parsed.isArray, "mode=$mode response is not an array")
+                assertEquals(2, parsed.size(), "mode=$mode response arity")
+                assertTrue(parsed[0].isTextual, "mode=$mode slot=0 is not a JSON string")
+                assertEquals("", parsed[0].textValue(), "mode=$mode slot=0")
+                assertTrue(parsed[1].isTextual, "mode=$mode slot=1 is not a JSON string")
+                assertEquals("", parsed[1].textValue(), "mode=$mode slot=1")
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "mode=$mode emitted an extra packet",
+                )
+                assertStateUnchanged("mode=$mode")
+            } finally {
+                channel.finishAndReleaseAll()
+            }
+        }
+
+        assertAll(
+            "union letter query",
+            Executable {
+                val channel = newChannel()
+                try {
+                    invalidRequests.forEach { (case, request) ->
+                        channel.writeInbound(
+                            upPacket(commandId, request, userId = state.userId + 10_000),
+                        )
+                        assertNull(
+                            channel.readOutbound<Any>(),
+                            "case=$case emitted an outbound packet",
+                        )
+                    }
+                    assertStateUnchanged("invalid requests")
+                } finally {
+                    channel.finishAndReleaseAll()
+                }
+            },
+            validModeExecutable(0),
+            validModeExecutable(1),
+        )
+    }
+
+    @Test
     fun `summer farm record queries enforce exact keys and remain repository free`() {
         val accountKey = "summer-farm-record-query-boundary"
         val state = PlayerStateRepository.getOrCreate(

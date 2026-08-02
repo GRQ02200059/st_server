@@ -317,6 +317,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendSummerFarmRecordQuery(ctx, msg)
             }
 
+            Cmd.GET_UNION_LETTER -> {
+                sendUnionLetterQuery(ctx, msg)
+            }
+
             Cmd.NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD -> {
                 sendNobilityOfficerRecord(ctx, msg)
             }
@@ -1811,6 +1815,21 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         if (!validKey) return
 
         ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[]", dataType = DownType.PLAIN))
+    }
+
+    private fun sendUnionLetterQuery(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val validRequest = (
+            runCatching { strictRequestMapper.readTree(msg.bodyText) }
+                .getOrNull()
+                ?.takeIf { it.isArray && it.size() == 1 }
+                ?.get(0)
+                ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+                ?.intValue()
+                ?.takeIf { it == 0 || it == 1 }
+        ) != null
+        if (!validRequest) return
+
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, """["",""]""", dataType = DownType.PLAIN))
     }
 
     private fun sendWorldBossTopThreeRank(ctx: ChannelHandlerContext, session: Session?) {

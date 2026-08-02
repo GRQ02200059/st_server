@@ -108,6 +108,22 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `union letter query stays outside captured shape fallback`() {
+        val commandId = 9_015
+
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "[0] synthetic-letter-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `nobility officer record query stays outside captured shape fallback`() {
         val commandId = 5_212
 

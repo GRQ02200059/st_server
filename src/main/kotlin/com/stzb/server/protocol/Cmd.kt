@@ -184,6 +184,7 @@ object Cmd {
     const val NORMAL_TEAM_COMPOSITION = 9026
     const val HERO_TEAM_LIBRARY = 9029
     const val GET_WHICH_CHANNEL_SERVER = 9010
+    const val GET_UNION_LETTER = 9015
     const val DMM_ACCOUNT_CHECK = 29003
     const val PRE_SERVER_QUERY_USER_OP = 40003
     const val PRE_SERVER_GEN_H5_SIGN = 40004

@@ -109,6 +109,22 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `union letter query requires its explicit handler`() {
+        val commandId = 9_015
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-letter-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `nobility officer record query requires its explicit handler`() {
         val commandId = 5_212
 
