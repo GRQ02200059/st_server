@@ -8,6 +8,96 @@ import kotlin.test.assertTrue
 
 class UserInitTableBuilderTest {
     @Test
+    fun `login snapshot includes exact empty revenue and accumulated money rows`() {
+        val root = createTempDirectory("stzb-empty-revenue-row")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val state = PlayerStateRepository.getOrCreate(
+                accountKey = "empty-revenue-row",
+                cityWid = 10036,
+                roleName = "主公",
+            )
+            state.resources.money = 0
+            state.resources.moneyAccumulated = 6500
+
+            val tables = UserInitTableBuilder.build(
+                userId = state.userId,
+                cityWid = state.cityWid,
+                roleName = state.roleName,
+                serverOpenTime = 10,
+                accountKey = state.accountKey,
+            ).drop(1).associateBy { it[0].asText() }
+
+            val resourceRow = tables.getValue("Tb_user_res")[1].single()
+            assertEquals(6500, resourceRow[1].asInt())
+            assertEquals(0, resourceRow[2].asInt())
+
+            val revenueEntry = tables.getValue("Tb_user_revenue")
+            assertEquals("Tb_user_revenue", revenueEntry[0].asText())
+            assertEquals(1, revenueEntry[1].size())
+            val row = revenueEntry[1].single()
+            assertEquals(8, row.size())
+            assertTrue(row[0].isIntegralNumber)
+            assertTrue(row[1].isTextual)
+            assertTrue(row[2].isIntegralNumber)
+            assertTrue(row[3].isIntegralNumber)
+            assertTrue(row[4].isIntegralNumber)
+            assertTrue(row[5].isTextual)
+            assertTrue(row[6].isTextual)
+            assertTrue(row[7].isTextual)
+            assertEquals(
+                listOf(state.userId, "", 0, 0, 0, "", "", ""),
+                row.map { if (it.isTextual) it.asText() else it.asInt() },
+            )
+        } finally {
+            PlayerStateRepository.reset()
+        }
+    }
+
+    @Test
+    fun `login snapshot projects populated structured revenue with trailing semicolons`() {
+        val root = createTempDirectory("stzb-populated-revenue-row")
+        try {
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val state = PlayerStateRepository.getOrCreate(
+                accountKey = "populated-revenue-row",
+                cityWid = 10037,
+                roleName = "主公",
+            )
+            state.revenue.collections += RevenueCollection(10, 6500)
+            state.revenue.collections += RevenueCollection(20, 6500)
+            state.revenue.gifts += RevenueGift(6500, extra = 0, claimed = false)
+            state.revenue.gifts += RevenueGift(6500, extra = 0, claimed = true)
+            state.revenue.revenueTime = 20
+            state.revenue.nextRefreshTime = 30
+            state.revenue.forceCount = 2
+
+            val row = UserInitTableBuilder.build(
+                userId = state.userId,
+                cityWid = state.cityWid,
+                roleName = state.roleName,
+                serverOpenTime = 10,
+                accountKey = state.accountKey,
+            ).drop(1)
+                .associateBy { it[0].asText() }
+                .getValue("Tb_user_revenue")[1]
+                .single()
+
+            assertEquals(8, row.size())
+            assertEquals(state.userId, row[0].asInt())
+            assertEquals("10,6500;20,6500;", row[1].asText())
+            assertEquals(20, row[2].asInt())
+            assertEquals(30, row[3].asInt())
+            assertEquals(2, row[4].asInt())
+            assertEquals("", row[5].asText())
+            assertEquals("6500,0,0;6500,0,1;", row[6].asText())
+            assertEquals("", row[7].asText())
+        } finally {
+            PlayerStateRepository.reset()
+        }
+    }
+
+    @Test
     fun `card packs are new only until their opening screen has been acknowledged`() {
         val root = createTempDirectory("stzb-card-packs-seen")
         try {

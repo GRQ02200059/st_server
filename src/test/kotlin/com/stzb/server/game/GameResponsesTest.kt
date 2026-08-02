@@ -10,6 +10,57 @@ class GameResponsesTest {
     private val mapper = jacksonObjectMapper()
 
     @Test
+    fun `ordinary revenue update uses exact sparse table and field order`() {
+        val state = PlayerState(userId = 85, cityWid = 10085, roleName = "主公")
+        state.resources.money = 6500
+        state.resources.moneyAccumulated = 6500
+        state.revenue.collections += RevenueCollection(100, 6500)
+        state.revenue.gifts += RevenueGift(6500)
+        state.revenue.revenueTime = 100
+        state.revenue.nextRefreshTime = 200
+
+        val update = mapper.readTree(GameResponses.ordinaryRevenueUpdateNotify(state))
+
+        assertEquals(2, update.size())
+        assertEquals(2, update[0][0].asInt())
+        assertEquals("Tb_user_res", update[0][1].asText())
+        assertEquals(
+            listOf(0, 85, 1, 6500, 2, 6500),
+            update[0][2].map { it.asInt() },
+        )
+        assertEquals(2, update[1][0].asInt())
+        assertEquals("Tb_user_revenue", update[1][1].asText())
+        assertEquals(
+            listOf(0, 85, 1, "100,6500;", 2, 100, 3, 200, 6, "6500,0,0;", 7, ""),
+            update[1][2].map { if (it.isTextual) it.asText() else it.asInt() },
+        )
+    }
+
+    @Test
+    fun `double revenue update uses exact minimal sparse fields`() {
+        val state = PlayerState(userId = 86, cityWid = 10086, roleName = "主公")
+        state.resources.money = 6500
+        state.resources.moneyAccumulated = 6500
+        state.revenue.gifts += RevenueGift(6500, claimed = true)
+
+        val update = mapper.readTree(GameResponses.doubleRevenueUpdateNotify(state))
+
+        assertEquals(2, update.size())
+        assertEquals(2, update[0][0].asInt())
+        assertEquals("Tb_user_res", update[0][1].asText())
+        assertEquals(
+            listOf(0, 86, 1, 6500, 2, 6500),
+            update[0][2].map { it.asInt() },
+        )
+        assertEquals(2, update[1][0].asInt())
+        assertEquals("Tb_user_revenue", update[1][1].asText())
+        assertEquals(
+            listOf(0, 86, 6, "6500,0,1;"),
+            update[1][2].map { if (it.isTextual) it.asText() else it.asInt() },
+        )
+    }
+
+    @Test
     fun `prebook server info exposes all mandatory empty lists`() {
         val json = GameResponses.prebookServerInfo()
         val response = mapper.readTree(json)

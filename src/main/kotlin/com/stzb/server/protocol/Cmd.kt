@@ -76,6 +76,8 @@ object Cmd {
     const val CHAT = 710
     const val CHAT_HISTORY = 711
     const val GET_BLACK_LIST = 714
+    const val REVENUE = 750
+    const val REVENUE_DOUBLE = 752
     const val NOTICE_LIST = 780
     const val USER_CLOSE_UI = 875
     const val USER_OPEN_UI = 885

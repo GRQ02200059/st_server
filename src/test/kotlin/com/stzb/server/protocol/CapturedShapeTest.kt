@@ -77,11 +77,10 @@ class CapturedShapeTest {
     }
 
     @Test
-    fun `captured scalar number commands keep number kind`() {
-        mapOf(750 to "0", 752 to "6500").forEach { (cmd, expected) ->
-            val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
-            assertEquals("number", ShapeAssert.topLevelKind(body), "cmd=$cmd")
-            assertEquals(expected, body, "cmd=$cmd")
+    fun `handler owned revenue commands are absent from observed shape fallback`() {
+        listOf(Cmd.REVENUE, Cmd.REVENUE_DOUBLE).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
         }
     }
 

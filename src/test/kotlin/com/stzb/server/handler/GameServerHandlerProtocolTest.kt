@@ -4,8 +4,12 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.game.CardBorderCatalog
 import com.stzb.server.game.FilePlayerRepository
 import com.stzb.server.game.FileUnionRepository
+import com.stzb.server.game.GameResponses
 import com.stzb.server.game.InventoryCatalog
 import com.stzb.server.game.PlayerRepository
+import com.stzb.server.game.RevenueCollection
+import com.stzb.server.game.RevenueGift
+import com.stzb.server.game.RevenueService
 import com.stzb.server.game.PlayerState
 import com.stzb.server.game.PlayerStateRepository
 import com.stzb.server.game.UnionStateRepository
@@ -53,6 +57,215 @@ class GameServerHandlerProtocolTest {
         UnionStateRepository.reset()
         WorldStateRepository.reset()
         repositoryRoot.toFile().deleteRecursively()
+    }
+
+    @Test
+    fun `revenue success persists grants and emits db update before scalar response`() {
+        val channel = newChannel()
+        val accountKey = "revenue-success"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Revenue Success User",
+        )
+        state.resources.money = 0
+        state.resources.moneyAccumulated = 0
+        state.addHero(heroId = 100_101, nowSec = 10)
+        UnionStateRepository.create(state, "Revenue Success Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_020, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val tracking = CountingPlayerRepository(FilePlayerRepository(repositoryRoot))
+        PlayerStateRepository.configure(tracking)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        GameServerHandler.setRevenueEpochSecondsForTests(100)
+
+        channel.writeInbound(upPacket(Cmd.REVENUE, "[0]", userId = 987_654))
+
+        val ordinaryNotify = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.SYS_NOTIFY_DB_UPDATE, ordinaryNotify.cmd)
+        assertEquals(DownType.PLAIN, ordinaryNotify.dataType)
+        val ordinaryState = requireNotNull(PlayerStateRepository.findExisting(accountKey))
+        assertEquals(
+            mapper.readTree(GameResponses.ordinaryRevenueUpdateNotify(ordinaryState)),
+            mapper.readTree(ordinaryNotify.body),
+        )
+        val ordinaryResponse = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.REVENUE, ordinaryResponse.cmd)
+        assertEquals(DownType.PLAIN, ordinaryResponse.dataType)
+        assertEquals("0", ordinaryResponse.body.toString(Charsets.UTF_8))
+        assertNull(channel.readOutbound<Any>())
+        assertFalse(ordinaryNotify.body.toString(Charsets.UTF_8).contains("987654"))
+
+        channel.writeInbound(upPacket(Cmd.REVENUE_DOUBLE, "[0]", userId = 987_654))
+
+        val doubleNotify = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.SYS_NOTIFY_DB_UPDATE, doubleNotify.cmd)
+        assertEquals(DownType.PLAIN, doubleNotify.dataType)
+        val doubleState = requireNotNull(PlayerStateRepository.findExisting(accountKey))
+        assertEquals(
+            mapper.readTree(GameResponses.doubleRevenueUpdateNotify(doubleState)),
+            mapper.readTree(doubleNotify.body),
+        )
+        val doubleResponse = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.REVENUE_DOUBLE, doubleResponse.cmd)
+        assertEquals(DownType.PLAIN, doubleResponse.dataType)
+        assertEquals("6500", doubleResponse.body.toString(Charsets.UTF_8))
+        assertNull(channel.readOutbound<Any>())
+        assertFalse(doubleNotify.body.toString(Charsets.UTF_8).contains("987654"))
+        assertEquals(2, tracking.saveCount)
+
+        val persisted = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        assertEquals(RevenueService.REVENUE_AMOUNT * 2, persisted.resources.money)
+        assertEquals(RevenueService.REVENUE_AMOUNT * 2, persisted.resources.moneyAccumulated)
+        assertEquals(listOf(RevenueCollection(100, RevenueService.REVENUE_AMOUNT)), persisted.revenue.collections)
+        assertEquals(listOf(RevenueGift(RevenueService.REVENUE_AMOUNT, claimed = true)), persisted.revenue.gifts)
+        assertEquals(
+            playerBefore.copy(resources = persisted.resources, revenue = persisted.revenue),
+            persisted,
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `ordinary revenue cooldown and invalid requests return only zero without save or mutation`() {
+        val channel = newChannel()
+        val accountKey = "revenue-rejections"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Revenue Rejection User",
+        )
+        state.resources.money = 6500
+        state.resources.moneyAccumulated = 6500
+        state.revenue.collections += RevenueCollection(100, 6500)
+        state.revenue.gifts += RevenueGift(6500)
+        state.revenue.revenueTime = 100
+        state.revenue.nextRefreshTime = 100 + RevenueService.RESET_WINDOW_SECONDS
+        PlayerStateRepository.save(state)
+        val before = state.toSnapshot()
+        val tracking = CountingPlayerRepository(FilePlayerRepository(repositoryRoot))
+        PlayerStateRepository.configure(tracking)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        GameServerHandler.setRevenueEpochSecondsForTests(101)
+        val requests = listOf(
+            "[0]",
+            "[1]",
+            "not-json",
+            "[0] []",
+            "{}",
+            "0",
+            "[]",
+            "[0,0]",
+            """["0"]""",
+            "[0.0]",
+        )
+
+        requests.forEach { request ->
+            channel.writeInbound(upPacket(Cmd.REVENUE, request, userId = state.userId))
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "request=$request")
+            assertEquals(Cmd.REVENUE, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals("0", response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+        assertEquals(0, tracking.saveCount)
+        assertEquals(before, requireNotNull(PlayerStateRepository.findExisting(accountKey)).toSnapshot())
+        assertEquals(
+            before,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `double revenue replay and invalid requests return only zero without save or mutation`() {
+        val channel = newChannel()
+        val accountKey = "double-revenue-rejections"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Double Revenue Rejection User",
+        )
+        state.resources.money = 6500
+        state.resources.moneyAccumulated = 6500
+        state.revenue.gifts += RevenueGift(6500, claimed = true)
+        PlayerStateRepository.save(state)
+        val before = state.toSnapshot()
+        val tracking = CountingPlayerRepository(FilePlayerRepository(repositoryRoot))
+        PlayerStateRepository.configure(tracking)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val requests = listOf(
+            "[0]",
+            "[1]",
+            "[-1]",
+            "not-json",
+            "[0] []",
+            "{}",
+            "0",
+            "[]",
+            "[0,0]",
+            """["0"]""",
+            "[0.0]",
+            "[2147483648]",
+        )
+
+        requests.forEach { request ->
+            channel.writeInbound(upPacket(Cmd.REVENUE_DOUBLE, request, userId = state.userId))
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "request=$request")
+            assertEquals(Cmd.REVENUE_DOUBLE, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals("0", response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+        assertEquals(0, tracking.saveCount)
+        assertEquals(before, requireNotNull(PlayerStateRepository.findExisting(accountKey)).toSnapshot())
+        assertEquals(
+            before,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `revenue commands reject unbound and missing accounts without creating state`() {
+        val channel = newChannel()
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        val tracking = CountingPlayerRepository(FilePlayerRepository(repositoryRoot))
+        PlayerStateRepository.configure(tracking)
+
+        listOf(Cmd.REVENUE, Cmd.REVENUE_DOUBLE).forEach { cmd ->
+            channel.writeInbound(upPacket(cmd, "[0]", userId = session.wireUserId))
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+            assertEquals(cmd, response.cmd)
+            assertEquals("0", response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>())
+        }
+        assertNull(FilePlayerRepository(repositoryRoot).findByAccount("legacy-user-${session.wireUserId}"))
+
+        val missingAccount = "missing-revenue-account"
+        session.bind(missingAccount, 77_778)
+        listOf(Cmd.REVENUE, Cmd.REVENUE_DOUBLE).forEach { cmd ->
+            channel.writeInbound(upPacket(cmd, "[0]", userId = 987_654))
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+            assertEquals(cmd, response.cmd)
+            assertEquals("0", response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>())
+        }
+        assertEquals(0, tracking.saveCount)
+        assertNull(FilePlayerRepository(repositoryRoot).findByAccount(missingAccount))
+        channel.finishAndReleaseAll()
     }
 
     @Test
@@ -2420,6 +2633,27 @@ class GameServerHandlerProtocolTest {
 
     private fun drainOutbound(channel: EmbeddedChannel): List<Any> =
         generateSequence { channel.readOutbound<Any>() }.toList()
+
+    private class CountingPlayerRepository(
+        private val delegate: PlayerRepository,
+    ) : PlayerRepository {
+        var saveCount: Int = 0
+            private set
+
+        override fun findByAccount(accountKey: String): PlayerState? =
+            delegate.findByAccount(accountKey)
+
+        override fun findByAccountReadOnly(accountKey: String): PlayerState? =
+            delegate.findByAccountReadOnly(accountKey)
+
+        override fun getOrCreate(accountKey: String, cityWid: Int, roleName: String): PlayerState =
+            delegate.getOrCreate(accountKey, cityWid, roleName)
+
+        override fun save(state: PlayerState) {
+            saveCount += 1
+            delegate.save(state)
+        }
+    }
 
     private object RejectingPlayerRepository : PlayerRepository {
         override fun findByAccount(accountKey: String): PlayerState =

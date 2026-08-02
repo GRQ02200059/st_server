@@ -14,10 +14,39 @@ data class PlayerResources(
     var yuanBao: Int = UNLIMITED_AMOUNT,
     var hufu: Int = UNLIMITED_AMOUNT,
     var freeYuanBao: Int = UNLIMITED_AMOUNT,
+    var moneyAccumulated: Int = money,
 ) {
     companion object {
         const val UNLIMITED_AMOUNT = 2_000_000_000
     }
+}
+
+data class RevenueCollection(
+    val collectedAtSec: Int,
+    val amount: Int,
+)
+
+data class RevenueGift(
+    val amount: Int,
+    val extra: Int = 0,
+    var claimed: Boolean = false,
+)
+
+data class PlayerRevenueState(
+    val collections: MutableList<RevenueCollection> = mutableListOf(),
+    val gifts: MutableList<RevenueGift> = mutableListOf(),
+    var revenueTime: Int = 0,
+    var nextRefreshTime: Int = 0,
+    var forceCount: Int = 0,
+) {
+    fun deepCopy(): PlayerRevenueState =
+        PlayerRevenueState(
+            collections = collections.map { it.copy() }.toMutableList(),
+            gifts = gifts.map { it.copy() }.toMutableList(),
+            revenueTime = revenueTime,
+            nextRefreshTime = nextRefreshTime,
+            forceCount = forceCount,
+        )
 }
 
 class PlayerHero(
@@ -190,6 +219,7 @@ data class PlayerStateSnapshot(
     val cardPacksSeen: Boolean = false,
     val armyFacadeCards: List<PlayerArmyFacadeCardSnapshot> = emptyList(),
     val specialArmyFacadeCards: List<PlayerSpecialArmyFacadeCardSnapshot> = emptyList(),
+    val revenue: PlayerRevenueState = PlayerRevenueState(),
 )
 
 /**
@@ -208,6 +238,7 @@ class PlayerState(
     val accountKey: String = "legacy-user-$userId",
 ) {
     val resources = PlayerResources()
+    val revenue = PlayerRevenueState()
     private val buildLevels = ConcurrentHashMap<Int, Int>().apply {
         this[10] = 1
         this[30] = maxBuildLevel(30)
@@ -715,6 +746,7 @@ class PlayerState(
                     state = card.state,
                 )
             },
+            revenue = revenue.deepCopy(),
         )
 
     private fun refreshHeroArmyIds() {
@@ -895,6 +927,7 @@ class PlayerState(
                 accountKey = snapshot.accountKey,
             ).also { state ->
                 state.resources.money = snapshot.resources.money
+                state.resources.moneyAccumulated = snapshot.resources.moneyAccumulated
                 state.resources.wood = snapshot.resources.wood
                 state.resources.stone = snapshot.resources.stone
                 state.resources.iron = snapshot.resources.iron
@@ -999,6 +1032,11 @@ class PlayerState(
                 state.lands.clear()
                 state.lands.addAll(snapshot.occupiedLands.filter { it > 0 && it != state.cityWid })
                 state.cardPacksSeen = snapshot.cardPacksSeen
+                state.revenue.collections += snapshot.revenue.collections.map { it.copy() }
+                state.revenue.gifts += snapshot.revenue.gifts.map { it.copy() }
+                state.revenue.revenueTime = snapshot.revenue.revenueTime
+                state.revenue.nextRefreshTime = snapshot.revenue.nextRefreshTime
+                state.revenue.forceCount = snapshot.revenue.forceCount
             }
 
         private fun normalizedSavedSkillIds(heroId: Int, savedSkillIds: List<Int>): MutableList<Int> {

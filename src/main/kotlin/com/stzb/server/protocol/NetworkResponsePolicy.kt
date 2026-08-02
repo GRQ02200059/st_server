@@ -20,7 +20,6 @@ object NetworkResponsePolicy {
     fun observedShapeCommandIds(): Set<Int> =
         booleanCommands +
             jsonNullCommands +
-            scalarNumberCommands.keys +
             dictionaryCommands +
             fixedTupleCommands.keys +
             pagedListCommands +
@@ -49,7 +48,6 @@ object NetworkResponsePolicy {
             cmdId == 4979 -> nameLookup(requestBody)
             cmdId in booleanCommands -> "true"
             cmdId in jsonNullCommands -> "null"
-            cmdId in scalarNumberCommands -> scalarNumberCommands.getValue(cmdId)
             cmdId in fixedTupleCommands -> fixedTupleCommands.getValue(cmdId)
             cmdId == 3877 -> "[${GameServerConfig.SERVER_ID}]"
             cmdId == 6092 -> "[[],0]"
@@ -73,12 +71,6 @@ object NetworkResponsePolicy {
         Cmd.SET_CLIENT_RED_DOT_DATA,
         Cmd.GET_WORLD_SCENCE_INFO,
         7041,
-    )
-
-    /** 抓包确认返回顶层数字标量的命令（否则客户端按 int 解析会崩）。 */
-    private val scalarNumberCommands = mapOf(
-        750 to "0",
-        752 to "6500",
     )
 
     private val dictionaryCommands = setOf(510, 6239)

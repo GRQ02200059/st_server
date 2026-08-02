@@ -8,6 +8,24 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `revenue commands expose handler owned provisional city contracts`() {
+        val commands = mapOf(
+            Cmd.REVENUE to (750 to "REVENUE"),
+            Cmd.REVENUE_DOUBLE to (752 to "REVENUE_DOUBLE"),
+        )
+
+        commands.forEach { (cmd, expected) ->
+            assertEquals(expected.first, cmd)
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(listOf(expected.second), contract?.names, "cmd=$cmd")
+            assertEquals(CommandDirection.DUPLEX, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandDomain.CITY, contract?.domain, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `union nearby player list exposes a handler owned provisional social contract`() {
         assertEquals(112, Cmd.UNION_NEARBY_PLAYER_LIST)
 

@@ -617,6 +617,53 @@ object GameResponses {
             ),
         )
 
+    fun ordinaryRevenueUpdateNotify(state: PlayerState): String =
+        mapper.writeValueAsString(
+            nf.arrayNode()
+                .add(revenueResourceUpdate(state))
+                .add(
+                    nf.arrayNode()
+                        .add(2)
+                        .add("Tb_user_revenue")
+                        .add(
+                            nf.arrayNode()
+                                .add(0).add(state.userId)
+                                .add(1).add(RevenueService.revenueInfo(state.revenue))
+                                .add(2).add(state.revenue.revenueTime)
+                                .add(3).add(state.revenue.nextRefreshTime)
+                                .add(6).add(RevenueService.lastRevenueInfo(state.revenue))
+                                .add(7).add(""),
+                        ),
+                ),
+        )
+
+    fun doubleRevenueUpdateNotify(state: PlayerState): String =
+        mapper.writeValueAsString(
+            nf.arrayNode()
+                .add(revenueResourceUpdate(state))
+                .add(
+                    nf.arrayNode()
+                        .add(2)
+                        .add("Tb_user_revenue")
+                        .add(
+                            nf.arrayNode()
+                                .add(0).add(state.userId)
+                                .add(6).add(RevenueService.lastRevenueInfo(state.revenue)),
+                        ),
+                ),
+        )
+
+    private fun revenueResourceUpdate(state: PlayerState): ArrayNode =
+        nf.arrayNode()
+            .add(2)
+            .add("Tb_user_res")
+            .add(
+                nf.arrayNode()
+                    .add(0).add(state.userId)
+                    .add(1).add(state.resources.moneyAccumulated)
+                    .add(2).add(state.resources.money),
+            )
+
     /**
      * cmd 83 itself is body-agnostic in the client. The visible card update is
      * driven by this 90005 packet: update advance_num, then remove each

@@ -10,6 +10,14 @@ class NetworkResponsePolicyTest {
     private val mapper = jacksonObjectMapper()
 
     @Test
+    fun `revenue commands require persistent local handlers`() {
+        listOf(Cmd.REVENUE, Cmd.REVENUE_DOUBLE).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `explicit recorded array command returns its observed shape`() {
         assertEquals("[]", NetworkResponsePolicy.observedShapeBody(959))
     }

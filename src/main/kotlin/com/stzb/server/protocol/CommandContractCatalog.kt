@@ -144,6 +144,12 @@ object CommandContractCatalog {
                 Cmd.GAME_CHENGXIANGGE_RECEIVED,
             ).map(::provisionalClientRequest) +
             listOf(
+                Cmd.REVENUE,
+                Cmd.REVENUE_DOUBLE,
+            ).map { id ->
+                provisionalRequest(id).copy(domain = CommandDomain.CITY)
+            } +
+            listOf(
                 provisionalClientRequest(Cmd.CCLIVE_GET_FOLLOW_LIST)
                     .copy(domain = CommandDomain.EXTERNAL),
                 provisionalClientRequest(Cmd.FIRST_STATE_COOUPY_MSG)

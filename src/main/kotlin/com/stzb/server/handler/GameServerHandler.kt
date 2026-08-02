@@ -20,6 +20,7 @@ import com.stzb.server.game.PlayerStateRepository
 import com.stzb.server.game.ProfileResponses
 import com.stzb.server.game.RankListResponses
 import com.stzb.server.game.RecruitResultParser
+import com.stzb.server.game.RevenueService
 import com.stzb.server.game.SkillOperationRequestParser
 import com.stzb.server.game.TeamRequestParser
 import com.stzb.server.game.UnionOfficialListResponses
@@ -380,6 +381,14 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendRankList(ctx, session, msg)
             }
 
+            Cmd.REVENUE -> {
+                sendRevenue(ctx, session, msg)
+            }
+
+            Cmd.REVENUE_DOUBLE -> {
+                sendDoubleRevenue(ctx, session, msg)
+            }
+
             Cmd.WORLD_BOSS_TOP_THREE_RANK -> {
                 sendWorldBossTopThreeRank(ctx, session)
             }
@@ -644,6 +653,90 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val response = mapper.writeValueAsString(recordText)
         ctx.writeAndFlush(
             DownPacket.json(Cmd.CARD_RECORD, response, dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendRevenue(
+        ctx: ChannelHandlerContext,
+        session: Session?,
+        msg: UpPacket,
+    ) {
+        val validRequest = (
+            runCatching { strictRequestMapper.readTree(msg.bodyText) }
+                .getOrNull()
+                ?.takeIf { it.isArray && it.size() == 1 }
+                ?.get(0)
+                ?.takeIf { it.isIntegralNumber && it.canConvertToInt() && it.asInt() == 0 }
+        ) != null
+        val state = if (validRequest) boundExistingPlayer(session) else null
+        val amount = state?.let { RevenueService.collectOrdinary(it, revenueEpochSeconds()) }
+        if (state == null || amount == null) {
+            writeRevenueScalar(ctx, Cmd.REVENUE, 0)
+            log.info(">> cmd=${Cmd.REVENUE} 本地税收请求已拒绝")
+            return
+        }
+
+        PlayerStateRepository.save(state)
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.SYS_NOTIFY_DB_UPDATE,
+                GameResponses.ordinaryRevenueUpdateNotify(state),
+                dataType = DownType.PLAIN,
+            ),
+        )
+        writeRevenueScalar(ctx, Cmd.REVENUE, 0)
+        log.info(">> cmd=${Cmd.REVENUE} 本地税收已领取")
+    }
+
+    private fun sendDoubleRevenue(
+        ctx: ChannelHandlerContext,
+        session: Session?,
+        msg: UpPacket,
+    ) {
+        val giftIndex = runCatching { strictRequestMapper.readTree(msg.bodyText) }
+            .getOrNull()
+            ?.takeIf { it.isArray && it.size() == 1 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+        val state = if (giftIndex != null) boundExistingPlayer(session) else null
+        val amount = if (state != null && giftIndex != null) {
+            RevenueService.claimDouble(state, giftIndex)
+        } else {
+            null
+        }
+        if (state == null || amount == null) {
+            writeRevenueScalar(ctx, Cmd.REVENUE_DOUBLE, 0)
+            log.info(">> cmd=${Cmd.REVENUE_DOUBLE} 本地双倍税收请求已拒绝")
+            return
+        }
+
+        PlayerStateRepository.save(state)
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.SYS_NOTIFY_DB_UPDATE,
+                GameResponses.doubleRevenueUpdateNotify(state),
+                dataType = DownType.PLAIN,
+            ),
+        )
+        writeRevenueScalar(ctx, Cmd.REVENUE_DOUBLE, amount)
+        log.info(">> cmd=${Cmd.REVENUE_DOUBLE} 本地双倍税收已领取")
+    }
+
+    private fun boundExistingPlayer(session: Session?): com.stzb.server.game.PlayerState? {
+        val accountKey = session?.accountKey ?: return null
+        val playerId = session.playerId ?: return null
+        return PlayerStateRepository.findExisting(accountKey)
+            ?.takeIf { state -> state.userId == playerId }
+    }
+
+    private fun writeRevenueScalar(
+        ctx: ChannelHandlerContext,
+        cmd: Int,
+        amount: Int,
+    ) {
+        ctx.writeAndFlush(
+            DownPacket.json(cmd, amount.toString(), dataType = DownType.PLAIN),
         )
     }
 
@@ -2104,6 +2197,8 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         private val serverSessions = ServerSessionRegistry()
         private val onlineSessions = OnlineSessionRegistry()
         private val nextChatId = AtomicInteger(1)
+        @Volatile
+        private var revenueEpochSeconds: () -> Int = ::systemEpochSeconds
         val SESSION: AttributeKey<Session> = AttributeKey.valueOf("stzb.session")
         val KEEP_ALIVE: AttributeKey<ScheduledFuture<*>> = AttributeKey.valueOf("stzb.keepAlive")
 
@@ -2113,7 +2208,17 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             serverSessions.clear()
             nextChatId.set(1)
             WorldChatStore.reset()
+            revenueEpochSeconds = ::systemEpochSeconds
         }
+
+        fun setRevenueEpochSecondsForTests(epochSeconds: Int) {
+            revenueEpochSeconds = { epochSeconds }
+        }
+
+        private fun systemEpochSeconds(): Int =
+            (System.currentTimeMillis() / 1_000L)
+                .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
+                .toInt()
 
         private const val WORLD_CHAT_CHANNEL_ID = 0
         private const val WORLD_CHAT_HISTORY_SLOT = 0

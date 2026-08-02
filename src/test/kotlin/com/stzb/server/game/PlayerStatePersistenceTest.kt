@@ -9,6 +9,36 @@ import kotlin.test.assertTrue
 
 class PlayerStatePersistenceTest {
     @Test
+    fun `revenue snapshot restore deep copies mutable collections and gifts`() {
+        val state = PlayerState(
+            userId = 38,
+            cityWid = 10038,
+            roleName = "主公",
+            accountKey = "revenue-copy-test",
+        )
+        state.resources.money = 6500
+        state.resources.moneyAccumulated = 6500
+        state.revenue.collections += RevenueCollection(collectedAtSec = 10, amount = 6500)
+        state.revenue.gifts += RevenueGift(amount = 6500, extra = 0, claimed = false)
+        state.revenue.revenueTime = 10
+        state.revenue.nextRefreshTime = 20
+        state.revenue.forceCount = 2
+
+        val snapshot = state.toSnapshot()
+        val restored = PlayerState.fromSnapshot(snapshot)
+        restored.revenue.collections += RevenueCollection(collectedAtSec = 11, amount = 6500)
+        restored.revenue.gifts.single().claimed = true
+
+        assertEquals(6500, restored.resources.moneyAccumulated)
+        assertEquals(1, snapshot.revenue.collections.size)
+        assertEquals(1, snapshot.revenue.gifts.size)
+        assertFalse(snapshot.revenue.gifts.single().claimed)
+        assertEquals(10, restored.revenue.revenueTime)
+        assertEquals(20, restored.revenue.nextRefreshTime)
+        assertEquals(2, restored.revenue.forceCount)
+    }
+
+    @Test
     fun `card pack opening marker survives snapshot restore`() {
         val state = PlayerState(
             userId = 39,
