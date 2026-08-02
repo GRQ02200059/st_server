@@ -85,6 +85,8 @@ object Cmd {
     const val HERO_ACTIVE_FACADE = 2520
     const val NOTIFY_CHAT_MSG = 2100
     const val SET_CHANNEL_CERTIFICATION = 2311
+    const val XUANFUQIU_RECEIVED_MSG = 2402
+    const val GAME_CHENGXIANGGE_RECEIVED = 2404
     const val USER_CHANGE_NAME = 507
     const val USER_GET_SEASON_COURSE_LIST = 509
     const val RANDOM_ROLE_NAME = 511
@@ -117,6 +119,7 @@ object Cmd {
     const val STRATEGY_HELP_GET = 5082
     const val UPDATE_GUIDE_RECORD = 5091
     const val GET_HERO_RECOMMEND_2 = 5210
+    const val SOLDIER_GIFT_ACTIVATE = 6030
     const val COMMAND_PLAN_GET_UNION_TEMP_GROUP = 6067
     const val GET_UDS_GUESS_SEASON = 6078
     const val BATTLE_REPORT_SHORT_DETAIL = 6231

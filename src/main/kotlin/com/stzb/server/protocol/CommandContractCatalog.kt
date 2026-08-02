@@ -134,6 +134,8 @@ object CommandContractCatalog {
                 Cmd.PROGRESS_GET_INFO,
                 Cmd.MAIL_NOTIFY_GET_ALL,
                 Cmd.YOUTH_INK_MAP_TIPS,
+                Cmd.XUANFUQIU_RECEIVED_MSG,
+                Cmd.GAME_CHENGXIANGGE_RECEIVED,
             ).map(::provisionalClientRequest) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,
@@ -236,6 +238,14 @@ object CommandContractCatalog {
                 names = emptyList(),
                 direction = CommandDirection.CLIENT_REQUEST,
                 domain = CommandDomain.EXTERNAL,
+                status = CommandStatus.REJECTED,
+                owner = "GameServerHandler",
+            ),
+            CommandContract(
+                id = Cmd.SOLDIER_GIFT_ACTIVATE,
+                names = emptyList(),
+                direction = CommandDirection.CLIENT_REQUEST,
+                domain = CommandDomain.ACTIVITY,
                 status = CommandStatus.REJECTED,
                 owner = "GameServerHandler",
             ),

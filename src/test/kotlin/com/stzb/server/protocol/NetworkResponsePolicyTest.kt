@@ -101,6 +101,18 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `message acknowledgements and gift rejection require explicit handlers`() {
+        listOf(
+            Cmd.XUANFUQIU_RECEIVED_MSG,
+            Cmd.GAME_CHENGXIANGGE_RECEIVED,
+            Cmd.SOLDIER_GIFT_ACTIVATE,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `union chat member list requires the explicit handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT))
     }

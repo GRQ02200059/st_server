@@ -14,7 +14,7 @@ object NetworkResponsePolicy {
 
     private val noOpArrayCommands = setOf(
         22, 103, 111, 701, 711, 959, 963, 974, 4080, 4331, 5043, 5044, 5045,
-        5049, 6030, 9099,
+        5049, 9099,
     )
 
     fun observedShapeCommandIds(): Set<Int> =
@@ -70,8 +70,6 @@ object NetworkResponsePolicy {
     private val jsonNullCommands = setOf(
         Cmd.ARMY_BATTLE,
         933,
-        2402,
-        2404,
         2405,
         2600,
         2601,

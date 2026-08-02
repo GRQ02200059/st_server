@@ -869,16 +869,63 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
-    fun `gift list remains on the default observed shape route`() {
+    fun `message acknowledgements and gift rejection ignore payloads without mutation`() {
         val channel = newChannel()
+        val accountKey = "message-ack-gift-rejection"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Message Ack Gift Rejection User",
+        )
+        state.resources.money = 1_234_567
+        state.resources.yuanBao = 7_654
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Message Ack Gift Rejection Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_013, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val expectedBodies = mapOf(
+            Cmd.XUANFUQIU_RECEIVED_MSG to "null",
+            Cmd.GAME_CHENGXIANGGE_RECEIVED to "null",
+            Cmd.SOLDIER_GIFT_ACTIVATE to "[]",
+        )
+        val arbitraryPayloads = listOf(
+            "null",
+            "[]",
+            """{"synthetic":"metadata","giftIds":[17,42]}""",
+            """[[17,42],3] trailing""",
+            "not-json synthetic payload",
+        )
 
-        channel.writeInbound(upPacket(6030, "[]"))
+        expectedBodies.forEach { (cmd, expectedBody) ->
+            arbitraryPayloads.forEach { request ->
+                channel.writeInbound(upPacket(cmd, request, userId = state.userId))
 
-        val response = assertIs<DownPacket>(channel.readOutbound<Any>())
-        assertEquals(6030, response.cmd)
-        assertEquals(DownType.PLAIN, response.dataType)
-        assertEquals("[]", response.body.toString(Charsets.UTF_8))
-        assertNull(channel.readOutbound<Any>())
+                val response = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request",
+                )
+                assertEquals(cmd, response.cmd)
+                assertEquals(DownType.PLAIN, response.dataType)
+                assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request emitted an extra packet",
+                )
+            }
+        }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
         channel.finishAndReleaseAll()
     }
 

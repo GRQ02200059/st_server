@@ -204,6 +204,15 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendExternalServiceAndLoginFlagsResponse(ctx, msg.cmdId)
             }
 
+            Cmd.XUANFUQIU_RECEIVED_MSG,
+            Cmd.GAME_CHENGXIANGGE_RECEIVED -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.SOLDIER_GIFT_ACTIVATE -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[]", dataType = DownType.PLAIN))
+            }
+
             Cmd.SWITCH_ROLE_QUERY_ROLE_LIST,
             Cmd.MAIL_INBOX,
             Cmd.MAIL_GET_CONTACTS,

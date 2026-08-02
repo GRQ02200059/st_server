@@ -8,6 +8,30 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `message acknowledgements and gift rejection expose handler owned contracts`() {
+        assertEquals(2_402, Cmd.XUANFUQIU_RECEIVED_MSG)
+        assertEquals(2_404, Cmd.GAME_CHENGXIANGGE_RECEIVED)
+        assertEquals(6_030, Cmd.SOLDIER_GIFT_ACTIVATE)
+
+        listOf(
+            Cmd.XUANFUQIU_RECEIVED_MSG,
+            Cmd.GAME_CHENGXIANGGE_RECEIVED,
+        ).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandDomain.UNKNOWN, contract?.domain, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+
+        val gift = CommandContractCatalog.registry.contract(Cmd.SOLDIER_GIFT_ACTIVATE)
+        assertEquals(CommandDirection.CLIENT_REQUEST, gift?.direction)
+        assertEquals(CommandDomain.ACTIVITY, gift?.domain)
+        assertEquals(CommandStatus.REJECTED, gift?.status)
+        assertEquals("GameServerHandler", gift?.owner)
+    }
+
+    @Test
     fun `external service rejections and login flags expose handler owned contracts`() {
         assertEquals(3_928, Cmd.FILE_PICKER_GET_TOKEN_DEFAULT)
         assertEquals(4_968, Cmd.CHECK_ADD_WEIXIN)

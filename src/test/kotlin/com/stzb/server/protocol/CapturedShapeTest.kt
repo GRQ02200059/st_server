@@ -38,7 +38,7 @@ class CapturedShapeTest {
 
     @Test
     fun `captured null commands answer json null`() {
-        listOf(933, 2402, 2404, 2600, 2601).forEach { cmd ->
+        listOf(933, 2600, 2601).forEach { cmd ->
             assertEquals("null", NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
         }
     }
@@ -213,17 +213,14 @@ class CapturedShapeTest {
     }
 
     @Test
-    fun `captured gift list stays a non null empty array`() {
-        val body = assertNotNull(NetworkResponsePolicy.observedShapeBody(6030))
-        assertEquals("array", ShapeAssert.topLevelKind(body))
-        assertEquals(0, ShapeAssert.tupleSize(body))
-    }
-
-    @Test
-    fun `gift list remains registered as observed shape`() {
-        assertEquals(
-            CommandStatus.OBSERVED_SHAPE,
-            CommandContractCatalog.registry.contract(6030)?.status,
-        )
+    fun `handler owned message acknowledgements and gift rejection are absent from fallback`() {
+        listOf(
+            Cmd.XUANFUQIU_RECEIVED_MSG,
+            Cmd.GAME_CHENGXIANGGE_RECEIVED,
+            Cmd.SOLDIER_GIFT_ACTIVATE,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
     }
 }
