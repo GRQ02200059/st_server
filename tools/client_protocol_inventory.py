@@ -11,7 +11,7 @@ from pathlib import Path
 CLIENT_VERSION = "9.2.2"
 CONST_RE = re.compile(r"public\s+const\s+int\s+([A-Z0-9_]+)\s*=\s*(\d+)\s*;")
 SEND_RE = re.compile(
-    r"\.Send(?:<[^>]+>)?\s*\(\s*(?:NetCommandDef\.)?"
+    r"\.Send(?:<[^\r\n]+?>)?[ \t]*\([ \t]*(?:NetCommandDef\.)?"
     r"([A-Za-z_][A-Za-z0-9_]*|\d+)\b",
 )
 RAW_SEND_RE = re.compile(
