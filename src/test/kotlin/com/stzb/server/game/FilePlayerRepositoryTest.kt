@@ -3,7 +3,10 @@ package com.stzb.server.game
 import java.nio.file.Files
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FilePlayerRepositoryTest {
@@ -40,6 +43,28 @@ class FilePlayerRepositoryTest {
             },
         )
         assertEquals("acct-b", state.accountKey)
+    }
+
+    @Test
+    fun `read only lookup preserves corrupt account file without quarantine`() {
+        val root = createTempDirectory("stzb-player-repository")
+        val repository = FilePlayerRepository(root)
+        val path = root.resolve("accounts").resolve("acct-read-only.json")
+        val originalBytes = "{broken".toByteArray()
+        Files.createDirectories(path.parent)
+        Files.write(path, originalBytes)
+
+        assertNull(repository.findByAccountReadOnly("acct-read-only"))
+
+        assertTrue(Files.exists(path))
+        assertContentEquals(originalBytes, Files.readAllBytes(path))
+        assertFalse(
+            Files.list(path.parent).use { paths ->
+                paths.iterator().asSequence().any {
+                    it.fileName.toString().startsWith("acct-read-only.json.corrupt.")
+                }
+            },
+        )
     }
 
     @Test

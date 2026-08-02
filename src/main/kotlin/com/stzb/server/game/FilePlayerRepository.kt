@@ -18,6 +18,8 @@ import kotlin.io.path.exists
 interface PlayerRepository {
     fun findByAccount(accountKey: String): PlayerState?
 
+    fun findByAccountReadOnly(accountKey: String): PlayerState?
+
     fun getOrCreate(accountKey: String, cityWid: Int, roleName: String): PlayerState
 
     fun save(state: PlayerState)
@@ -33,6 +35,11 @@ class FilePlayerRepository(
     override fun findByAccount(accountKey: String): PlayerState? =
         synchronized(lockFor(accountKey)) {
             read(accountKey)
+        }
+
+    override fun findByAccountReadOnly(accountKey: String): PlayerState? =
+        synchronized(lockFor(accountKey)) {
+            read(accountKey, quarantineCorruptFile = false)
         }
 
     override fun getOrCreate(accountKey: String, cityWid: Int, roleName: String): PlayerState =
@@ -51,13 +58,17 @@ class FilePlayerRepository(
         }
     }
 
-    private fun read(accountKey: String): PlayerState? {
+    private fun read(
+        accountKey: String,
+        quarantineCorruptFile: Boolean = true,
+    ): PlayerState? {
         val path = accountPath(accountKey)
         if (!path.exists()) return null
         return runCatching {
             mapper.readValue(path.toFile(), PlayerStateSnapshot::class.java)
                 .let(PlayerState::fromSnapshot)
         }.getOrElse { _ ->
+            if (!quarantineCorruptFile) return null
             val backup = path.resolveSibling(
                 "${path.fileName}.corrupt.${System.currentTimeMillis()}",
             )

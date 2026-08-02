@@ -316,6 +316,7 @@ class GameServerHandlerProtocolTest {
             assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
         }
 
+        assertEquals(playerBefore, state.toSnapshot())
         PlayerStateRepository.configure(FilePlayerRepository(repositoryRoot))
         channel.writeInbound(upPacket(Cmd.CARD_RECORD, "null", userId = state.userId))
         val reloadedResponse = assertIs<DownPacket>(channel.readOutbound<Any>())
@@ -1637,6 +1638,9 @@ class GameServerHandlerProtocolTest {
 
     private object RejectingPlayerRepository : PlayerRepository {
         override fun findByAccount(accountKey: String): PlayerState =
+            error("customer service rejection must not read player state")
+
+        override fun findByAccountReadOnly(accountKey: String): PlayerState =
             error("customer service rejection must not read player state")
 
         override fun getOrCreate(accountKey: String, cityWid: Int, roleName: String): PlayerState =

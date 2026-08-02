@@ -1055,7 +1055,7 @@ object PlayerStateRepository {
     fun findExisting(accountKey: String): PlayerState? {
         require(accountKey.isNotBlank()) { "accountKey 不能为空" }
         players[accountKey]?.let { return it }
-        val loaded = repository.findByAccount(accountKey) ?: return null
+        val loaded = repository.findByAccountReadOnly(accountKey) ?: return null
         return players.putIfAbsent(accountKey, loaded) ?: loaded
     }
 
