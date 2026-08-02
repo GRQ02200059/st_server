@@ -79,6 +79,7 @@ object Cmd {
     const val USER_CLOSE_UI = 875
     const val USER_OPEN_UI = 885
     const val LOG_MUSIC_OPEN = 888
+    const val BLACK_MARKET_REFRESH_AUTO = 933
     const val GET_USER_SEASON_RECORD = 980
     const val REALNAME_LOGOUT = 981
     const val GEAR_EQUIP = 1226
@@ -89,6 +90,9 @@ object Cmd {
     const val XUANFUQIU_RECEIVED_MSG = 2402
     const val GAME_CHENGXIANGGE_RECEIVED = 2404
     const val CCLIVE_GET_FOLLOW_LIST = 2529
+    const val PATORL_GET = 2600
+    const val PATORL_HANDLE = 2601
+    const val PATORL_REWARD_GET = 2604
     const val USER_CHANGE_NAME = 507
     const val USER_GET_SEASON_COURSE_LIST = 509
     const val RANDOM_ROLE_NAME = 511

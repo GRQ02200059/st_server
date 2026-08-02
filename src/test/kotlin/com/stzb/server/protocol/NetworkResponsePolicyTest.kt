@@ -136,6 +136,19 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `black market and patrol rejections require explicit handlers`() {
+        listOf(
+            Cmd.BLACK_MARKET_REFRESH_AUTO,
+            Cmd.PATORL_GET,
+            Cmd.PATORL_HANDLE,
+            Cmd.PATORL_REWARD_GET,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `union chat member list requires the explicit handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT))
     }

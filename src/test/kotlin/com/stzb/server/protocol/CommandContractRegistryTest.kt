@@ -100,6 +100,30 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `black market and patrol rejections expose handler owned contracts`() {
+        val expected = mapOf(
+            Cmd.BLACK_MARKET_REFRESH_AUTO to Triple(
+                933,
+                "BLACK_MARKET_REFRESH_AUTO",
+                CommandDomain.ACTIVITY,
+            ),
+            Cmd.PATORL_GET to Triple(2_600, "PATORL_GET", CommandDomain.WORLD),
+            Cmd.PATORL_HANDLE to Triple(2_601, "PATORL_HANDLE", CommandDomain.WORLD),
+            Cmd.PATORL_REWARD_GET to Triple(2_604, "PATORL_REWARD_GET", CommandDomain.WORLD),
+        )
+
+        expected.forEach { (cmd, details) ->
+            assertEquals(details.first, cmd)
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(listOf(details.second), contract?.names, "cmd=$cmd")
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(details.third, contract?.domain, "cmd=$cmd")
+            assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `external service rejections and login flags expose handler owned contracts`() {
         assertEquals(3_928, Cmd.FILE_PICKER_GET_TOKEN_DEFAULT)
         assertEquals(4_968, Cmd.CHECK_ADD_WEIXIN)

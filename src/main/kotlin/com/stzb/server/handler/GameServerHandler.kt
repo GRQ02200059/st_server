@@ -213,6 +213,16 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[]", dataType = DownType.PLAIN))
             }
 
+            Cmd.BLACK_MARKET_REFRESH_AUTO,
+            Cmd.PATORL_GET,
+            Cmd.PATORL_HANDLE -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.PATORL_REWARD_GET -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[0,[]]", dataType = DownType.PLAIN))
+            }
+
             Cmd.CCLIVE_GET_FOLLOW_LIST -> {
                 ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[0,0,[]]", dataType = DownType.PLAIN))
             }

@@ -37,13 +37,6 @@ class CapturedShapeTest {
     // 以下为抓包形状对照：正式服真实 recv 顶层类型 vs 私服兜底输出。
 
     @Test
-    fun `captured null commands answer json null`() {
-        listOf(933, 2600, 2601).forEach { cmd ->
-            assertEquals("null", NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
-        }
-    }
-
-    @Test
     fun `captured boolean commands keep boolean kind`() {
         listOf(748).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
@@ -117,7 +110,6 @@ class CapturedShapeTest {
     @Test
     fun `captured fixed tuples keep captured arity`() {
         val expectedSizes = mapOf(
-            2604 to 2,
             8009 to 6,
         )
         expectedSizes.forEach { (cmd, size) ->
@@ -250,6 +242,19 @@ class CapturedShapeTest {
             Cmd.XUANFUQIU_RECEIVED_MSG,
             Cmd.GAME_CHENGXIANGGE_RECEIVED,
             Cmd.SOLDIER_GIFT_ACTIVATE,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `handler owned black market and patrol rejections are absent from fallback`() {
+        listOf(
+            Cmd.BLACK_MARKET_REFRESH_AUTO,
+            Cmd.PATORL_GET,
+            Cmd.PATORL_HANDLE,
+            Cmd.PATORL_REWARD_GET,
         ).forEach { cmd ->
             assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
             assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
