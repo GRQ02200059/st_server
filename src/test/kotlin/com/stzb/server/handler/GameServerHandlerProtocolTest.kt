@@ -1327,6 +1327,109 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `clan search accepts only nonempty text and zero mode and remains repository free`() {
+        val commandId = 2_675
+        val searchText = "synthetic-private-canary"
+        val accountKey = "clan-search-boundary"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Clan Search Boundary User",
+        )
+        state.resources.money = 2_675_000
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Clan Search Boundary Union", nowSec = 7)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_031, nowSec = 7))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val invalidRequests = linkedMapOf(
+            "JSON null" to "null",
+            "empty text" to "",
+            "malformed JSON" to "[",
+            "number scalar" to "2675",
+            "string scalar" to """"synthetic-private-canary"""",
+            "boolean scalar" to "true",
+            "top-level object" to """{"synthetic":"private-canary"}""",
+            "empty array" to "[]",
+            "one-slot array" to """["synthetic-private-canary"]""",
+            "extra slot" to """["synthetic-private-canary",0,1]""",
+            "empty string first slot" to """["",0]""",
+            "null first slot" to "[null,0]",
+            "number first slot" to "[2675,0]",
+            "boolean first slot" to "[false,0]",
+            "nested first slot" to """[["synthetic-private-canary"],0]""",
+            "object first slot" to """[{"synthetic":"private-canary"},0]""",
+            "null second slot" to """["synthetic-private-canary",null]""",
+            "string second slot" to """["synthetic-private-canary","0"]""",
+            "boolean second slot" to """["synthetic-private-canary",false]""",
+            "floating second slot" to """["synthetic-private-canary",0.0]""",
+            "exponential second slot" to """["synthetic-private-canary",0e0]""",
+            "positive nonzero second slot" to """["synthetic-private-canary",1]""",
+            "negative nonzero second slot" to """["synthetic-private-canary",-1]""",
+            "nested second slot" to """["synthetic-private-canary",[]]""",
+            "object second slot" to """["synthetic-private-canary",{}]""",
+            "positive Int32 overflow second slot" to
+                """["synthetic-private-canary",2147483648]""",
+            "negative Int32 overflow second slot" to
+                """["synthetic-private-canary",-2147483649]""",
+            "trailing token" to """["synthetic-private-canary",0] []""",
+        )
+
+        fun assertStateUnchanged(stage: String) {
+            assertEquals(playerBefore, state.toSnapshot(), "$stage player state changed")
+            assertTrue(
+                persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+                "$stage persisted player bytes changed",
+            )
+            assertEquals(worldBefore, WorldStateRepository.projection(), "$stage world state changed")
+            assertEquals(unionsBefore, UnionStateRepository.all(), "$stage union state changed")
+        }
+
+        val channel = newChannel()
+        try {
+            invalidRequests.forEach { (case, request) ->
+                channel.writeInbound(
+                    upPacket(commandId, request, userId = state.userId + 10_000),
+                )
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "case=$case emitted an outbound packet",
+                )
+            }
+            assertStateUnchanged("invalid requests")
+
+            channel.writeInbound(
+                upPacket(commandId, """["$searchText",0]""", userId = state.userId + 10_000),
+            )
+
+            val packet = assertIs<DownPacket>(
+                channel.readOutbound<Any>(),
+                "valid clan search request emitted no response",
+            )
+            assertEquals(commandId, packet.cmd)
+            assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, packet.cmd)
+            assertEquals(DownType.PLAIN, packet.dataType)
+            assertTrue(
+                "[]".toByteArray().contentEquals(packet.body),
+                "valid clan search request emitted wrong wire bytes",
+            )
+            val parsed = mapper.readTree(packet.body)
+            assertTrue(parsed.isArray)
+            assertTrue(parsed.isEmpty)
+            assertFalse(packet.body.toString(Charsets.UTF_8).contains(searchText))
+            assertNull(channel.readOutbound<Any>(), "valid clan search request emitted an extra packet")
+            assertStateUnchanged("valid request")
+        } finally {
+            channel.finishAndReleaseAll()
+        }
+    }
+
+    @Test
     fun `nearby clan list accepts only exact empty array and remains repository free`() {
         val commandId = 2_701
         val accountKey = "nearby-clan-list-boundary"

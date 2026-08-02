@@ -303,6 +303,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(msg.cmdId, "{}", dataType = DownType.PLAIN))
             }
 
+            Cmd.CLAN_SEARCH_CLAN_LIST -> {
+                sendClanSearchClanList(ctx, msg)
+            }
+
             Cmd.CLAN_LOG_GET -> {
                 sendClanLogGet(ctx, msg)
             }
@@ -2247,6 +2251,19 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
     private fun sendReadOnlyEmptyList(ctx: ChannelHandlerContext, cmdId: Int) {
         ctx.writeAndFlush(DownPacket.json(cmdId, "[]", dataType = DownType.PLAIN))
+    }
+
+    private fun sendClanSearchClanList(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
+            ?.takeIf { it.isArray && it.size() == 2 }
+            ?: return
+        if (!request[0].isTextual || request[0].textValue().isEmpty()) return
+        val mode = request[1]
+        if (!mode.isIntegralNumber || !mode.canConvertToInt() || mode.asInt() != 0) return
+
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.CLAN_SEARCH_CLAN_LIST, "[]", dataType = DownType.PLAIN),
+        )
     }
 
     private fun sendClanLogGet(ctx: ChannelHandlerContext, msg: UpPacket) {

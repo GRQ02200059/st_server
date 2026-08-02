@@ -11,6 +11,22 @@ import kotlin.test.assertTrue
 
 class CapturedShapeTest {
     @Test
+    fun `clan search list stays outside captured shape fallback`() {
+        val commandId = 2_675
+
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                """["synthetic-private-canary",0]""",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `backflow empty lists stay outside captured shape fallback`() {
         val commands = listOf(2_576, 2_577)
 

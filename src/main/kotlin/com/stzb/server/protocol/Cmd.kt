@@ -106,6 +106,7 @@ object Cmd {
     const val PATORL_HANDLE = 2601
     const val PATORL_REWARD_GET = 2604
     const val UNION_MEMBER_CLAN_LIST = 2670
+    const val CLAN_SEARCH_CLAN_LIST = 2675
     const val CLAN_LOG_GET = 2678
     const val UNION_LEADER_CLAN_CITY_LIST = 2679
     const val CLAN_APPLICANT_LIST = 2683

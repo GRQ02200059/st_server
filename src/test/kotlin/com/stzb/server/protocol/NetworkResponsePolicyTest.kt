@@ -12,6 +12,22 @@ class NetworkResponsePolicyTest {
     private val mapper = jacksonObjectMapper()
 
     @Test
+    fun `clan search list requires its explicit handler`() {
+        val commandId = 2_675
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                """["synthetic-private-canary",0]""",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `backflow empty lists require explicit handlers`() {
         val commands = listOf(2_576, 2_577)
 
