@@ -10,6 +10,42 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `read only empty projections expose exact constants and handler owned contracts`() {
+        val commands = linkedMapOf(
+            "SEARCH_USER" to Triple(3_739, CommandDirection.CLIENT_REQUEST, CommandDomain.SOCIAL),
+            "FAMILY_PRAY_RESULT_LIST" to
+                Triple(4_092, CommandDirection.CLIENT_REQUEST, CommandDomain.SOCIAL),
+            "FAMILY_MINI_GAME_GET_SCORE_LIST" to
+                Triple(4_112, CommandDirection.CLIENT_REQUEST, CommandDomain.ACTIVITY),
+            "FAMILY_MINI_GAME_GET_ROOM_LIST" to
+                Triple(4_114, CommandDirection.CLIENT_REQUEST, CommandDomain.ACTIVITY),
+            "QUERY_OTHER_REGION_CLAN_LIST" to
+                Triple(5_096, CommandDirection.CLIENT_REQUEST, CommandDomain.SOCIAL),
+            "GET_USER_RES_WID_LEVEL_MAP" to
+                Triple(5_218, CommandDirection.DUPLEX, CommandDomain.WORLD),
+        )
+
+        assertAll(
+            "read only empty projection contracts",
+            commands.map { (name, expected) ->
+                Executable {
+                    val field = assertNotNull(
+                        runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+                        "missing Cmd.$name",
+                    )
+                    assertEquals(expected.first, field.getInt(null), name)
+                    val contract = CommandContractCatalog.registry.contract(expected.first)
+                    assertEquals(listOf(name), contract?.names, "cmd=${expected.first}")
+                    assertEquals(expected.second, contract?.direction, "cmd=${expected.first}")
+                    assertEquals(expected.third, contract?.domain, "cmd=${expected.first}")
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=${expected.first}")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=${expected.first}")
+                }
+            },
+        )
+    }
+
+    @Test
     fun `external identity and channel commands expose exact handler owned rejected contracts`() {
         val commands = linkedMapOf(
             "PHONE_BIND_SEND_VERIFY_CODE" to 331,

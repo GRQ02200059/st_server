@@ -39,6 +39,27 @@ class CapturedShapeTest {
     // 以下为抓包形状对照：正式服真实 recv 顶层类型 vs 私服兜底输出。
 
     @Test
+    fun `handler owned read only empty projections are absent from observed shape fallback`() {
+        val commands = listOf(3_739, 4_092, 4_112, 4_114, 5_096, 5_218)
+
+        assertAll(
+            "read only empty projection captured shape boundaries",
+            commands.map { cmd ->
+                Executable {
+                    val contract = CommandContractCatalog.registry.contract(cmd)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(cmd, "[] {}"),
+                        "cmd=$cmd",
+                    )
+                    assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+                }
+            },
+        )
+    }
+
+    @Test
     fun `captured boolean commands keep boolean kind`() {
         listOf(748).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!

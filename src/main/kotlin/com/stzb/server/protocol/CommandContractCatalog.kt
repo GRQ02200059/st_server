@@ -177,6 +177,18 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalRequest(Cmd.UNION_SEARCH_PLAYER_LIST)
                     .copy(domain = CommandDomain.SOCIAL),
+                provisionalClientRequest(Cmd.SEARCH_USER)
+                    .copy(domain = CommandDomain.SOCIAL),
+                provisionalClientRequest(Cmd.FAMILY_PRAY_RESULT_LIST)
+                    .copy(domain = CommandDomain.SOCIAL),
+                provisionalClientRequest(Cmd.FAMILY_MINI_GAME_GET_SCORE_LIST)
+                    .copy(domain = CommandDomain.ACTIVITY),
+                provisionalClientRequest(Cmd.FAMILY_MINI_GAME_GET_ROOM_LIST)
+                    .copy(domain = CommandDomain.ACTIVITY),
+                provisionalClientRequest(Cmd.QUERY_OTHER_REGION_CLAN_LIST)
+                    .copy(domain = CommandDomain.SOCIAL),
+                provisionalRequest(Cmd.GET_USER_RES_WID_LEVEL_MAP)
+                    .copy(domain = CommandDomain.WORLD),
                 provisionalClientRequest(Cmd.WORLD_BOSS_TOP_THREE_RANK)
                     .copy(domain = CommandDomain.ACTIVITY),
                 provisionalRequest(Cmd.OWN_RANK)

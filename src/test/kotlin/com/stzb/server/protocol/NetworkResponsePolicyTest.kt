@@ -12,6 +12,27 @@ class NetworkResponsePolicyTest {
     private val mapper = jacksonObjectMapper()
 
     @Test
+    fun `read only empty projections require explicit handlers`() {
+        val commands = listOf(3_739, 4_092, 4_112, 4_114, 5_096, 5_218)
+
+        assertAll(
+            "read only empty projection fallback boundaries",
+            commands.map { cmd ->
+                Executable {
+                    val contract = CommandContractCatalog.registry.contract(cmd)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(cmd, "not-json opaque text"),
+                        "cmd=$cmd",
+                    )
+                    assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+                }
+            },
+        )
+    }
+
+    @Test
     fun `revenue commands require persistent local handlers`() {
         listOf(Cmd.REVENUE, Cmd.REVENUE_DOUBLE).forEach { cmd ->
             assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")

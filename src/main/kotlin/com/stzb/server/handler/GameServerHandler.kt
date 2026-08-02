@@ -288,6 +288,21 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendReadOnlyEmptyList(ctx, msg.cmdId)
             }
 
+            Cmd.SEARCH_USER -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[0]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.FAMILY_PRAY_RESULT_LIST,
+            Cmd.FAMILY_MINI_GAME_GET_SCORE_LIST,
+            Cmd.FAMILY_MINI_GAME_GET_ROOM_LIST,
+            Cmd.QUERY_OTHER_REGION_CLAN_LIST -> {
+                sendReadOnlyEmptyList(ctx, msg.cmdId)
+            }
+
+            Cmd.GET_USER_RES_WID_LEVEL_MAP -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "{}", dataType = DownType.PLAIN))
+            }
+
             Cmd.UNION_NPC_CITY_LIST,
             Cmd.CHAT_UNION_PLAN_HISTORY_ID,
             Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER,
