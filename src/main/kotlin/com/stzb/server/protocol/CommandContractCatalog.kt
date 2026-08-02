@@ -120,6 +120,7 @@ object CommandContractCatalog {
                 Cmd.GET_USER_SEASON_RECORD,
                 Cmd.GET_SEASON_HISTROY_PARAMS,
                 Cmd.CARD_RECORD,
+                Cmd.CHECK_HAVE_UNION_TO_JOIN,
                 Cmd.MAIL_OUTBOX,
                 Cmd.NOTICE_LIST,
                 Cmd.FRIEND_GROUP_GET_HISTORY_CHAT,
@@ -165,6 +166,14 @@ object CommandContractCatalog {
 
     private fun rejectedContracts(): List<CommandContract> =
         listOf(
+            CommandContract(
+                id = Cmd.SET_CHANNEL_CERTIFICATION,
+                names = emptyList(),
+                direction = CommandDirection.CLIENT_REQUEST,
+                domain = CommandDomain.EXTERNAL,
+                status = CommandStatus.REJECTED,
+                owner = "GameServerHandler",
+            ),
             CommandContract(
                 id = Cmd.COMMUNITY_GET_USER_TOKEN,
                 names = emptyList(),

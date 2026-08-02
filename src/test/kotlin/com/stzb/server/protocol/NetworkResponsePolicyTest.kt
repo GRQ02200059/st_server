@@ -68,6 +68,17 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `union eligibility and channel certification require explicit handlers`() {
+        listOf(
+            Cmd.CHECK_HAVE_UNION_TO_JOIN,
+            Cmd.SET_CHANNEL_CERTIFICATION,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `union chat member list requires the explicit handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT))
     }
@@ -178,10 +189,8 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
-    fun `recorded acknowledgement commands return booleans instead of arrays`() {
-        listOf(748, 2311).forEach { cmdId ->
-            assertEquals("true", NetworkResponsePolicy.observedShapeBody(cmdId), "cmd=$cmdId")
-        }
+    fun `recorded acknowledgement command returns a boolean instead of an array`() {
+        assertEquals("true", NetworkResponsePolicy.observedShapeBody(748))
     }
 
     @Test

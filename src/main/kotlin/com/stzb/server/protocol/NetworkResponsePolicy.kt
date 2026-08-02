@@ -63,7 +63,7 @@ object NetworkResponsePolicy {
         }
 
     private val booleanCommands = setOf(
-        748, 981, 2311, 4087,
+        748, 981,
     )
 
     /**

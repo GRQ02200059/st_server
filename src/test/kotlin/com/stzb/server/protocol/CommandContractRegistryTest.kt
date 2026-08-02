@@ -149,6 +149,27 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `union eligibility and channel certification expose exact handler owned contracts`() {
+        assertEquals(4_087, Cmd.CHECK_HAVE_UNION_TO_JOIN)
+        val unionEligibility = CommandContractCatalog.registry.contract(
+            Cmd.CHECK_HAVE_UNION_TO_JOIN,
+        )
+        assertEquals(CommandDirection.CLIENT_REQUEST, unionEligibility?.direction)
+        assertEquals(CommandDomain.UNKNOWN, unionEligibility?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, unionEligibility?.status)
+        assertEquals("GameServerHandler", unionEligibility?.owner)
+
+        assertEquals(2_311, Cmd.SET_CHANNEL_CERTIFICATION)
+        val channelCertification = CommandContractCatalog.registry.contract(
+            Cmd.SET_CHANNEL_CERTIFICATION,
+        )
+        assertEquals(CommandDirection.CLIENT_REQUEST, channelCertification?.direction)
+        assertEquals(CommandDomain.EXTERNAL, channelCertification?.domain)
+        assertEquals(CommandStatus.REJECTED, channelCertification?.status)
+        assertEquals("GameServerHandler", channelCertification?.owner)
+    }
+
+    @Test
     fun `union group commands expose readable ids`() {
         assertEquals(142, Cmd.UNION_GET_GROUP_LIST)
         assertEquals(143, Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT)

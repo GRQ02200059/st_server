@@ -185,6 +185,14 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(Cmd.UPDATE_GUIDE_RECORD, "200", dataType = DownType.PLAIN))
             }
 
+            Cmd.CHECK_HAVE_UNION_TO_JOIN -> {
+                sendUnionJoinEligibility(ctx, session)
+            }
+
+            Cmd.SET_CHANNEL_CERTIFICATION -> {
+                sendChannelCertificationRejection(ctx)
+            }
+
             Cmd.GET_UNION_BATTLE_REPORT,
             Cmd.MAIL_OUTBOX,
             Cmd.GET_BLACK_LIST,
@@ -575,6 +583,29 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             DownPacket.json(
                 Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE,
                 response,
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendUnionJoinEligibility(ctx: ChannelHandlerContext, session: Session?) {
+        val isEligible = session?.playerId
+            ?.let { playerId -> UnionStateRepository.forUser(playerId) == null }
+            ?: true
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.CHECK_HAVE_UNION_TO_JOIN,
+                isEligible.toString(),
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendChannelCertificationRejection(ctx: ChannelHandlerContext) {
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.SET_CHANNEL_CERTIFICATION,
+                "false",
                 dataType = DownType.PLAIN,
             ),
         )

@@ -370,6 +370,170 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `union join eligibility projects only bound local membership without mutation`() {
+        val channel = newChannel()
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        val accountKey = "union-join-eligibility"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Union Join Eligibility User",
+        )
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_008, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val playerWithoutUnion = state.toSnapshot()
+        val persistedWithoutUnion = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldWithoutUnion = WorldStateRepository.projection()
+        val unionsWithoutUnion = UnionStateRepository.all()
+
+        listOf("null", "[]").forEach { request ->
+            channel.writeInbound(
+                upPacket(
+                    Cmd.CHECK_HAVE_UNION_TO_JOIN,
+                    request,
+                    userId = 987_654_321,
+                ),
+            )
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "unbound request=$request")
+            assertEquals(Cmd.CHECK_HAVE_UNION_TO_JOIN, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals("true", response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "unbound request=$request emitted an extra packet")
+        }
+        assertNull(
+            FilePlayerRepository(repositoryRoot).findByAccount("legacy-user-${session.wireUserId}"),
+        )
+        assertEquals(playerWithoutUnion, state.toSnapshot())
+        assertEquals(
+            persistedWithoutUnion,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldWithoutUnion, WorldStateRepository.projection())
+        assertEquals(unionsWithoutUnion, UnionStateRepository.all())
+
+        session.bind(accountKey, state.userId)
+        listOf("null", "[]").forEach { request ->
+            channel.writeInbound(
+                upPacket(
+                    Cmd.CHECK_HAVE_UNION_TO_JOIN,
+                    request,
+                    userId = 987_654_321,
+                ),
+            )
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "bound request=$request")
+            assertEquals(Cmd.CHECK_HAVE_UNION_TO_JOIN, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals("true", response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "bound request=$request emitted an extra packet")
+        }
+        assertEquals(playerWithoutUnion, state.toSnapshot())
+        assertEquals(
+            persistedWithoutUnion,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldWithoutUnion, WorldStateRepository.projection())
+        assertEquals(unionsWithoutUnion, UnionStateRepository.all())
+
+        UnionStateRepository.create(state, "Union Join Eligibility Local Union", nowSec = 2)
+        val playerWithUnion = state.toSnapshot()
+        val persistedWithUnion = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldWithUnion = WorldStateRepository.projection()
+        val unionsWithUnion = UnionStateRepository.all()
+        val ignoredPayloads = listOf(
+            "null",
+            "[]",
+            "not-json synthetic payload",
+            """[123456,654321,{"claimedUnionId":0}]""",
+            """{"userId":987654321,"unionId":0,"eligible":true}""",
+        )
+
+        ignoredPayloads.forEach { request ->
+            channel.writeInbound(
+                upPacket(
+                    Cmd.CHECK_HAVE_UNION_TO_JOIN,
+                    request,
+                    userId = 987_654_321,
+                ),
+            )
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "request=$request")
+            assertEquals(Cmd.CHECK_HAVE_UNION_TO_JOIN, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals("false", response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+        assertEquals(playerWithUnion, state.toSnapshot())
+        assertEquals(
+            persistedWithUnion,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldWithUnion, WorldStateRepository.projection())
+        assertEquals(unionsWithUnion, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `channel certification always rejects claims without repository access or mutation`() {
+        val channel = newChannel()
+        val accountKey = "channel-certification-rejection"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Channel Certification Rejection User",
+        )
+        UnionStateRepository.create(state, "Channel Certification Local Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_009, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = state.toSnapshot()
+        val persistedBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val requests = listOf(
+            "[-1]",
+            "[0]",
+            "[1]",
+            "not-json synthetic payload",
+            """{"sdkStatus":1,"channel":"synthetic","certified":true}""",
+            """[1,{"device":"synthetic","platformUserId":"opaque"}]""",
+        )
+
+        requests.forEach { request ->
+            channel.writeInbound(
+                upPacket(
+                    Cmd.SET_CHANNEL_CERTIFICATION,
+                    request,
+                    userId = 987_654_321,
+                ),
+            )
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "request=$request")
+            assertEquals(Cmd.SET_CHANNEL_CERTIFICATION, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals("false", response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+        assertEquals(playerBefore, state.toSnapshot())
+        assertEquals(
+            persistedBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `customer service token pre request always rejects locally without repository access`() {
         val channel = newChannel()
         val accountKey = "customer-service-local"
@@ -1638,16 +1802,16 @@ class GameServerHandlerProtocolTest {
 
     private object RejectingPlayerRepository : PlayerRepository {
         override fun findByAccount(accountKey: String): PlayerState =
-            error("customer service rejection must not read player state")
+            error("repository-free handler must not read player state")
 
         override fun findByAccountReadOnly(accountKey: String): PlayerState =
-            error("customer service rejection must not read player state")
+            error("repository-free handler must not read player state")
 
         override fun getOrCreate(accountKey: String, cityWid: Int, roleName: String): PlayerState =
-            error("customer service rejection must not create player state")
+            error("repository-free handler must not create player state")
 
         override fun save(state: PlayerState) {
-            error("customer service rejection must not save player state")
+            error("repository-free handler must not save player state")
         }
     }
 }

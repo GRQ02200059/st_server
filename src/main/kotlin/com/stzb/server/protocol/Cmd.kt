@@ -80,6 +80,7 @@ object Cmd {
     const val GEAR_FORGET = 1227
     const val HERO_ACTIVE_FACADE = 2520
     const val NOTIFY_CHAT_MSG = 2100
+    const val SET_CHANNEL_CERTIFICATION = 2311
     const val USER_CHANGE_NAME = 507
     const val RANDOM_ROLE_NAME = 511
     const val USER_GET_USERS_HEADICON = 514
@@ -90,6 +91,7 @@ object Cmd {
     const val GET_HOMEPAGE_INFO = 3686
     const val FRIEND_GROUP_GET_HISTORY_CHAT = 3846
     const val BUILD_FACADE_APPLY_BUILD_SCHEME = 3945
+    const val CHECK_HAVE_UNION_TO_JOIN = 4087
     const val RESFILE_LOG_HUB_RECORD = 4326
     const val GET_USER_NPC_ARMY = 4329
     const val GET_LAND_NPC_ARMY = 4330

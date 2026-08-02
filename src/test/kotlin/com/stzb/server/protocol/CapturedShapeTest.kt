@@ -45,10 +45,20 @@ class CapturedShapeTest {
 
     @Test
     fun `captured boolean commands keep boolean kind`() {
-        // 981 REALNAME_LOGOUT / 4087 CHECK_HAVE_UNION_TO_JOIN 正式服真实 recv 为 bool。
-        listOf(748, 981, 2311, 4087).forEach { cmd ->
+        listOf(748, 981).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("boolean", ShapeAssert.topLevelKind(body), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `handler owned union eligibility and channel certification are absent from observed shape fallback`() {
+        listOf(
+            Cmd.CHECK_HAVE_UNION_TO_JOIN,
+            Cmd.SET_CHANNEL_CERTIFICATION,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
         }
     }
 
