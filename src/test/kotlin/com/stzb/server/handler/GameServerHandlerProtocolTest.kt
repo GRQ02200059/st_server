@@ -1790,6 +1790,206 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `npc occupation queries echo only an exact validated state id`() {
+        val channel = newChannel()
+        val validRequests = listOf(
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO to 17,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX to -42,
+        )
+
+        validRequests.forEach { (commandId, stateId) ->
+            channel.writeInbound(upPacket(commandId, "[$stateId]"))
+
+            val packet = assertIs<DownPacket>(channel.readOutbound<Any>(), "cmd=$commandId")
+            assertEquals(commandId, packet.cmd)
+            assertEquals(DownType.PLAIN, packet.dataType)
+            val response = mapper.readTree(packet.body)
+            assertTrue(response.isArray, "cmd=$commandId")
+            assertEquals(2, response.size(), "cmd=$commandId")
+            assertTrue(response[0].isIntegralNumber, "cmd=$commandId slot=0")
+            assertEquals(stateId, response[0].asInt(), "cmd=$commandId slot=0")
+            assertTrue(response[1].isObject, "cmd=$commandId slot=1")
+            assertTrue(response[1].isEmpty, "cmd=$commandId slot=1")
+            assertNull(channel.readOutbound<Any>(), "cmd=$commandId emitted an extra packet")
+        }
+
+        val invalidRequests = listOf(
+            "malformed" to "not-json",
+            "trailing text" to "[17] trailing",
+            "trailing token" to "[17] []",
+            "non-array object" to "{}",
+            "non-array scalar" to "17",
+            "empty array" to "[]",
+            "two slots" to "[17,18]",
+            "fractional" to "[17.5]",
+            "string" to """["17"]""",
+            "boolean" to "[true]",
+            "null" to "[null]",
+            "positive out-of-range" to "[2147483648]",
+            "negative out-of-range" to "[-2147483649]",
+        )
+        listOf(
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX,
+        ).forEach { commandId ->
+            invalidRequests.forEach { (case, request) ->
+                channel.writeInbound(upPacket(commandId, request))
+
+                val packet = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "cmd=$commandId case=$case",
+                )
+                assertEquals(commandId, packet.cmd, "cmd=$commandId case=$case")
+                assertEquals(DownType.PLAIN, packet.dataType, "cmd=$commandId case=$case")
+                val response = mapper.readTree(packet.body)
+                assertTrue(response.isArray, "cmd=$commandId case=$case")
+                assertEquals(2, response.size(), "cmd=$commandId case=$case")
+                assertTrue(response[0].isIntegralNumber, "cmd=$commandId case=$case slot=0")
+                assertEquals(0, response[0].asInt(), "cmd=$commandId case=$case slot=0")
+                assertTrue(response[1].isObject, "cmd=$commandId case=$case slot=1")
+                assertTrue(response[1].isEmpty, "cmd=$commandId case=$case slot=1")
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "cmd=$commandId case=$case emitted an extra packet",
+                )
+            }
+        }
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `own rank ignores every request body and returns the no-rank integer sentinel`() {
+        val channel = newChannel()
+        val requestBodies = listOf(
+            "",
+            "not-json",
+            "[28]",
+            "[28,42]",
+            """{"opaque":true}""",
+            "[28] trailing",
+        )
+
+        requestBodies.forEach { request ->
+            channel.writeInbound(upPacket(Cmd.OWN_RANK, request))
+
+            val packet = assertIs<DownPacket>(channel.readOutbound<Any>(), "request=$request")
+            assertEquals(Cmd.OWN_RANK, packet.cmd)
+            assertEquals(DownType.PLAIN, packet.dataType)
+            val response = mapper.readTree(packet.body)
+            assertTrue(response.isIntegralNumber, "request=$request")
+            assertEquals(-1, response.asInt(), "request=$request")
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `domestic salary status echoes only an exact validated level`() {
+        val channel = newChannel()
+
+        channel.writeInbound(upPacket(Cmd.FENGLU_LEVEL_STATUS, "[9]"))
+
+        val validPacket = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.FENGLU_LEVEL_STATUS, validPacket.cmd)
+        assertEquals(DownType.PLAIN, validPacket.dataType)
+        val validResponse = mapper.readTree(validPacket.body)
+        assertTrue(validResponse.isObject)
+        assertEquals(
+            setOf("level", "contributions", "officers"),
+            validResponse.fieldNames().asSequence().toSet(),
+        )
+        assertTrue(validResponse["level"].isIntegralNumber)
+        assertEquals(9, validResponse["level"].asInt())
+        assertTrue(validResponse["contributions"].isArray)
+        assertTrue(validResponse["contributions"].isEmpty)
+        assertTrue(validResponse["officers"].isArray)
+        assertTrue(validResponse["officers"].isEmpty)
+        assertNull(channel.readOutbound<Any>())
+
+        val invalidRequests = listOf(
+            "malformed" to "not-json",
+            "trailing text" to "[9] trailing",
+            "trailing token" to "[9] []",
+            "non-array object" to "{}",
+            "non-array scalar" to "9",
+            "empty array" to "[]",
+            "two slots" to "[9,10]",
+            "fractional" to "[9.5]",
+            "string" to """["9"]""",
+            "boolean" to "[true]",
+            "null" to "[null]",
+            "positive out-of-range" to "[2147483648]",
+            "negative out-of-range" to "[-2147483649]",
+        )
+        invalidRequests.forEach { (case, request) ->
+            channel.writeInbound(upPacket(Cmd.FENGLU_LEVEL_STATUS, request))
+
+            val packet = assertIs<DownPacket>(channel.readOutbound<Any>(), case)
+            assertEquals(Cmd.FENGLU_LEVEL_STATUS, packet.cmd, case)
+            assertEquals(DownType.PLAIN, packet.dataType, case)
+            val response = mapper.readTree(packet.body)
+            assertTrue(response.isObject, case)
+            assertTrue(response.isEmpty, case)
+            assertNull(channel.readOutbound<Any>(), "$case emitted an extra packet")
+        }
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `world rank and domestic status queries do not access or mutate repositories`() {
+        val channel = newChannel()
+        val accountKey = "world-rank-domestic-status-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Read Only Query User",
+        )
+        state.resources.money = 1_234
+        state.addHero(heroId = 100_101, nowSec = 1)
+        UnionStateRepository.create(state, "Read Only Query Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_020, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val requests = listOf(
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO to "[17]",
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO to "not-json",
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX to "[-42]",
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX to "[2147483648]",
+            Cmd.OWN_RANK to "not-json trailing",
+            Cmd.FENGLU_LEVEL_STATUS to "[9]",
+            Cmd.FENGLU_LEVEL_STATUS to "[9] []",
+        )
+
+        requests.forEach { (commandId, request) ->
+            channel.writeInbound(upPacket(commandId, request, userId = state.userId + 10_000))
+
+            val packet = assertIs<DownPacket>(
+                channel.readOutbound<Any>(),
+                "cmd=$commandId request=$request",
+            )
+            assertEquals(commandId, packet.cmd, "cmd=$commandId request=$request")
+            assertEquals(DownType.PLAIN, packet.dataType, "cmd=$commandId request=$request")
+            assertNull(
+                channel.readOutbound<Any>(),
+                "cmd=$commandId request=$request emitted an extra packet",
+            )
+        }
+        assertEquals(playerBefore, state.toSnapshot())
+        assertTrue(
+            persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+            "persisted player bytes changed",
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `user head icons preserve requested order and duplicates without mutating repositories`() {
         val channel = newChannel()
         val accountKey = "head-icon-snapshot"

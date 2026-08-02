@@ -115,6 +115,22 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `handler owned world rank and domestic status queries are absent from observed shape fallback`() {
+        listOf(
+            Cmd.OWN_RANK,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX,
+            Cmd.FENGLU_LEVEL_STATUS,
+        ).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd, "[17]"), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `handler owned external rejections and login flags are absent from observed shape fallback`() {
         listOf(
             Cmd.FILE_PICKER_GET_TOKEN_DEFAULT,

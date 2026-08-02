@@ -172,6 +172,14 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalClientRequest(Cmd.WORLD_BOSS_TOP_THREE_RANK)
                     .copy(domain = CommandDomain.ACTIVITY),
+                provisionalRequest(Cmd.OWN_RANK)
+                    .copy(domain = CommandDomain.ACTIVITY),
+                provisionalRequest(Cmd.PROGRESS_GET_NPC_OCCUPY_INFO)
+                    .copy(domain = CommandDomain.WORLD),
+                provisionalRequest(Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX)
+                    .copy(domain = CommandDomain.WORLD),
+                provisionalClientRequest(Cmd.FENGLU_LEVEL_STATUS)
+                    .copy(domain = CommandDomain.SOCIAL),
             ) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,

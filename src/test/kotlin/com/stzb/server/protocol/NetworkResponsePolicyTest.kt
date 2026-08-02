@@ -198,6 +198,19 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `world rank and domestic status queries require explicit handlers`() {
+        listOf(
+            Cmd.OWN_RANK,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX,
+            Cmd.FENGLU_LEVEL_STATUS,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd, "[17]"), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `user head icon lookup requires the explicit handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.USER_GET_USERS_HEADICON))
     }

@@ -38,6 +38,33 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `world rank and domestic status queries expose exact constants and handler owned contracts`() {
+        val commands = mapOf(
+            "OWN_RANK" to Triple(703, CommandDirection.DUPLEX, CommandDomain.ACTIVITY),
+            "PROGRESS_GET_NPC_OCCUPY_INFO" to
+                Triple(873, CommandDirection.DUPLEX, CommandDomain.WORLD),
+            "PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX" to
+                Triple(874, CommandDirection.DUPLEX, CommandDomain.WORLD),
+            "FENGLU_LEVEL_STATUS" to
+                Triple(1_265, CommandDirection.CLIENT_REQUEST, CommandDomain.SOCIAL),
+        )
+
+        commands.forEach { (name, expected) ->
+            val field = assertNotNull(
+                runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+                "missing Cmd.$name",
+            )
+            assertEquals(expected.first, field.getInt(null), name)
+            val contract = CommandContractCatalog.registry.contract(expected.first)
+            assertEquals(listOf(name), contract?.names, "cmd=${expected.first}")
+            assertEquals(expected.second, contract?.direction, "cmd=${expected.first}")
+            assertEquals(expected.third, contract?.domain, "cmd=${expected.first}")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=${expected.first}")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=${expected.first}")
+        }
+    }
+
+    @Test
     fun `union social empty queries expose exact constants and handler owned social contracts`() {
         val commands = mapOf(
             "UNION_APPLICANT_LIST" to (104 to CommandDirection.DUPLEX),

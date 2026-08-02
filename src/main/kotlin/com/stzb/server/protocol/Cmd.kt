@@ -74,6 +74,7 @@ object Cmd {
     const val UNLOCK_TROOP_FACADE_CARD = 678
     const val BATCH_ACTIVE_ARMY_FACADE_CARD = 682
     const val RANK_LIST = 700
+    const val OWN_RANK = 703
     const val CHAT = 710
     const val CHAT_HISTORY = 711
     const val GET_BLACK_LIST = 714
@@ -88,6 +89,7 @@ object Cmd {
     const val REALNAME_LOGOUT = 981
     const val GEAR_EQUIP = 1226
     const val GEAR_FORGET = 1227
+    const val FENGLU_LEVEL_STATUS = 1265
     const val HERO_ACTIVE_FACADE = 2520
     const val NOTIFY_CHAT_MSG = 2100
     const val SET_CHANNEL_CERTIFICATION = 2311
@@ -108,6 +110,8 @@ object Cmd {
     const val ROTATE_CARD_BORDER_ADD = 1673
     const val ROTATE_CARD_BORDER_REMOVE = 1674
     const val PROGRESS_GET_INFO = 871
+    const val PROGRESS_GET_NPC_OCCUPY_INFO = 873
+    const val PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX = 874
     const val SET_CLIENT_RED_DOT_DATA = 3400
     const val UNION_SEARCH_UNION_LIST = 3410
     const val UNION_SEARCH_PLAYER_LIST = 3411

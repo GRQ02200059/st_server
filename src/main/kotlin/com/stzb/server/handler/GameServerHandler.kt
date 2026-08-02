@@ -389,6 +389,13 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendRankList(ctx, session, msg)
             }
 
+            Cmd.OWN_RANK,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX,
+            Cmd.FENGLU_LEVEL_STATUS -> {
+                sendWorldRankDomesticStatus(ctx, msg)
+            }
+
             Cmd.REVENUE -> {
                 sendRevenue(ctx, session, msg)
             }
@@ -1682,6 +1689,34 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         ctx.writeAndFlush(DownPacket.json(Cmd.RANK_LIST, json, dataType = DownType.PLAIN))
         log.info(">> cmd=700 排行榜已下发 (uid=$userId)")
     }
+
+    private fun sendWorldRankDomesticStatus(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val response = when (msg.cmdId) {
+            Cmd.OWN_RANK -> "-1"
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX -> {
+                val stateId = exactSingleInt(msg.bodyText) ?: 0
+                "[$stateId,{}]"
+            }
+            Cmd.FENGLU_LEVEL_STATUS -> {
+                exactSingleInt(msg.bodyText)
+                    ?.let { level ->
+                        """{"level":$level,"contributions":[],"officers":[]}"""
+                    }
+                    ?: "{}"
+            }
+            else -> error("unsupported world/rank/domestic-status cmd: ${msg.cmdId}")
+        }
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, response, dataType = DownType.PLAIN))
+    }
+
+    private fun exactSingleInt(body: String): Int? =
+        runCatching { strictRequestMapper.readTree(body) }
+            .getOrNull()
+            ?.takeIf { it.isArray && it.size() == 1 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
 
     private fun sendWorldBossTopThreeRank(ctx: ChannelHandlerContext, session: Session?) {
         val userId = requireNotNull(session).userId
