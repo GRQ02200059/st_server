@@ -13,8 +13,8 @@ object NetworkResponsePolicy {
     private val mapper = jacksonObjectMapper()
 
     private val noOpArrayCommands = setOf(
-        22, 103, 111, 171, 202, 220, 509, 701, 711, 727, 871, 959, 963, 974,
-        3758, 4080, 4331, 5043, 5044, 5045, 5049, 6030, 9099,
+        22, 103, 111, 701, 711, 959, 963, 974, 4080, 4331, 5043, 5044, 5045,
+        5049, 6030, 9099,
     )
 
     fun observedShapeCommandIds(): Set<Int> =

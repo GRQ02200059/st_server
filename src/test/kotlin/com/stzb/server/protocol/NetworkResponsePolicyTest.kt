@@ -46,6 +46,22 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `read only empty query handlers are not owned by network response policy`() {
+        listOf(
+            Cmd.SWITCH_ROLE_QUERY_ROLE_LIST,
+            Cmd.MAIL_INBOX,
+            Cmd.MAIL_GET_CONTACTS,
+            Cmd.USER_GET_SEASON_COURSE_LIST,
+            Cmd.CHAT_GET_ZHAO_XIAN_MSG,
+            Cmd.PROGRESS_GET_INFO,
+            Cmd.MAIL_NOTIFY_GET_ALL,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `season history handlers are not owned by network response policy`() {
         listOf(
             Cmd.GET_USER_SEASON_RECORD,

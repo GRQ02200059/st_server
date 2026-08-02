@@ -8,6 +8,28 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `read only empty queries expose handler owned provisional client request contracts`() {
+        val commands = mapOf(
+            Cmd.SWITCH_ROLE_QUERY_ROLE_LIST to 171,
+            Cmd.MAIL_INBOX to 202,
+            Cmd.MAIL_GET_CONTACTS to 220,
+            Cmd.USER_GET_SEASON_COURSE_LIST to 509,
+            Cmd.CHAT_GET_ZHAO_XIAN_MSG to 727,
+            Cmd.PROGRESS_GET_INFO to 871,
+            Cmd.MAIL_NOTIFY_GET_ALL to 3_758,
+        )
+
+        commands.forEach { (cmd, expectedId) ->
+            assertEquals(expectedId, cmd)
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandDomain.UNKNOWN, contract?.domain, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `pre login and external commands expose readable handler owned contracts`() {
         assertEquals(40_003, Cmd.PRE_SERVER_QUERY_USER_OP)
         assertEquals(40_004, Cmd.PRE_SERVER_GEN_H5_SIGN)

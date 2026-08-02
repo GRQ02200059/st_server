@@ -177,9 +177,25 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `handler owned read only empty queries are absent from observed shape fallback`() {
+        listOf(
+            Cmd.SWITCH_ROLE_QUERY_ROLE_LIST,
+            Cmd.MAIL_INBOX,
+            Cmd.MAIL_GET_CONTACTS,
+            Cmd.USER_GET_SEASON_COURSE_LIST,
+            Cmd.CHAT_GET_ZHAO_XIAN_MSG,
+            Cmd.PROGRESS_GET_INFO,
+            Cmd.MAIL_NOTIFY_GET_ALL,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `captured list iterated commands stay empty arrays`() {
         // 这些命令客户端整体遍历列表，空 [] 即结构正确（保结构不保数值）。
-        listOf(103, 171, 711, 871).forEach { cmd ->
+        listOf(103, 711).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(0, ShapeAssert.tupleSize(body), "cmd=$cmd")
@@ -187,22 +203,17 @@ class CapturedShapeTest {
     }
 
     @Test
-    fun `captured mail chat notification and gift lists stay non null empty arrays`() {
-        listOf(202, 727, 3758, 6030).forEach { cmd ->
-            val body = assertNotNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
-            assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
-            assertEquals(0, ShapeAssert.tupleSize(body), "cmd=$cmd")
-        }
+    fun `captured gift list stays a non null empty array`() {
+        val body = assertNotNull(NetworkResponsePolicy.observedShapeBody(6030))
+        assertEquals("array", ShapeAssert.topLevelKind(body))
+        assertEquals(0, ShapeAssert.tupleSize(body))
     }
 
     @Test
-    fun `first captured response batch is registered as observed shape`() {
-        listOf(202, 727, 3758, 6030).forEach { cmd ->
-            assertEquals(
-                CommandStatus.OBSERVED_SHAPE,
-                CommandContractCatalog.registry.contract(cmd)?.status,
-                "cmd=$cmd",
-            )
-        }
+    fun `gift list remains registered as observed shape`() {
+        assertEquals(
+            CommandStatus.OBSERVED_SHAPE,
+            CommandContractCatalog.registry.contract(6030)?.status,
+        )
     }
 }

@@ -198,6 +198,16 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendRealNameLogout(ctx)
             }
 
+            Cmd.SWITCH_ROLE_QUERY_ROLE_LIST,
+            Cmd.MAIL_INBOX,
+            Cmd.MAIL_GET_CONTACTS,
+            Cmd.USER_GET_SEASON_COURSE_LIST,
+            Cmd.CHAT_GET_ZHAO_XIAN_MSG,
+            Cmd.PROGRESS_GET_INFO,
+            Cmd.MAIL_NOTIFY_GET_ALL -> {
+                sendReadOnlyEmptyList(ctx, msg.cmdId)
+            }
+
             Cmd.GET_UNION_BATTLE_REPORT,
             Cmd.MAIL_OUTBOX,
             Cmd.GET_BLACK_LIST,
@@ -1835,6 +1845,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     private fun sendNoOpSuccess(ctx: ChannelHandlerContext, msg: UpPacket) {
         ctx.writeAndFlush(DownPacket.json(msg.cmdId, GameResponses.emptyArray(), dataType = DownType.PLAIN))
         log.info(">> cmd=${msg.cmdId} 记录类请求已应答")
+    }
+
+    private fun sendReadOnlyEmptyList(ctx: ChannelHandlerContext, cmdId: Int) {
+        ctx.writeAndFlush(DownPacket.json(cmdId, "[]", dataType = DownType.PLAIN))
     }
 
     private fun sendRecordedAcknowledgement(ctx: ChannelHandlerContext, msg: UpPacket) {

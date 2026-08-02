@@ -749,24 +749,78 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
-    fun `remaining first captured response batch uses the default observed shape route`() {
+    fun `read only empty queries ignore arbitrary payloads without mutating repositories`() {
         val channel = newChannel()
-        val cases = listOf(
-            Triple(202, "[]", "[]"),
-            Triple(727, "[]", "[]"),
-            Triple(3758, "[]", "[]"),
-            Triple(6030, "[]", "[]"),
+        val accountKey = "read-only-empty-query-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Read Only Empty Query User",
+        )
+        UnionStateRepository.create(state, "Read Only Empty Query Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_011, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val commands = listOf(
+            Cmd.SWITCH_ROLE_QUERY_ROLE_LIST,
+            Cmd.MAIL_INBOX,
+            Cmd.MAIL_GET_CONTACTS,
+            Cmd.USER_GET_SEASON_COURSE_LIST,
+            Cmd.CHAT_GET_ZHAO_XIAN_MSG,
+            Cmd.PROGRESS_GET_INFO,
+            Cmd.MAIL_NOTIFY_GET_ALL,
+        )
+        val arbitraryPayloads = listOf(
+            "null",
+            "[]",
+            """{"synthetic":"metadata","ids":[17,42]}""",
+            """[{"opaque":true}] trailing""",
+            "not-json synthetic payload",
         )
 
-        cases.forEach { (cmd, request, expectedBody) ->
-            channel.writeInbound(upPacket(cmd, request))
+        commands.forEach { cmd ->
+            arbitraryPayloads.forEach { request ->
+                channel.writeInbound(upPacket(cmd, request, userId = state.userId))
 
-            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "cmd=$cmd")
-            assertEquals(cmd, response.cmd)
-            assertEquals(DownType.PLAIN, response.dataType)
-            assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
-            assertNull(channel.readOutbound<Any>(), "cmd=$cmd emitted an extra packet")
+                val response = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request",
+                )
+                assertEquals(cmd, response.cmd)
+                assertEquals(DownType.PLAIN, response.dataType)
+                assertEquals("[]", response.body.toString(Charsets.UTF_8))
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request emitted an extra packet",
+                )
+            }
         }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `gift list remains on the default observed shape route`() {
+        val channel = newChannel()
+
+        channel.writeInbound(upPacket(6030, "[]"))
+
+        val response = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(6030, response.cmd)
+        assertEquals(DownType.PLAIN, response.dataType)
+        assertEquals("[]", response.body.toString(Charsets.UTF_8))
+        assertNull(channel.readOutbound<Any>())
         channel.finishAndReleaseAll()
     }
 

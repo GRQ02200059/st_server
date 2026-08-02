@@ -126,6 +126,13 @@ object CommandContractCatalog {
                 Cmd.NOTICE_LIST,
                 Cmd.FRIEND_GROUP_GET_HISTORY_CHAT,
                 Cmd.STRATEGY_HELP_GET,
+                Cmd.SWITCH_ROLE_QUERY_ROLE_LIST,
+                Cmd.MAIL_INBOX,
+                Cmd.MAIL_GET_CONTACTS,
+                Cmd.USER_GET_SEASON_COURSE_LIST,
+                Cmd.CHAT_GET_ZHAO_XIAN_MSG,
+                Cmd.PROGRESS_GET_INFO,
+                Cmd.MAIL_NOTIFY_GET_ALL,
             ).map(::provisionalClientRequest) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,
