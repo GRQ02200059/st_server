@@ -167,6 +167,8 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalRequest(Cmd.CLAN_NEARBY_CLAN_LIST)
                     .copy(domain = CommandDomain.SOCIAL),
+                provisionalRequest(Cmd.CLAN_NPC_CITY_LIST)
+                    .copy(domain = CommandDomain.SOCIAL),
                 provisionalRequest(Cmd.CLAN_GET_CONTRIBUTION_LIST)
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalRequest(Cmd.CLAN_GET_JUNXIAN_LIST)

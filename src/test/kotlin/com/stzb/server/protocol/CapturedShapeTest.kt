@@ -54,6 +54,22 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `clan npc city list stays outside captured shape fallback`() {
+        val commandId = 2_709
+
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "[] synthetic-npc-city-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `clan contribution list stays outside captured shape fallback`() {
         val commandId = 2_711
 

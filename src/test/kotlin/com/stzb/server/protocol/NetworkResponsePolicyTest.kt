@@ -55,6 +55,22 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `clan npc city list requires its explicit handler`() {
+        val commandId = 2_709
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-npc-city-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `clan contribution list requires its explicit handler`() {
         val commandId = 2_711
 
