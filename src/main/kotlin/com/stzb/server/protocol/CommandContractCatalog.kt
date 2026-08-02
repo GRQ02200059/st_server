@@ -191,6 +191,12 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalRequest(Cmd.GET_USER_RES_WID_LEVEL_MAP)
                     .copy(domain = CommandDomain.WORLD),
+                provisionalClientRequest(Cmd.GET_NZ_EFFECT_LAND_LIST)
+                    .copy(domain = CommandDomain.WORLD),
+                provisionalClientRequest(Cmd.GET_FIELD_RES_TOTAL_STORE)
+                    .copy(domain = CommandDomain.WORLD),
+                provisionalClientRequest(Cmd.QUERY_USER_MARKET_SCORE)
+                    .copy(domain = CommandDomain.ACTIVITY),
                 provisionalClientRequest(Cmd.WORLD_BOSS_TOP_THREE_RANK)
                     .copy(domain = CommandDomain.ACTIVITY),
                 provisionalRequest(Cmd.OWN_RANK)

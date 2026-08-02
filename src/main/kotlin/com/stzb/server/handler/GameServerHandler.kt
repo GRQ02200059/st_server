@@ -303,6 +303,12 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(msg.cmdId, "{}", dataType = DownType.PLAIN))
             }
 
+            Cmd.GET_NZ_EFFECT_LAND_LIST,
+            Cmd.GET_FIELD_RES_TOTAL_STORE,
+            Cmd.QUERY_USER_MARKET_SCORE -> {
+                sendStrictEmptyQueryProjection(ctx, msg)
+            }
+
             Cmd.NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD -> {
                 sendNobilityOfficerRecord(ctx, msg)
             }
@@ -2181,6 +2187,19 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
     private fun sendReadOnlyEmptyList(ctx: ChannelHandlerContext, cmdId: Int) {
         ctx.writeAndFlush(DownPacket.json(cmdId, "[]", dataType = DownType.PLAIN))
+    }
+
+    private fun sendStrictEmptyQueryProjection(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
+        if (request == null || !request.isArray || !request.isEmpty) return
+
+        val response = when (msg.cmdId) {
+            Cmd.GET_NZ_EFFECT_LAND_LIST -> "[]"
+            Cmd.GET_FIELD_RES_TOTAL_STORE -> "{}"
+            Cmd.QUERY_USER_MARKET_SCORE -> "[0,0]"
+            else -> error("unsupported strict empty query projection cmd: ${msg.cmdId}")
+        }
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, response, dataType = DownType.PLAIN))
     }
 
     private fun sendRecordedAcknowledgement(ctx: ChannelHandlerContext, msg: UpPacket) {

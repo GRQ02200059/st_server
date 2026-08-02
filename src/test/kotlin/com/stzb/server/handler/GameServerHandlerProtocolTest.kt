@@ -614,6 +614,115 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `strict empty query projections reject every other shape and remain repository free`() {
+        val accountKey = "strict-empty-query-projections"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Strict Empty Query User",
+        )
+        state.resources.money = 4_321_000
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Strict Empty Query Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_025, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val expectedBodies = linkedMapOf(
+            3_845 to "[]",
+            4_102 to "{}",
+            6_089 to "[0,0]",
+        )
+        val invalidRequests = linkedMapOf(
+            "JSON null" to "null",
+            "number scalar" to "17",
+            "string scalar" to """"synthetic-private-canary"""",
+            "boolean scalar" to "false",
+            "object" to """{"synthetic":"private-canary"}""",
+            "nested array" to "[[]]",
+            "non-empty array" to "[0]",
+            "malformed JSON" to "[",
+            "empty text" to "",
+            "trailing token" to "[] {}",
+        )
+
+        assertAll(
+            "strict empty query projection commands",
+            expectedBodies.map { (commandId, expectedBody) ->
+                Executable {
+                    val channel = newChannel()
+                    try {
+                        invalidRequests.forEach { (case, request) ->
+                            channel.writeInbound(
+                                upPacket(commandId, request, userId = state.userId + 10_000),
+                            )
+                            assertNull(
+                                channel.readOutbound<Any>(),
+                                "cmd=$commandId case=$case emitted an outbound packet",
+                            )
+                        }
+
+                        channel.writeInbound(
+                            upPacket(commandId, "[]", userId = state.userId + 10_000),
+                        )
+
+                        val packet = assertIs<DownPacket>(
+                            channel.readOutbound<Any>(),
+                            "cmd=$commandId valid [] request emitted no response",
+                        )
+                        assertEquals(commandId, packet.cmd, "cmd=$commandId")
+                        assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, packet.cmd, "cmd=$commandId")
+                        assertEquals(DownType.PLAIN, packet.dataType, "cmd=$commandId")
+                        assertTrue(
+                            expectedBody.toByteArray().contentEquals(packet.body),
+                            "cmd=$commandId emitted wrong wire bytes",
+                        )
+                        val parsed = mapper.readTree(packet.body)
+                        when (commandId) {
+                            3_845 -> {
+                                assertTrue(parsed.isArray, "cmd=$commandId")
+                                assertTrue(parsed.isEmpty, "cmd=$commandId")
+                            }
+
+                            4_102 -> {
+                                assertTrue(parsed.isObject, "cmd=$commandId")
+                                assertTrue(parsed.isEmpty, "cmd=$commandId")
+                            }
+
+                            6_089 -> {
+                                assertTrue(parsed.isArray, "cmd=$commandId")
+                                assertEquals(2, parsed.size(), "cmd=$commandId")
+                                assertTrue(parsed[0].isIntegralNumber, "cmd=$commandId slot=0")
+                                assertEquals(0, parsed[0].asInt(), "cmd=$commandId slot=0")
+                                assertTrue(parsed[1].isIntegralNumber, "cmd=$commandId slot=1")
+                                assertEquals(0, parsed[1].asInt(), "cmd=$commandId slot=1")
+                            }
+                        }
+                        assertNull(
+                            channel.readOutbound<Any>(),
+                            "cmd=$commandId valid [] request emitted an extra packet",
+                        )
+                    } finally {
+                        channel.finishAndReleaseAll()
+                    }
+                }
+            },
+        )
+
+        assertEquals(playerBefore, state.toSnapshot())
+        assertTrue(
+            persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+            "persisted player bytes changed",
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+    }
+
+    @Test
     fun `sampled empty list queries ignore arbitrary payloads without mutating repositories`() {
         val channel = newChannel()
         val accountKey = "sampled-empty-list-snapshot"

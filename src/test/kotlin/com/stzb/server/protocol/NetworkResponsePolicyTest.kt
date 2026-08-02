@@ -12,6 +12,33 @@ class NetworkResponsePolicyTest {
     private val mapper = jacksonObjectMapper()
 
     @Test
+    fun `strict empty query projections require explicit handlers`() {
+        val commands = listOf(3_845, 4_102, 6_089)
+
+        assertAll(
+            "strict empty query projection fallback boundaries",
+            commands.map { commandId ->
+                Executable {
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(
+                            commandId,
+                            "not-json synthetic-private-canary",
+                        ),
+                        "cmd=$commandId",
+                    )
+                    assertTrue(
+                        commandId !in NetworkResponsePolicy.observedShapeCommandIds(),
+                        "cmd=$commandId",
+                    )
+                    val contract = CommandContractCatalog.registry.contract(commandId)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$commandId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$commandId")
+                }
+            },
+        )
+    }
+
+    @Test
     fun `nobility officer record query requires its explicit handler`() {
         val commandId = 5_212
 

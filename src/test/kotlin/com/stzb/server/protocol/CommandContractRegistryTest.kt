@@ -10,6 +10,38 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `strict empty query projections expose exact constants and handler owned contracts`() {
+        val commands = linkedMapOf(
+            "GET_NZ_EFFECT_LAND_LIST" to (3_845 to CommandDomain.WORLD),
+            "GET_FIELD_RES_TOTAL_STORE" to (4_102 to CommandDomain.WORLD),
+            "QUERY_USER_MARKET_SCORE" to (6_089 to CommandDomain.ACTIVITY),
+        )
+
+        assertAll(
+            "strict empty query projection contracts",
+            commands.map { (name, expected) ->
+                Executable {
+                    val field = assertNotNull(
+                        runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+                        "missing Cmd.$name",
+                    )
+                    assertEquals(expected.first, field.getInt(null), name)
+                    val contract = CommandContractCatalog.registry.contract(expected.first)
+                    assertEquals(listOf(name), contract?.names, "cmd=${expected.first}")
+                    assertEquals(
+                        CommandDirection.CLIENT_REQUEST,
+                        contract?.direction,
+                        "cmd=${expected.first}",
+                    )
+                    assertEquals(expected.second, contract?.domain, "cmd=${expected.first}")
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=${expected.first}")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=${expected.first}")
+                }
+            },
+        )
+    }
+
+    @Test
     fun `nobility officer record query exposes exact constant and handler owned social duplex contract`() {
         val name = "NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD"
         val commandId = 5_212

@@ -11,6 +11,33 @@ import kotlin.test.assertTrue
 
 class CapturedShapeTest {
     @Test
+    fun `strict empty query projections stay outside captured shape fallback`() {
+        val commands = listOf(3_845, 4_102, 6_089)
+
+        assertAll(
+            "strict empty query projection captured shape boundaries",
+            commands.map { commandId ->
+                Executable {
+                    val contract = CommandContractCatalog.registry.contract(commandId)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$commandId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$commandId")
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(
+                            commandId,
+                            "[] synthetic-private-canary",
+                        ),
+                        "cmd=$commandId",
+                    )
+                    assertTrue(
+                        commandId !in NetworkResponsePolicy.observedShapeCommandIds(),
+                        "cmd=$commandId",
+                    )
+                }
+            },
+        )
+    }
+
+    @Test
     fun `nobility officer record query stays outside captured shape fallback`() {
         val commandId = 5_212
 
