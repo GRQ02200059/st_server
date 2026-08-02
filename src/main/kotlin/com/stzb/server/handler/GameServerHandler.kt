@@ -185,6 +185,18 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(Cmd.UPDATE_GUIDE_RECORD, "200", dataType = DownType.PLAIN))
             }
 
+            Cmd.GET_UNION_BATTLE_REPORT,
+            Cmd.MAIL_OUTBOX,
+            Cmd.GET_BLACK_LIST,
+            Cmd.NOTICE_LIST,
+            Cmd.FRIEND_GROUP_GET_HISTORY_CHAT,
+            Cmd.QUERY_WANTED_TO_REPOTR,
+            Cmd.STRATEGY_HELP_GET,
+            Cmd.COMMAND_PLAN_GET_UNION_TEMP_GROUP,
+            Cmd.UNION_STATION_PLAYER_DANMU_LIST_GET -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[]", dataType = DownType.PLAIN))
+            }
+
             Cmd.PRE_SERVER_QUERY_USER_OP -> {
                 sendPreServerQueryUserOp(ctx, msg)
             }

@@ -82,6 +82,38 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `sampled empty list queries expose readable handler owned contracts with captured directions`() {
+        val duplexCommands = mapOf(
+            Cmd.GET_UNION_BATTLE_REPORT to 92,
+            Cmd.GET_BLACK_LIST to 714,
+            Cmd.QUERY_WANTED_TO_REPOTR to 4_967,
+            Cmd.COMMAND_PLAN_GET_UNION_TEMP_GROUP to 6_067,
+            Cmd.UNION_STATION_PLAYER_DANMU_LIST_GET to 6_256,
+        )
+        val clientRequestCommands = mapOf(
+            Cmd.MAIL_OUTBOX to 203,
+            Cmd.NOTICE_LIST to 780,
+            Cmd.FRIEND_GROUP_GET_HISTORY_CHAT to 3_846,
+            Cmd.STRATEGY_HELP_GET to 5_082,
+        )
+
+        duplexCommands.forEach { (cmd, expectedId) ->
+            assertEquals(expectedId, cmd)
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.DUPLEX, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+        clientRequestCommands.forEach { (cmd, expectedId) ->
+            assertEquals(expectedId, cmd)
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `union group commands expose readable ids`() {
         assertEquals(142, Cmd.UNION_GET_GROUP_LIST)
         assertEquals(143, Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT)

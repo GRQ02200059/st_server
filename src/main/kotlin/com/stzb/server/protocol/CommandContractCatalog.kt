@@ -34,6 +34,11 @@ object CommandContractCatalog {
             Cmd.BATTLE_REPORT_PROFILE,
             Cmd.BATTLE_REPORT_DETAIL,
             Cmd.BATTLE_REPORT_SHORT_DETAIL,
+            Cmd.GET_UNION_BATTLE_REPORT,
+            Cmd.GET_BLACK_LIST,
+            Cmd.QUERY_WANTED_TO_REPOTR,
+            Cmd.COMMAND_PLAN_GET_UNION_TEMP_GROUP,
+            Cmd.UNION_STATION_PLAYER_DANMU_LIST_GET,
             CurrentClientCommand.UNION_CREATE,
             CurrentClientCommand.UNION_INFO,
             CurrentClientCommand.UNION_MEMBER,
@@ -112,6 +117,10 @@ object CommandContractCatalog {
                 Cmd.DAILY_REPORT_GET_DETAIL,
                 Cmd.GET_HERO_RECOMMEND_2,
                 Cmd.GET_UDS_GUESS_SEASON,
+                Cmd.MAIL_OUTBOX,
+                Cmd.NOTICE_LIST,
+                Cmd.FRIEND_GROUP_GET_HISTORY_CHAT,
+                Cmd.STRATEGY_HELP_GET,
             ).map(::provisionalClientRequest) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,

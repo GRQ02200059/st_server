@@ -36,6 +36,7 @@ object Cmd {
     const val LEARN_HERO_SKILL = 71
     const val FORGET_HERO_SKILL = 72
     const val REMOVE_USER_SKILL = 77
+    const val GET_UNION_BATTLE_REPORT = 92
     const val REPLACE_HERO_SKILL = 98
     const val UNION_INFO = 100
     const val UNION_CREATE = 102
@@ -44,6 +45,7 @@ object Cmd {
     const val UNION_GET_GROUP_LIST = 142
     const val UNION_GET_ALL_MEMBER_LIST_FOR_CHAT = 143
     const val SEND_ACSDK_CHEAT_INFO = 191
+    const val MAIL_OUTBOX = 203
     const val MAIL_INFO = 204
     const val MAIL_BRIEF_INFO_BY_MAIL_ID = 209
     const val COMMUNITY_GET_USER_TOKEN = 1436
@@ -67,6 +69,8 @@ object Cmd {
     const val RANK_LIST = 700
     const val CHAT = 710
     const val CHAT_HISTORY = 711
+    const val GET_BLACK_LIST = 714
+    const val NOTICE_LIST = 780
     const val USER_CLOSE_UI = 875
     const val USER_OPEN_UI = 885
     const val LOG_MUSIC_OPEN = 888
@@ -82,6 +86,7 @@ object Cmd {
     const val ROTATE_CARD_BORDER_REMOVE = 1674
     const val SET_CLIENT_RED_DOT_DATA = 3400
     const val GET_HOMEPAGE_INFO = 3686
+    const val FRIEND_GROUP_GET_HISTORY_CHAT = 3846
     const val BUILD_FACADE_APPLY_BUILD_SCHEME = 3945
     const val RESFILE_LOG_HUB_RECORD = 4326
     const val GET_USER_NPC_ARMY = 4329
@@ -89,14 +94,18 @@ object Cmd {
     const val GET_LAND_DEFEND_ARMY = 4331
     const val QUERY_ARMY_RELATED_FORT = 4159
     const val DAILY_REPORT_LOG = 4966
+    const val QUERY_WANTED_TO_REPOTR = 4967
     const val GET_WORLD_SCENCE_INFO = 5025
     const val SEND_WORLD_SCENCE_FULL_INFO = 5026
     const val HELP_GUIDE_TIPS_LOG = 5069
     const val DAILY_REPORT_GET_DETAIL = 5070
+    const val STRATEGY_HELP_GET = 5082
     const val UPDATE_GUIDE_RECORD = 5091
     const val GET_HERO_RECOMMEND_2 = 5210
+    const val COMMAND_PLAN_GET_UNION_TEMP_GROUP = 6067
     const val GET_UDS_GUESS_SEASON = 6078
     const val BATTLE_REPORT_SHORT_DETAIL = 6231
+    const val UNION_STATION_PLAYER_DANMU_LIST_GET = 6256
     const val SET_FRONT_UNLOCK_ANIM = 7046
     const val SYS_PING = 90006
     const val WORLD_BOSS_SAVE_TEAM = 8005

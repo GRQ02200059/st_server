@@ -139,9 +139,27 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `handler owned sampled empty list queries are absent from observed shape fallback`() {
+        listOf(
+            Cmd.GET_UNION_BATTLE_REPORT,
+            Cmd.MAIL_OUTBOX,
+            Cmd.GET_BLACK_LIST,
+            Cmd.NOTICE_LIST,
+            Cmd.FRIEND_GROUP_GET_HISTORY_CHAT,
+            Cmd.QUERY_WANTED_TO_REPOTR,
+            Cmd.STRATEGY_HELP_GET,
+            Cmd.COMMAND_PLAN_GET_UNION_TEMP_GROUP,
+            Cmd.UNION_STATION_PLAYER_DANMU_LIST_GET,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `captured list iterated commands stay empty arrays`() {
         // 这些命令客户端整体遍历列表，空 [] 即结构正确（保结构不保数值）。
-        listOf(92, 103, 171, 711, 871, 6256).forEach { cmd ->
+        listOf(103, 171, 711, 871).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(0, ShapeAssert.tupleSize(body), "cmd=$cmd")
@@ -150,7 +168,7 @@ class CapturedShapeTest {
 
     @Test
     fun `captured mail chat notification and gift lists stay non null empty arrays`() {
-        listOf(202, 203, 727, 3758, 6030).forEach { cmd ->
+        listOf(202, 727, 3758, 6030).forEach { cmd ->
             val body = assertNotNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
             assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(0, ShapeAssert.tupleSize(body), "cmd=$cmd")
@@ -159,7 +177,7 @@ class CapturedShapeTest {
 
     @Test
     fun `first captured response batch is registered as observed shape`() {
-        listOf(202, 203, 727, 3758, 6030).forEach { cmd ->
+        listOf(202, 727, 3758, 6030).forEach { cmd ->
             assertEquals(
                 CommandStatus.OBSERVED_SHAPE,
                 CommandContractCatalog.registry.contract(cmd)?.status,

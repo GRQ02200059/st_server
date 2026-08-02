@@ -118,6 +118,65 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `sampled empty list queries ignore arbitrary payloads without mutating repositories`() {
+        val channel = newChannel()
+        val accountKey = "sampled-empty-list-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Sampled Empty List Snapshot User",
+        )
+        UnionStateRepository.create(state, "Sampled Empty List Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_004, nowSec = 1))
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val commands = listOf(
+            Cmd.GET_UNION_BATTLE_REPORT,
+            Cmd.MAIL_OUTBOX,
+            Cmd.GET_BLACK_LIST,
+            Cmd.NOTICE_LIST,
+            Cmd.FRIEND_GROUP_GET_HISTORY_CHAT,
+            Cmd.QUERY_WANTED_TO_REPOTR,
+            Cmd.STRATEGY_HELP_GET,
+            Cmd.COMMAND_PLAN_GET_UNION_TEMP_GROUP,
+            Cmd.UNION_STATION_PLAYER_DANMU_LIST_GET,
+        )
+        val syntheticPayloads = listOf(
+            """["synthetic-alpha",{"opaque":17}]""",
+            """{"synthetic":"beta","values":[false,42]}""",
+            "not-json synthetic payload",
+        )
+
+        commands.forEach { cmd ->
+            syntheticPayloads.forEach { request ->
+                channel.writeInbound(upPacket(cmd, request, userId = state.userId))
+
+                val response = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request",
+                )
+                assertEquals(cmd, response.cmd)
+                assertEquals(DownType.PLAIN, response.dataType)
+                assertEquals("[]", response.body.toString(Charsets.UTF_8))
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request emitted an extra packet",
+                )
+            }
+        }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `pre server user operation query echoes only a valid integer user id`() {
         val channel = newChannel()
         val validRequests = listOf(
@@ -221,7 +280,6 @@ class GameServerHandlerProtocolTest {
         val channel = newChannel()
         val cases = listOf(
             Triple(202, "[]", "[]"),
-            Triple(203, "[]", "[]"),
             Triple(727, "[]", "[]"),
             Triple(3758, "[]", "[]"),
             Triple(6030, "[]", "[]"),
