@@ -148,6 +148,17 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `handler owned union social empty queries are absent from observed shape fallback`() {
+        listOf(104, 736, 741, 3_410, 3_411).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `handler owned optional social and world queries are absent from observed shape fallback`() {
         listOf(
             Cmd.CCLIVE_GET_FOLLOW_LIST,

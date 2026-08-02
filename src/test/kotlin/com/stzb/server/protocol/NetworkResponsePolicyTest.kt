@@ -91,6 +91,17 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `union social empty queries require explicit handlers`() {
+        listOf(104, 736, 741, 3_410, 3_411).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `multiplexed 6242 requires its request aware handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_STATION_ENTER_SCENE))
         assertTrue(

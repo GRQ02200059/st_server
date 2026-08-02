@@ -160,6 +160,16 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalRequest(Cmd.UNION_NEARBY_PLAYER_LIST)
                     .copy(domain = CommandDomain.SOCIAL),
+                provisionalRequest(Cmd.UNION_APPLICANT_LIST)
+                    .copy(domain = CommandDomain.SOCIAL),
+                provisionalClientRequest(Cmd.CHAT_GET_SAND_TABLE_ROOM_MSG)
+                    .copy(domain = CommandDomain.SOCIAL),
+                provisionalClientRequest(Cmd.FRIEND_SEARCH)
+                    .copy(domain = CommandDomain.SOCIAL),
+                provisionalRequest(Cmd.UNION_SEARCH_UNION_LIST)
+                    .copy(domain = CommandDomain.SOCIAL),
+                provisionalRequest(Cmd.UNION_SEARCH_PLAYER_LIST)
+                    .copy(domain = CommandDomain.SOCIAL),
                 provisionalClientRequest(Cmd.WORLD_BOSS_TOP_THREE_RANK)
                     .copy(domain = CommandDomain.ACTIVITY),
             ) +

@@ -38,6 +38,31 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `union social empty queries expose exact constants and handler owned social contracts`() {
+        val commands = mapOf(
+            "UNION_APPLICANT_LIST" to (104 to CommandDirection.DUPLEX),
+            "CHAT_GET_SAND_TABLE_ROOM_MSG" to (736 to CommandDirection.CLIENT_REQUEST),
+            "FRIEND_SEARCH" to (741 to CommandDirection.CLIENT_REQUEST),
+            "UNION_SEARCH_UNION_LIST" to (3_410 to CommandDirection.DUPLEX),
+            "UNION_SEARCH_PLAYER_LIST" to (3_411 to CommandDirection.DUPLEX),
+        )
+
+        commands.forEach { (name, expected) ->
+            val field = assertNotNull(
+                runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+                "missing Cmd.$name",
+            )
+            assertEquals(expected.first, field.getInt(null), name)
+            val contract = CommandContractCatalog.registry.contract(expected.first)
+            assertEquals(listOf(name), contract?.names, "cmd=${expected.first}")
+            assertEquals(expected.second, contract?.direction, "cmd=${expected.first}")
+            assertEquals(CommandDomain.SOCIAL, contract?.domain, "cmd=${expected.first}")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=${expected.first}")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=${expected.first}")
+        }
+    }
+
+    @Test
     fun `multiplexed 6242 exposes both names and a handler owned social contract`() {
         assertEquals(6_242, Cmd.TEAM_INVITATIONAL_QUERY_MEMBER_FOR_INVITE)
         assertEquals(6_242, Cmd.UNION_STATION_ENTER_SCENE)

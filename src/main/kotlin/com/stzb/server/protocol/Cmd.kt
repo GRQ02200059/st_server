@@ -41,6 +41,7 @@ object Cmd {
     const val UNION_INFO = 100
     const val UNION_CREATE = 102
     const val UNION_MEMBER = 103
+    const val UNION_APPLICANT_LIST = 104
     const val UNION_OFFICIAL_LIST = 110
     const val UNION_NEARBY_PLAYER_LIST = 112
     const val UNION_NPC_CITY_LIST = 135
@@ -102,10 +103,14 @@ object Cmd {
     const val USER_GET_USERS_HEADICON = 514
     const val SYNC_SERVER_TIME = 694
     const val CHAT_GET_ZHAO_XIAN_MSG = 727
+    const val CHAT_GET_SAND_TABLE_ROOM_MSG = 736
+    const val FRIEND_SEARCH = 741
     const val ROTATE_CARD_BORDER_ADD = 1673
     const val ROTATE_CARD_BORDER_REMOVE = 1674
     const val PROGRESS_GET_INFO = 871
     const val SET_CLIENT_RED_DOT_DATA = 3400
+    const val UNION_SEARCH_UNION_LIST = 3410
+    const val UNION_SEARCH_PLAYER_LIST = 3411
     const val GET_HOMEPAGE_INFO = 3686
     const val MAIL_NOTIFY_GET_ALL = 3758
     const val FRIEND_GROUP_GET_HISTORY_CHAT = 3846

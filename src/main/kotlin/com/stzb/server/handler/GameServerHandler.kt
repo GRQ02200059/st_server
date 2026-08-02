@@ -247,6 +247,14 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendReadOnlyEmptyList(ctx, msg.cmdId)
             }
 
+            Cmd.UNION_APPLICANT_LIST,
+            Cmd.CHAT_GET_SAND_TABLE_ROOM_MSG,
+            Cmd.FRIEND_SEARCH,
+            Cmd.UNION_SEARCH_UNION_LIST,
+            Cmd.UNION_SEARCH_PLAYER_LIST -> {
+                sendReadOnlyEmptyList(ctx, msg.cmdId)
+            }
+
             Cmd.UNION_NPC_CITY_LIST,
             Cmd.CHAT_UNION_PLAN_HISTORY_ID,
             Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER,

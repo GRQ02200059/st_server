@@ -448,6 +448,71 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `union social empty queries ignore every request body and return one empty list without mutation`() {
+        val channel = newChannel()
+        val accountKey = "union-social-empty-queries"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Union Social Empty Query User",
+        )
+        state.resources.money = 7_654_321
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Union Social Empty Query Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_019, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val commands = listOf(104, 736, 741, 3_410, 3_411)
+        val requestBodies = listOf(
+            "[]",
+            "null",
+            "{}",
+            "0",
+            """["wrong-slot-type"]""",
+            """[17,{"opaque":42},false]""",
+            "not-json synthetic payload",
+            "[] {}",
+        )
+
+        commands.forEach { cmd ->
+            requestBodies.forEach { request ->
+                channel.writeInbound(upPacket(cmd, request, userId = state.userId))
+
+                val response = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request",
+                )
+                assertEquals(cmd, response.cmd)
+                assertEquals(DownType.PLAIN, response.dataType)
+                assertEquals("[]", response.body.toString(Charsets.UTF_8))
+                val body = mapper.readTree(response.body)
+                assertTrue(body.isArray, "cmd=$cmd request=$request did not return an array")
+                assertEquals(0, body.size(), "cmd=$cmd request=$request returned a synthetic row")
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request emitted an extra packet",
+                )
+            }
+        }
+
+        assertEquals(playerBefore, state.toSnapshot())
+        assertTrue(
+            persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+            "persisted player bytes changed",
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `season history queries ignore arbitrary payloads without mutating repositories`() {
         val channel = newChannel()
         val accountKey = "season-history-snapshot"
