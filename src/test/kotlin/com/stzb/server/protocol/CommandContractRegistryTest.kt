@@ -59,6 +59,24 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `clan contribution list exposes exact constant and handler owned social duplex contract`() {
+        val name = "CLAN_GET_CONTRIBUTION_LIST"
+        val commandId = 2_711
+        val field = assertNotNull(
+            runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+            "missing Cmd.$name",
+        )
+
+        assertEquals(commandId, field.getInt(null))
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(listOf(name), contract?.names)
+        assertEquals(CommandDirection.DUPLEX, contract?.direction)
+        assertEquals(CommandDomain.SOCIAL, contract?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `clan supreme list exposes exact constant and handler owned social duplex contract`() {
         val name = "CLAN_SUPREME_LIST"
         val commandId = 2_714

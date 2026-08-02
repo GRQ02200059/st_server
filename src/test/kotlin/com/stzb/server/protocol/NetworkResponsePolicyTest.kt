@@ -55,6 +55,22 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `clan contribution list requires its explicit handler`() {
+        val commandId = 2_711
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-contribution-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `clan supreme list requires its explicit handler`() {
         val commandId = 2_714
 
