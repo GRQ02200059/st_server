@@ -57,6 +57,17 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `card record and customer service rejection require explicit handlers`() {
+        listOf(
+            Cmd.CARD_RECORD,
+            Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `union chat member list requires the explicit handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT))
     }

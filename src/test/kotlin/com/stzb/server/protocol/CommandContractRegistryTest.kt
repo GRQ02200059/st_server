@@ -130,6 +130,25 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `card record and customer service rejection expose exact handler owned contracts`() {
+        assertEquals(671, Cmd.CARD_RECORD)
+        val cardRecord = CommandContractCatalog.registry.contract(Cmd.CARD_RECORD)
+        assertEquals(CommandDirection.CLIENT_REQUEST, cardRecord?.direction)
+        assertEquals(CommandDomain.UNKNOWN, cardRecord?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, cardRecord?.status)
+        assertEquals("GameServerHandler", cardRecord?.owner)
+
+        assertEquals(40_016, Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE)
+        val customerService = CommandContractCatalog.registry.contract(
+            Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE,
+        )
+        assertEquals(CommandDirection.CLIENT_REQUEST, customerService?.direction)
+        assertEquals(CommandDomain.EXTERNAL, customerService?.domain)
+        assertEquals(CommandStatus.REJECTED, customerService?.status)
+        assertEquals("GameServerHandler", customerService?.owner)
+    }
+
+    @Test
     fun `union group commands expose readable ids`() {
         assertEquals(142, Cmd.UNION_GET_GROUP_LIST)
         assertEquals(143, Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT)

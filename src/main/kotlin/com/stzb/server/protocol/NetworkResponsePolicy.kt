@@ -21,7 +21,6 @@ object NetworkResponsePolicy {
         booleanCommands +
             jsonNullCommands +
             scalarNumberCommands.keys +
-            stringCommands +
             dictionaryCommands +
             fixedTupleCommands.keys +
             pagedListCommands +
@@ -52,7 +51,6 @@ object NetworkResponsePolicy {
             cmdId in booleanCommands -> "true"
             cmdId in jsonNullCommands -> "null"
             cmdId in scalarNumberCommands -> scalarNumberCommands.getValue(cmdId)
-            cmdId in stringCommands -> "\"\""
             cmdId in fixedTupleCommands -> fixedTupleCommands.getValue(cmdId)
             cmdId == 3877 -> "[${GameServerConfig.SERVER_ID}]"
             cmdId == 4968 -> "[false,[]]"
@@ -90,11 +88,6 @@ object NetworkResponsePolicy {
     private val scalarNumberCommands = mapOf(
         750 to "0",
         752 to "6500",
-    )
-
-    /** 抓包确认返回顶层字符串（不透明 token/序列化串）的命令，兜底回空串。 */
-    private val stringCommands = setOf(
-        671, 40016,
     )
 
     private val dictionaryCommands = setOf(

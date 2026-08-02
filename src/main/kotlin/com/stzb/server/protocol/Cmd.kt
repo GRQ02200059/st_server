@@ -60,6 +60,7 @@ object Cmd {
     const val CARD_CHANGE_POINT_PLAN = 186
     const val CARD_EXTRACT_SWITCH = 300
     const val CARD_SELECT_HERO = 308
+    const val CARD_RECORD = 671
     const val HERO_USE_CARD_BORDER = 673
     const val HERO_SELECT_FACADE = 674
     const val HERO_ACTIVE_CARD_BORDER = 675
@@ -117,6 +118,7 @@ object Cmd {
     const val PRE_SERVER_QUERY_USER_OP = 40003
     const val PRE_SERVER_GEN_H5_SIGN = 40004
     const val GET_PREBOOK_SERVER_INFO = 40008
+    const val USER_GET_CUSTOMER_SERVICE_TOKEN_PRE = 40016
     const val QUERY_NEW_COMMUNITY_INFO = 40020
     const val QUERY_SIMULATE_TOKEN = 40021
     const val IP_USER_COUNT_PRE = 40022

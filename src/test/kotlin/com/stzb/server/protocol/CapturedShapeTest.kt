@@ -77,10 +77,13 @@ class CapturedShapeTest {
     }
 
     @Test
-    fun `captured opaque string commands keep string kind`() {
-        listOf(671, 40016).forEach { cmd ->
-            val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
-            assertEquals("string", ShapeAssert.topLevelKind(body), "cmd=$cmd")
+    fun `handler owned card record and customer service rejection are absent from observed shape fallback`() {
+        listOf(
+            Cmd.CARD_RECORD,
+            Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
         }
     }
 

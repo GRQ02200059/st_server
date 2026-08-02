@@ -1052,6 +1052,13 @@ object PlayerStateRepository {
         }, cityWid)
     }
 
+    fun findExisting(accountKey: String): PlayerState? {
+        require(accountKey.isNotBlank()) { "accountKey 不能为空" }
+        players[accountKey]?.let { return it }
+        val loaded = repository.findByAccount(accountKey) ?: return null
+        return players.putIfAbsent(accountKey, loaded) ?: loaded
+    }
+
     fun getOrCreate(userId: Int, cityWid: Int, roleName: String): PlayerState {
         val accountKey = "legacy-user-$userId"
         return relocateLegacyMainCityIfNeeded(players.computeIfAbsent(accountKey) {

@@ -205,6 +205,14 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendSeasonHistoryParams(ctx)
             }
 
+            Cmd.CARD_RECORD -> {
+                sendCardRecord(ctx, session)
+            }
+
+            Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE -> {
+                sendCustomerServiceTokenRejection(ctx)
+            }
+
             Cmd.PRE_SERVER_QUERY_USER_OP -> {
                 sendPreServerQueryUserOp(ctx, msg)
             }
@@ -535,6 +543,40 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val response = mapper.writeValueAsString(emptyMap<String, Any?>())
         ctx.writeAndFlush(
             DownPacket.json(Cmd.GET_SEASON_HISTROY_PARAMS, response, dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendCardRecord(ctx: ChannelHandlerContext, session: Session?) {
+        val playerId = session?.playerId
+        val recordText = session?.accountKey
+            ?.takeIf { playerId != null }
+            ?.let(PlayerStateRepository::findExisting)
+            ?.takeIf { state -> state.userId == playerId }
+            ?.allHeroes()
+            ?.asSequence()
+            ?.filterNot { hero -> hero.isAdvanceMaterial }
+            ?.groupBy { hero -> hero.heroId }
+            ?.mapValues { (_, heroes) -> heroes.minOf { hero -> hero.createdAtSec } }
+            ?.toSortedMap()
+            ?.entries
+            ?.joinToString(separator = ";") { (heroId, createdAtSec) ->
+                "$heroId,$createdAtSec"
+            }
+            .orEmpty()
+        val response = mapper.writeValueAsString(recordText)
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.CARD_RECORD, response, dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendCustomerServiceTokenRejection(ctx: ChannelHandlerContext) {
+        val response = mapper.writeValueAsString("")
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE,
+                response,
+                dataType = DownType.PLAIN,
+            ),
         )
     }
 

@@ -5,6 +5,8 @@ import com.stzb.server.game.CardBorderCatalog
 import com.stzb.server.game.FilePlayerRepository
 import com.stzb.server.game.FileUnionRepository
 import com.stzb.server.game.InventoryCatalog
+import com.stzb.server.game.PlayerRepository
+import com.stzb.server.game.PlayerState
 import com.stzb.server.game.PlayerStateRepository
 import com.stzb.server.game.UnionStateRepository
 import com.stzb.server.game.WorldStateRepository
@@ -259,6 +261,156 @@ class GameServerHandlerProtocolTest {
         )
         assertTrue(seasonHistoryParams.isObject)
         assertEquals(0, seasonHistoryParams.size())
+
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `card record projects deterministic ordinary hero acquisition history without mutation`() {
+        val channel = newChannel()
+        val accountKey = "card-record-local"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Card Record Local User",
+        )
+        state.addHero(heroId = 100_202, nowSec = 1_700_000_200)
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_300)
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        state.addHero(heroId = 100_303, nowSec = 1_699_999_999, isAdvanceMaterial = true)
+        state.addHero(heroId = 100_202, nowSec = 1_600_000_000, isAdvanceMaterial = true)
+        UnionStateRepository.create(state, "Card Record Local Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_006, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = state.toSnapshot()
+        val persistedBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val requests = listOf(
+            "null",
+            "[]",
+            "not-json synthetic payload",
+            """["opaque-a","opaque-b","opaque-c",{"opaque":"opaque-d"}]""",
+        )
+        val expectedText = "100101,1700000000;100202,1700000200"
+
+        requests.forEach { request ->
+            channel.writeInbound(upPacket(Cmd.CARD_RECORD, request, userId = state.userId))
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "request=$request")
+            assertEquals(Cmd.CARD_RECORD, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            val outer = mapper.readTree(response.body)
+            assertTrue(outer.isTextual)
+            assertEquals(expectedText, outer.textValue())
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+
+        PlayerStateRepository.configure(FilePlayerRepository(repositoryRoot))
+        channel.writeInbound(upPacket(Cmd.CARD_RECORD, "null", userId = state.userId))
+        val reloadedResponse = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.CARD_RECORD, reloadedResponse.cmd)
+        assertEquals(DownType.PLAIN, reloadedResponse.dataType)
+        assertEquals(expectedText, mapper.readTree(reloadedResponse.body).textValue())
+        assertNull(channel.readOutbound<Any>())
+
+        assertEquals(
+            playerBefore,
+            requireNotNull(PlayerStateRepository.findExisting(accountKey)).toSnapshot(),
+        )
+        assertEquals(
+            persistedBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `card record returns empty string for unbound and missing accounts without creating state`() {
+        val channel = newChannel()
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+
+        channel.writeInbound(upPacket(Cmd.CARD_RECORD, "null", userId = session.wireUserId))
+        val unboundResponse = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.CARD_RECORD, unboundResponse.cmd)
+        assertEquals(DownType.PLAIN, unboundResponse.dataType)
+        assertEquals("", mapper.readTree(unboundResponse.body).textValue())
+        assertNull(channel.readOutbound<Any>())
+        assertNull(
+            FilePlayerRepository(repositoryRoot).findByAccount("legacy-user-${session.wireUserId}"),
+        )
+
+        val missingAccount = "missing-card-record"
+        session.bind(missingAccount, 77_777)
+        channel.writeInbound(upPacket(Cmd.CARD_RECORD, "[]", userId = session.userId))
+        val missingResponse = assertIs<DownPacket>(channel.readOutbound<Any>())
+        assertEquals(Cmd.CARD_RECORD, missingResponse.cmd)
+        assertEquals(DownType.PLAIN, missingResponse.dataType)
+        assertEquals("", mapper.readTree(missingResponse.body).textValue())
+        assertNull(channel.readOutbound<Any>())
+        assertNull(FilePlayerRepository(repositoryRoot).findByAccount(missingAccount))
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `customer service token pre request always rejects locally without repository access`() {
+        val channel = newChannel()
+        val accountKey = "customer-service-local"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Customer Service Local User",
+        )
+        UnionStateRepository.create(state, "Customer Service Local Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_007, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val requests = listOf(
+            "null",
+            "[]",
+            "not-json synthetic payload",
+            """["opaque-a","opaque-b","opaque-c",{"opaque":"opaque-d"}]""",
+        )
+
+        requests.forEach { request ->
+            channel.writeInbound(
+                upPacket(
+                    Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE,
+                    request,
+                    userId = state.userId,
+                ),
+            )
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "request=$request")
+            assertEquals(Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            val outer = mapper.readTree(response.body)
+            assertTrue(outer.isTextual)
+            assertEquals("", outer.textValue())
+            assertTrue(outer.textValue().isEmpty())
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
 
         assertEquals(
             playerBefore,
@@ -1482,4 +1634,16 @@ class GameServerHandlerProtocolTest {
 
     private fun drainOutbound(channel: EmbeddedChannel): List<Any> =
         generateSequence { channel.readOutbound<Any>() }.toList()
+
+    private object RejectingPlayerRepository : PlayerRepository {
+        override fun findByAccount(accountKey: String): PlayerState =
+            error("customer service rejection must not read player state")
+
+        override fun getOrCreate(accountKey: String, cityWid: Int, roleName: String): PlayerState =
+            error("customer service rejection must not create player state")
+
+        override fun save(state: PlayerState) {
+            error("customer service rejection must not save player state")
+        }
+    }
 }

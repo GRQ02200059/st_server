@@ -119,6 +119,7 @@ object CommandContractCatalog {
                 Cmd.GET_UDS_GUESS_SEASON,
                 Cmd.GET_USER_SEASON_RECORD,
                 Cmd.GET_SEASON_HISTROY_PARAMS,
+                Cmd.CARD_RECORD,
                 Cmd.MAIL_OUTBOX,
                 Cmd.NOTICE_LIST,
                 Cmd.FRIEND_GROUP_GET_HISTORY_CHAT,
@@ -190,6 +191,14 @@ object CommandContractCatalog {
             ),
             CommandContract(
                 id = Cmd.QUERY_SIMULATE_TOKEN,
+                names = emptyList(),
+                direction = CommandDirection.CLIENT_REQUEST,
+                domain = CommandDomain.EXTERNAL,
+                status = CommandStatus.REJECTED,
+                owner = "GameServerHandler",
+            ),
+            CommandContract(
+                id = Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE,
                 names = emptyList(),
                 direction = CommandDirection.CLIENT_REQUEST,
                 domain = CommandDomain.EXTERNAL,
