@@ -276,6 +276,20 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `external identity rejections require explicit handlers`() {
+        listOf(331, 332, 336, 9_010, 29_003, 40_006, 40_007, 40_014).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+            assertNull(
+                NetworkResponsePolicy.observedShapeBody(cmd, "not-json synthetic-credential-canary"),
+                "cmd=$cmd",
+            )
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `guide log acknowledgements require explicit handlers`() {
         listOf(
             Cmd.HELP_GUIDE_TIPS_LOG,

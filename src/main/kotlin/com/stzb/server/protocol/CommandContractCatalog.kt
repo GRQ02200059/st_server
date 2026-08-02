@@ -228,6 +228,25 @@ object CommandContractCatalog {
 
     private fun rejectedContracts(): List<CommandContract> =
         listOf(
+            Cmd.PHONE_BIND_SEND_VERIFY_CODE,
+            Cmd.PHONE_BIND_CHECK_VERIFY_CODE,
+            Cmd.PHONE_UNBIND,
+            Cmd.GET_WHICH_CHANNEL_SERVER,
+            Cmd.DMM_ACCOUNT_CHECK,
+            Cmd.PRE_SERVER_QUERY_S2_RETRUN_ROLE_INFO,
+            Cmd.PRE_SERVER_QUERY_ADVERTISEMENT_SIGN,
+            Cmd.GET_CHANNEL_TRANSFER_TOKEN,
+        ).map { id ->
+            CommandContract(
+                id = id,
+                names = emptyList(),
+                direction = CommandDirection.CLIENT_REQUEST,
+                domain = CommandDomain.EXTERNAL,
+                status = CommandStatus.REJECTED,
+                owner = "GameServerHandler",
+            )
+        } +
+        listOf(
             CommandContract(
                 id = Cmd.SET_CHANNEL_CERTIFICATION,
                 names = emptyList(),

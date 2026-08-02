@@ -8,6 +8,34 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `external identity and channel commands expose exact handler owned rejected contracts`() {
+        val commands = linkedMapOf(
+            "PHONE_BIND_SEND_VERIFY_CODE" to 331,
+            "PHONE_BIND_CHECK_VERIFY_CODE" to 332,
+            "PHONE_UNBIND" to 336,
+            "GET_WHICH_CHANNEL_SERVER" to 9_010,
+            "DMM_ACCOUNT_CHECK" to 29_003,
+            "PRE_SERVER_QUERY_S2_RETRUN_ROLE_INFO" to 40_006,
+            "PRE_SERVER_QUERY_ADVERTISEMENT_SIGN" to 40_007,
+            "GET_CHANNEL_TRANSFER_TOKEN" to 40_014,
+        )
+
+        commands.forEach { (name, expectedId) ->
+            val field = assertNotNull(
+                runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+                "missing Cmd.$name",
+            )
+            assertEquals(expectedId, field.getInt(null), name)
+            val contract = CommandContractCatalog.registry.contract(expectedId)
+            assertEquals(listOf(name), contract?.names, "cmd=$expectedId")
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$expectedId")
+            assertEquals(CommandDomain.EXTERNAL, contract?.domain, "cmd=$expectedId")
+            assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$expectedId")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$expectedId")
+        }
+    }
+
+    @Test
     fun `body blind telemetry commands expose exact handler owned provisional contracts`() {
         val commands = linkedMapOf(
             "CCLIVE_MAIN_BTN_OPEN_LOG" to 2_524,

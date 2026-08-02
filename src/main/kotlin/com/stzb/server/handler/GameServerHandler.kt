@@ -205,6 +205,29 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendChannelCertificationRejection(ctx)
             }
 
+            Cmd.PHONE_BIND_SEND_VERIFY_CODE,
+            Cmd.PHONE_BIND_CHECK_VERIFY_CODE -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, """"false"""", dataType = DownType.PLAIN))
+            }
+
+            Cmd.PHONE_UNBIND,
+            Cmd.GET_WHICH_CHANNEL_SERVER -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "2", dataType = DownType.PLAIN))
+            }
+
+            Cmd.DMM_ACCOUNT_CHECK -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[0]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.PRE_SERVER_QUERY_S2_RETRUN_ROLE_INFO -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.PRE_SERVER_QUERY_ADVERTISEMENT_SIGN,
+            Cmd.GET_CHANNEL_TRANSFER_TOKEN -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "{}", dataType = DownType.PLAIN))
+            }
+
             Cmd.REALNAME_LOGOUT -> {
                 sendRealNameLogout(ctx)
             }

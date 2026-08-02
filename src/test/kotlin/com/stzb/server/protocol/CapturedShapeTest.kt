@@ -91,6 +91,20 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `handler owned external identity rejections are absent from observed shape fallback`() {
+        listOf(331, 332, 336, 9_010, 29_003, 40_006, 40_007, 40_014).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+            assertNull(
+                NetworkResponsePolicy.observedShapeBody(cmd, "not-json synthetic-credential-canary"),
+                "cmd=$cmd",
+            )
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `handler owned revenue commands are absent from observed shape fallback`() {
         listOf(Cmd.REVENUE, Cmd.REVENUE_DOUBLE).forEach { cmd ->
             assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
