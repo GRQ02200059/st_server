@@ -307,6 +307,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.GET_ZHAOHUI_LIST,
             Cmd.CLAN_NEARBY_CLAN_LIST,
             Cmd.CLAN_GET_CONTRIBUTION_LIST,
+            Cmd.CLAN_GET_JUNXIAN_LIST,
             Cmd.CLAN_SUPREME_LIST,
             Cmd.GET_NZ_EFFECT_LAND_LIST,
             Cmd.GET_FIELD_RES_TOTAL_STORE,
@@ -2250,6 +2251,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.GET_ZHAOHUI_LIST,
             Cmd.CLAN_NEARBY_CLAN_LIST,
             Cmd.CLAN_GET_CONTRIBUTION_LIST,
+            Cmd.CLAN_GET_JUNXIAN_LIST,
             Cmd.CLAN_SUPREME_LIST,
             Cmd.GET_NZ_EFFECT_LAND_LIST -> "[]"
             Cmd.GET_FIELD_RES_TOTAL_STORE -> "{}"

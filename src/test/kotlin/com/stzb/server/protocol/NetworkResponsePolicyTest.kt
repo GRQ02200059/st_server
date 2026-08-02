@@ -71,6 +71,22 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `clan junxian list requires its explicit handler`() {
+        val commandId = 2_712
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-junxian-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `clan supreme list requires its explicit handler`() {
         val commandId = 2_714
 

@@ -70,6 +70,22 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `clan junxian list stays outside captured shape fallback`() {
+        val commandId = 2_712
+
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "[] synthetic-junxian-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `clan supreme list stays outside captured shape fallback`() {
         val commandId = 2_714
 
