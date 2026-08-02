@@ -79,6 +79,12 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `real name logout requires the explicit channel closing handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.REALNAME_LOGOUT))
+        assertTrue(Cmd.REALNAME_LOGOUT !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `union chat member list requires the explicit handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT))
     }

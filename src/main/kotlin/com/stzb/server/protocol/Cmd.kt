@@ -76,6 +76,7 @@ object Cmd {
     const val USER_OPEN_UI = 885
     const val LOG_MUSIC_OPEN = 888
     const val GET_USER_SEASON_RECORD = 980
+    const val REALNAME_LOGOUT = 981
     const val GEAR_EQUIP = 1226
     const val GEAR_FORGET = 1227
     const val HERO_ACTIVE_FACADE = 2520

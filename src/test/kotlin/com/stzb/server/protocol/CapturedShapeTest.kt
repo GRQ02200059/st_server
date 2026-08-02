@@ -45,10 +45,16 @@ class CapturedShapeTest {
 
     @Test
     fun `captured boolean commands keep boolean kind`() {
-        listOf(748, 981).forEach { cmd ->
+        listOf(748).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("boolean", ShapeAssert.topLevelKind(body), "cmd=$cmd")
         }
+    }
+
+    @Test
+    fun `handler owned real name logout is absent from observed shape fallback`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.REALNAME_LOGOUT))
+        assertTrue(Cmd.REALNAME_LOGOUT !in NetworkResponsePolicy.observedShapeCommandIds())
     }
 
     @Test

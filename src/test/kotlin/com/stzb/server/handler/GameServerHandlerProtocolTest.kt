@@ -534,6 +534,69 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `real name logout flushes one boolean response then closes only its channel without mutation`() {
+        val observer = newChannel()
+        val accountKey = "real-name-logout-local"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Real Name Logout Local User",
+        )
+        UnionStateRepository.create(state, "Real Name Logout Local Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_010, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val requests = listOf(
+            "null",
+            "[]",
+            "not-json synthetic payload",
+            """{"device":"synthetic","platform":"local","realNameStatus":"opaque"}""",
+        )
+
+        requests.forEach { request ->
+            val channel = newChannel()
+            val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+            session.bind(accountKey, state.userId)
+
+            channel.writeInbound(
+                upPacket(
+                    Cmd.REALNAME_LOGOUT,
+                    request,
+                    userId = state.userId,
+                ),
+            )
+
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "request=$request")
+            assertEquals(Cmd.REALNAME_LOGOUT, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals("true", response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+            channel.runPendingTasks()
+            channel.runScheduledPendingTasks()
+            assertFalse(channel.isActive, "request=$request left the channel active")
+            assertFalse(channel.isOpen, "request=$request left the channel open")
+            assertTrue(observer.isActive, "request=$request closed another channel")
+            assertTrue(observer.isOpen, "request=$request closed another channel")
+            channel.finishAndReleaseAll()
+        }
+
+        assertEquals(playerBefore, state.toSnapshot())
+        assertEquals(
+            persistedBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        observer.finishAndReleaseAll()
+    }
+
+    @Test
     fun `customer service token pre request always rejects locally without repository access`() {
         val channel = newChannel()
         val accountKey = "customer-service-local"

@@ -121,6 +121,7 @@ object CommandContractCatalog {
                 Cmd.GET_SEASON_HISTROY_PARAMS,
                 Cmd.CARD_RECORD,
                 Cmd.CHECK_HAVE_UNION_TO_JOIN,
+                Cmd.REALNAME_LOGOUT,
                 Cmd.MAIL_OUTBOX,
                 Cmd.NOTICE_LIST,
                 Cmd.FRIEND_GROUP_GET_HISTORY_CHAT,

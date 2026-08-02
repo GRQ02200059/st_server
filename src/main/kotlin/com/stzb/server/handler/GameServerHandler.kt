@@ -41,6 +41,7 @@ import com.stzb.server.protocol.SysPackets
 import com.stzb.server.protocol.UpPacket
 import com.stzb.server.session.Session
 import com.stzb.server.session.OnlineSessionRegistry
+import io.netty.channel.ChannelFutureListener
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.util.AttributeKey
@@ -191,6 +192,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
             Cmd.SET_CHANNEL_CERTIFICATION -> {
                 sendChannelCertificationRejection(ctx)
+            }
+
+            Cmd.REALNAME_LOGOUT -> {
+                sendRealNameLogout(ctx)
             }
 
             Cmd.GET_UNION_BATTLE_REPORT,
@@ -609,6 +614,16 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 dataType = DownType.PLAIN,
             ),
         )
+    }
+
+    private fun sendRealNameLogout(ctx: ChannelHandlerContext) {
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.REALNAME_LOGOUT,
+                "true",
+                dataType = DownType.PLAIN,
+            ),
+        ).addListener(ChannelFutureListener.CLOSE)
     }
 
     /**

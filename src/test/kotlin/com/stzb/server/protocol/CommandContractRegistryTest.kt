@@ -170,6 +170,16 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `real name logout exposes a handler owned provisional client request contract`() {
+        assertEquals(981, Cmd.REALNAME_LOGOUT)
+        val contract = CommandContractCatalog.registry.contract(Cmd.REALNAME_LOGOUT)
+        assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction)
+        assertEquals(CommandDomain.UNKNOWN, contract?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `union group commands expose readable ids`() {
         assertEquals(142, Cmd.UNION_GET_GROUP_LIST)
         assertEquals(143, Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT)
