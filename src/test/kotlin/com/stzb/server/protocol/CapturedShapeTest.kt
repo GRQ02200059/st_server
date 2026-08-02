@@ -151,7 +151,7 @@ class CapturedShapeTest {
 
     @Test
     fun `strict empty query projections stay outside captured shape fallback`() {
-        val commands = listOf(2_670, 2_679, 2_683, 2_698, 3_845, 4_102, 6_089)
+        val commands = listOf(708, 2_670, 2_679, 2_683, 2_698, 3_845, 4_102, 6_089)
 
         assertAll(
             "strict empty query projection captured shape boundaries",

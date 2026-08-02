@@ -241,6 +241,7 @@ class CommandContractRegistryTest {
     @Test
     fun `strict empty query projections expose exact constants and handler owned contracts`() {
         val commands = linkedMapOf(
+            "CHAT_GET_CITY_HISTORY" to (708 to CommandDomain.SOCIAL),
             "GET_NZ_EFFECT_LAND_LIST" to (3_845 to CommandDomain.WORLD),
             "GET_FIELD_RES_TOTAL_STORE" to (4_102 to CommandDomain.WORLD),
             "QUERY_USER_MARKET_SCORE" to (6_089 to CommandDomain.ACTIVITY),
