@@ -8,6 +8,18 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `union nearby player list exposes a handler owned provisional social contract`() {
+        assertEquals(112, Cmd.UNION_NEARBY_PLAYER_LIST)
+
+        val contract = CommandContractCatalog.registry.contract(Cmd.UNION_NEARBY_PLAYER_LIST)
+        assertEquals(listOf("UNION_NEARBY_PLAYER_LIST"), contract?.names)
+        assertEquals(CommandDirection.DUPLEX, contract?.direction)
+        assertEquals(CommandDomain.SOCIAL, contract?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `multiplexed 6242 exposes both names and a handler owned social contract`() {
         assertEquals(6_242, Cmd.TEAM_INVITATIONAL_QUERY_MEMBER_FOR_INVITE)
         assertEquals(6_242, Cmd.UNION_STATION_ENTER_SCENE)

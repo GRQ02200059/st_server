@@ -42,6 +42,7 @@ object Cmd {
     const val UNION_CREATE = 102
     const val UNION_MEMBER = 103
     const val UNION_OFFICIAL_LIST = 110
+    const val UNION_NEARBY_PLAYER_LIST = 112
     const val UNION_NPC_CITY_LIST = 135
     const val UNION_GET_GROUP_LIST = 142
     const val UNION_GET_ALL_MEMBER_LIST_FOR_CHAT = 143

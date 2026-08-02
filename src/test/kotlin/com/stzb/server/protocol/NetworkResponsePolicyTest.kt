@@ -77,6 +77,12 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `union nearby player list requires its explicit handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_NEARBY_PLAYER_LIST))
+        assertTrue(Cmd.UNION_NEARBY_PLAYER_LIST !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `multiplexed 6242 requires its request aware handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_STATION_ENTER_SCENE))
         assertTrue(

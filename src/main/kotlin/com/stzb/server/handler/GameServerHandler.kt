@@ -350,6 +350,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendUnionOfficialList(ctx, msg)
             }
 
+            Cmd.UNION_NEARBY_PLAYER_LIST -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.UNION_NEARBY_PLAYER_LIST, "[]", dataType = DownType.PLAIN))
+            }
+
             Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT -> {
                 logIn(msg)
                 sendUnionChatMembers(ctx, session, msg)

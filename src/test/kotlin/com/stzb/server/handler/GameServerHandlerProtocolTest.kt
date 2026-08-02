@@ -179,6 +179,62 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `union nearby player list ignores every request body and returns one empty list without mutation`() {
+        val channel = newChannel()
+        val accountKey = "union-nearby-player-list"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Union Nearby Player List User",
+        )
+        state.resources.money = 1_234_567
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Union Nearby Player List Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_018, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = state.toSnapshot()
+        val persistedBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val requestBodies = listOf(
+            "null",
+            "[]",
+            """[17,{"opaque":42}]""",
+            """{"synthetic":"metadata","ids":[17,42]}""",
+            "not-json synthetic payload",
+            "[] {}",
+        )
+
+        requestBodies.forEach { request ->
+            channel.writeInbound(
+                upPacket(Cmd.UNION_NEARBY_PLAYER_LIST, request, userId = state.userId),
+            )
+
+            val response = assertIs<DownPacket>(
+                channel.readOutbound<Any>(),
+                "request=$request",
+            )
+            assertEquals(Cmd.UNION_NEARBY_PLAYER_LIST, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals("[]", response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+
+        assertEquals(playerBefore, state.toSnapshot())
+        assertEquals(
+            persistedBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `season history queries ignore arbitrary payloads without mutating repositories`() {
         val channel = newChannel()
         val accountKey = "season-history-snapshot"

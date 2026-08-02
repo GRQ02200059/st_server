@@ -147,6 +147,12 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `handler owned union nearby player list is absent from observed shape fallback`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_NEARBY_PLAYER_LIST))
+        assertTrue(Cmd.UNION_NEARBY_PLAYER_LIST !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `handler owned optional social and world queries are absent from observed shape fallback`() {
         listOf(
             Cmd.CCLIVE_GET_FOLLOW_LIST,

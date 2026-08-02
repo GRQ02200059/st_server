@@ -152,6 +152,8 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalClientRequest(Cmd.UNION_STATION_ENTER_SCENE)
                     .copy(domain = CommandDomain.SOCIAL),
+                provisionalRequest(Cmd.UNION_NEARBY_PLAYER_LIST)
+                    .copy(domain = CommandDomain.SOCIAL),
             ) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,
