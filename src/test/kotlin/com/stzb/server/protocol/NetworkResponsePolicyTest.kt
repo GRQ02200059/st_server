@@ -12,6 +12,33 @@ class NetworkResponsePolicyTest {
     private val mapper = jacksonObjectMapper()
 
     @Test
+    fun `backflow empty lists require explicit handlers`() {
+        val commands = listOf(2_576, 2_577)
+
+        assertAll(
+            "backflow empty list fallback boundaries",
+            commands.map { commandId ->
+                Executable {
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(
+                            commandId,
+                            "not-json synthetic-backflow-canary",
+                        ),
+                        "cmd=$commandId",
+                    )
+                    assertTrue(
+                        commandId !in NetworkResponsePolicy.observedShapeCommandIds(),
+                        "cmd=$commandId",
+                    )
+                    val contract = CommandContractCatalog.registry.contract(commandId)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$commandId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$commandId")
+                }
+            },
+        )
+    }
+
+    @Test
     fun `nearby clan list requires its explicit handler`() {
         val commandId = 2_701
 

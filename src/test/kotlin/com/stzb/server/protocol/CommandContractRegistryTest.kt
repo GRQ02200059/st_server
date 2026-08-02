@@ -10,6 +10,37 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `backflow empty lists expose exact constants and handler owned activity contracts`() {
+        val commands = linkedMapOf(
+            "GET_INVITE_LIST" to 2_576,
+            "GET_ZHAOHUI_LIST" to 2_577,
+        )
+
+        assertAll(
+            "backflow empty list contracts",
+            commands.map { (name, commandId) ->
+                Executable {
+                    val field = assertNotNull(
+                        runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+                        "missing Cmd.$name",
+                    )
+                    assertEquals(commandId, field.getInt(null), name)
+                    val contract = CommandContractCatalog.registry.contract(commandId)
+                    assertEquals(listOf(name), contract?.names, "cmd=$commandId")
+                    assertEquals(
+                        CommandDirection.CLIENT_REQUEST,
+                        contract?.direction,
+                        "cmd=$commandId",
+                    )
+                    assertEquals(CommandDomain.ACTIVITY, contract?.domain, "cmd=$commandId")
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$commandId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$commandId")
+                }
+            },
+        )
+    }
+
+    @Test
     fun `nearby clan list exposes exact constant and handler owned social duplex contract`() {
         val name = "CLAN_NEARBY_CLAN_LIST"
         val commandId = 2_701

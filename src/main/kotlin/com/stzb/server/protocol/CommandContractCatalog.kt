@@ -187,6 +187,10 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.ACTIVITY),
                 provisionalClientRequest(Cmd.FAMILY_MINI_GAME_GET_ROOM_LIST)
                     .copy(domain = CommandDomain.ACTIVITY),
+                provisionalClientRequest(Cmd.GET_INVITE_LIST)
+                    .copy(domain = CommandDomain.ACTIVITY),
+                provisionalClientRequest(Cmd.GET_ZHAOHUI_LIST)
+                    .copy(domain = CommandDomain.ACTIVITY),
                 provisionalClientRequest(Cmd.QUERY_OTHER_REGION_CLAN_LIST)
                     .copy(domain = CommandDomain.SOCIAL),
                 provisionalRequest(Cmd.NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD)

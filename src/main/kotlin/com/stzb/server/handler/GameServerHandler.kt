@@ -303,6 +303,8 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(msg.cmdId, "{}", dataType = DownType.PLAIN))
             }
 
+            Cmd.GET_INVITE_LIST,
+            Cmd.GET_ZHAOHUI_LIST,
             Cmd.CLAN_NEARBY_CLAN_LIST,
             Cmd.GET_NZ_EFFECT_LAND_LIST,
             Cmd.GET_FIELD_RES_TOTAL_STORE,
@@ -2192,9 +2194,13 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
     private fun sendStrictEmptyQueryProjection(ctx: ChannelHandlerContext, msg: UpPacket) {
         val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
-        if (request == null || !request.isArray || !request.isEmpty) return
+        val acceptsNull = msg.cmdId == Cmd.GET_INVITE_LIST && request?.isNull == true
+        val acceptsEmptyArray = request?.isArray == true && request.isEmpty
+        if (!acceptsNull && !acceptsEmptyArray) return
 
         val response = when (msg.cmdId) {
+            Cmd.GET_INVITE_LIST,
+            Cmd.GET_ZHAOHUI_LIST,
             Cmd.CLAN_NEARBY_CLAN_LIST,
             Cmd.GET_NZ_EFFECT_LAND_LIST -> "[]"
             Cmd.GET_FIELD_RES_TOTAL_STORE -> "{}"

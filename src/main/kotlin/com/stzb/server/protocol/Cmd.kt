@@ -100,6 +100,8 @@ object Cmd {
     const val XUANFUQIU_RECEIVED_MSG = 2402
     const val GAME_CHENGXIANGGE_RECEIVED = 2404
     const val CCLIVE_GET_FOLLOW_LIST = 2529
+    const val GET_INVITE_LIST = 2576
+    const val GET_ZHAOHUI_LIST = 2577
     const val PATORL_GET = 2600
     const val PATORL_HANDLE = 2601
     const val PATORL_REWARD_GET = 2604

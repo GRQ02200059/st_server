@@ -11,6 +11,33 @@ import kotlin.test.assertTrue
 
 class CapturedShapeTest {
     @Test
+    fun `backflow empty lists stay outside captured shape fallback`() {
+        val commands = listOf(2_576, 2_577)
+
+        assertAll(
+            "backflow empty list captured shape boundaries",
+            commands.map { commandId ->
+                Executable {
+                    val contract = CommandContractCatalog.registry.contract(commandId)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$commandId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$commandId")
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(
+                            commandId,
+                            "[] synthetic-backflow-canary",
+                        ),
+                        "cmd=$commandId",
+                    )
+                    assertTrue(
+                        commandId !in NetworkResponsePolicy.observedShapeCommandIds(),
+                        "cmd=$commandId",
+                    )
+                }
+            },
+        )
+    }
+
+    @Test
     fun `nearby clan list stays outside captured shape fallback`() {
         val commandId = 2_701
 

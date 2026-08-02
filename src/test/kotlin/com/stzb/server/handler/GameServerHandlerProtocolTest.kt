@@ -723,6 +723,124 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `backflow empty lists enforce exact requests and remain repository free`() {
+        val accountKey = "backflow-empty-list-boundary"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Backflow Empty List User",
+        )
+        state.resources.money = 2_576_577
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Backflow Empty List Union", nowSec = 3)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_027, nowSec = 3))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val commonInvalidRequests = linkedMapOf(
+            "number scalar" to "2576",
+            "string scalar" to """"synthetic-backflow-canary"""",
+            "boolean scalar" to "false",
+            "object" to """{"synthetic":"backflow-canary"}""",
+            "nested array" to "[[]]",
+            "non-empty array" to "[0]",
+            "malformed JSON" to "[",
+            "empty text" to "",
+            "trailing token" to "[] {}",
+        )
+        val invalidRequestsByCommand = linkedMapOf(
+            2_576 to commonInvalidRequests,
+            2_577 to linkedMapOf("JSON null" to "null").apply {
+                putAll(commonInvalidRequests)
+            },
+        )
+        val validRequestsByCommand = linkedMapOf(
+            2_576 to listOf("null", "[]"),
+            2_577 to listOf("[]"),
+        )
+        val pairedCommands = mapOf(
+            2_576 to 2_577,
+            2_577 to 2_576,
+        )
+
+        fun assertStateUnchanged(stage: String) {
+            assertEquals(playerBefore, state.toSnapshot(), "$stage player state changed")
+            assertTrue(
+                persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+                "$stage persisted player bytes changed",
+            )
+            assertEquals(worldBefore, WorldStateRepository.projection(), "$stage world state changed")
+            assertEquals(unionsBefore, UnionStateRepository.all(), "$stage union state changed")
+        }
+
+        assertAll(
+            "backflow empty list commands",
+            validRequestsByCommand.map { (commandId, validRequests) ->
+                Executable {
+                    val channel = newChannel()
+                    try {
+                        invalidRequestsByCommand.getValue(commandId).forEach { (case, request) ->
+                            channel.writeInbound(
+                                upPacket(commandId, request, userId = state.userId + 10_000),
+                            )
+                            assertNull(
+                                channel.readOutbound<Any>(),
+                                "cmd=$commandId case=$case emitted an outbound packet",
+                            )
+                        }
+                        assertStateUnchanged("cmd=$commandId invalid requests")
+
+                        validRequests.forEach { request ->
+                            channel.writeInbound(
+                                upPacket(commandId, request, userId = state.userId + 10_000),
+                            )
+
+                            val packet = assertIs<DownPacket>(
+                                channel.readOutbound<Any>(),
+                                "cmd=$commandId valid request=$request emitted no response",
+                            )
+                            assertEquals(commandId, packet.cmd, "cmd=$commandId request=$request")
+                            assertNotEquals(
+                                Cmd.SYS_NOTIFY_DB_UPDATE,
+                                packet.cmd,
+                                "cmd=$commandId request=$request",
+                            )
+                            assertNotEquals(
+                                pairedCommands.getValue(commandId),
+                                packet.cmd,
+                                "cmd=$commandId request=$request emitted paired command",
+                            )
+                            assertEquals(
+                                DownType.PLAIN,
+                                packet.dataType,
+                                "cmd=$commandId request=$request",
+                            )
+                            assertTrue(
+                                "[]".toByteArray().contentEquals(packet.body),
+                                "cmd=$commandId request=$request emitted wrong wire bytes",
+                            )
+                            val parsed = mapper.readTree(packet.body)
+                            assertTrue(parsed.isArray, "cmd=$commandId request=$request")
+                            assertTrue(parsed.isEmpty, "cmd=$commandId request=$request")
+                            assertNull(
+                                channel.readOutbound<Any>(),
+                                "cmd=$commandId request=$request emitted an extra or paired packet",
+                            )
+                            assertStateUnchanged("cmd=$commandId valid request=$request")
+                        }
+                    } finally {
+                        channel.finishAndReleaseAll()
+                    }
+                }
+            },
+        )
+    }
+
+    @Test
     fun `nearby clan list accepts only exact empty array and remains repository free`() {
         val commandId = 2_701
         val accountKey = "nearby-clan-list-boundary"
