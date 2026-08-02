@@ -187,6 +187,8 @@ object CommandContractCatalog {
                     .copy(domain = CommandDomain.ACTIVITY),
                 provisionalClientRequest(Cmd.QUERY_OTHER_REGION_CLAN_LIST)
                     .copy(domain = CommandDomain.SOCIAL),
+                provisionalRequest(Cmd.NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD)
+                    .copy(domain = CommandDomain.SOCIAL),
                 provisionalRequest(Cmd.GET_USER_RES_WID_LEVEL_MAP)
                     .copy(domain = CommandDomain.WORLD),
                 provisionalClientRequest(Cmd.WORLD_BOSS_TOP_THREE_RANK)

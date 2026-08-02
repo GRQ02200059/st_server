@@ -10,6 +10,24 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `nobility officer record query exposes exact constant and handler owned social duplex contract`() {
+        val name = "NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD"
+        val commandId = 5_212
+        val field = assertNotNull(
+            runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+            "missing Cmd.$name",
+        )
+
+        assertEquals(commandId, field.getInt(null))
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(listOf(name), contract?.names)
+        assertEquals(CommandDirection.DUPLEX, contract?.direction)
+        assertEquals(CommandDomain.SOCIAL, contract?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `read only empty projections expose exact constants and handler owned contracts`() {
         val commands = linkedMapOf(
             "SEARCH_USER" to Triple(3_739, CommandDirection.CLIENT_REQUEST, CommandDomain.SOCIAL),

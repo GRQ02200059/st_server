@@ -1790,6 +1790,140 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `nobility officer record query echoes exact signed 64 bit timestamps with an empty record list`() {
+        val commandId = 5_212
+        val channel = newChannel()
+        val cases = listOf(
+            "[0]" to 0L,
+            "[1700000123]" to 1_700_000_123L,
+            "[-42]" to -42L,
+            "[-9223372036854775808]" to Long.MIN_VALUE,
+            "[9223372036854775807]" to Long.MAX_VALUE,
+        )
+
+        cases.forEach { (request, expectedTimestamp) ->
+            channel.writeInbound(upPacket(commandId, request))
+
+            val packet = assertIs<DownPacket>(channel.readOutbound<Any>(), "request=$request")
+            assertEquals(commandId, packet.cmd, "request=$request")
+            assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, packet.cmd, "request=$request")
+            assertEquals(DownType.PLAIN, packet.dataType, "request=$request")
+            assertTrue(
+                "[$expectedTimestamp,[]]".toByteArray().contentEquals(packet.body),
+                "request=$request emitted wrong wire bytes",
+            )
+            val response = mapper.readTree(packet.body)
+            assertTrue(response.isArray, "request=$request")
+            assertEquals(2, response.size(), "request=$request")
+            assertTrue(response[0].isIntegralNumber, "request=$request slot=0")
+            assertTrue(response[0].canConvertToLong(), "request=$request slot=0")
+            assertEquals(expectedTimestamp, response[0].longValue(), "request=$request slot=0")
+            assertTrue(response[1].isArray, "request=$request slot=1")
+            assertTrue(response[1].isEmpty, "request=$request slot=1")
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `nobility officer record query maps every invalid request category to the safe fallback`() {
+        val commandId = 5_212
+        val channel = newChannel()
+        val invalidRequests = listOf(
+            "malformed JSON" to "[17",
+            "trailing token" to "[17] []",
+            "non-array number" to "17",
+            "non-array object" to "{}",
+            "empty array" to "[]",
+            "wrong arity" to "[17,18]",
+            "null" to "[null]",
+            "boolean" to "[true]",
+            "string" to """["17"]""",
+            "floating point" to "[17.0]",
+            "exponential" to "[1e3]",
+            "object slot" to "[{}]",
+            "nested array" to "[[17]]",
+            "positive out of range" to "[9223372036854775808]",
+            "negative out of range" to "[-9223372036854775809]",
+        )
+
+        invalidRequests.forEach { (case, request) ->
+            channel.writeInbound(upPacket(commandId, request))
+
+            val packet = assertIs<DownPacket>(channel.readOutbound<Any>(), case)
+            assertEquals(commandId, packet.cmd, case)
+            assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, packet.cmd, case)
+            assertEquals(DownType.PLAIN, packet.dataType, case)
+            assertTrue(
+                "[0,[]]".toByteArray().contentEquals(packet.body),
+                "$case emitted wrong wire bytes",
+            )
+            val response = mapper.readTree(packet.body)
+            assertTrue(response.isArray, case)
+            assertEquals(2, response.size(), case)
+            assertTrue(response[0].isIntegralNumber, "$case slot=0")
+            assertEquals(0L, response[0].longValue(), "$case slot=0")
+            assertTrue(response[1].isArray, "$case slot=1")
+            assertTrue(response[1].isEmpty, "$case slot=1")
+            assertNull(channel.readOutbound<Any>(), "$case emitted an extra packet")
+        }
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
+    fun `nobility officer record query does not access or mutate repositories`() {
+        val commandId = 5_212
+        val channel = newChannel()
+        val accountKey = "nobility-officer-record-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Nobility Officer Record User",
+        )
+        state.resources.money = 7_654_321
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Nobility Officer Record Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_024, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val requests = listOf(
+            "[1700000456]",
+            "[-9223372036854775808]",
+            "[9223372036854775808]",
+            "[17] []",
+            """["private-timestamp"]""",
+        )
+
+        requests.forEach { request ->
+            channel.writeInbound(upPacket(commandId, request, userId = state.userId + 10_000))
+
+            val packet = assertIs<DownPacket>(
+                channel.readOutbound<Any>(),
+                "request=$request",
+            )
+            assertEquals(commandId, packet.cmd, "request=$request")
+            assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, packet.cmd, "request=$request")
+            assertEquals(DownType.PLAIN, packet.dataType, "request=$request")
+            assertNull(channel.readOutbound<Any>(), "request=$request emitted an extra packet")
+        }
+        assertEquals(playerBefore, state.toSnapshot())
+        assertTrue(
+            persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+            "persisted player bytes changed",
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `explicit request aware queries project valid integers without mutating repositories`() {
         val channel = newChannel()
         val accountKey = "request-aware-query-valid-snapshot"

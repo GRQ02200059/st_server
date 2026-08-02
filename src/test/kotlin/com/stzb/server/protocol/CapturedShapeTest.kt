@@ -11,6 +11,18 @@ import kotlin.test.assertTrue
 
 class CapturedShapeTest {
     @Test
+    fun `nobility officer record query stays outside captured shape fallback`() {
+        val commandId = 5_212
+
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+        assertNull(NetworkResponsePolicy.observedShapeBody(commandId, "[1700000123]"))
+        assertNull(NetworkResponsePolicy.observedShapeBody(commandId, "[17] []"))
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `top level kind detects array object scalar`() {
         assertEquals("array", ShapeAssert.topLevelKind("[1,2]"))
         assertEquals("object", ShapeAssert.topLevelKind("{\"a\":1}"))

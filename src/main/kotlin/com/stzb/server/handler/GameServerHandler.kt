@@ -303,6 +303,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(msg.cmdId, "{}", dataType = DownType.PLAIN))
             }
 
+            Cmd.NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD -> {
+                sendNobilityOfficerRecord(ctx, msg)
+            }
+
             Cmd.UNION_NPC_CITY_LIST,
             Cmd.CHAT_UNION_PLAN_HISTORY_ID,
             Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER,
@@ -1765,6 +1769,25 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             ?.get(0)
             ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
             ?.asInt()
+
+    private fun sendNobilityOfficerRecord(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val requestedTimeStamp = exactSingleLong(msg.bodyText) ?: 0L
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD,
+                "[$requestedTimeStamp,[]]",
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun exactSingleLong(body: String): Long? =
+        runCatching { strictRequestMapper.readTree(body) }
+            .getOrNull()
+            ?.takeIf { it.isArray && it.size() == 1 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToLong() }
+            ?.longValue()
 
     private fun sendWorldBossTopThreeRank(ctx: ChannelHandlerContext, session: Session?) {
         val userId = requireNotNull(session).userId
