@@ -8,6 +8,30 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `external service rejections and login flags expose handler owned contracts`() {
+        assertEquals(3_928, Cmd.FILE_PICKER_GET_TOKEN_DEFAULT)
+        assertEquals(4_968, Cmd.CHECK_ADD_WEIXIN)
+        assertEquals(40_018, Cmd.YOUTH_INK_MAP_TIPS)
+
+        listOf(
+            Cmd.FILE_PICKER_GET_TOKEN_DEFAULT,
+            Cmd.CHECK_ADD_WEIXIN,
+        ).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandDomain.EXTERNAL, contract?.domain, "cmd=$cmd")
+            assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+
+        val loginFlags = CommandContractCatalog.registry.contract(Cmd.YOUTH_INK_MAP_TIPS)
+        assertEquals(CommandDirection.CLIENT_REQUEST, loginFlags?.direction)
+        assertEquals(CommandDomain.UNKNOWN, loginFlags?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, loginFlags?.status)
+        assertEquals("GameServerHandler", loginFlags?.owner)
+    }
+
+    @Test
     fun `read only empty queries expose handler owned provisional client request contracts`() {
         val commands = mapOf(
             Cmd.SWITCH_ROLE_QUERY_ROLE_LIST to 171,

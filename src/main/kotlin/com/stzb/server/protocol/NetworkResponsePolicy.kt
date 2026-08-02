@@ -35,7 +35,6 @@ object NetworkResponsePolicy {
                 5013,
                 4979,
                 3877,
-                4968,
                 6092,
             )
 
@@ -53,7 +52,6 @@ object NetworkResponsePolicy {
             cmdId in scalarNumberCommands -> scalarNumberCommands.getValue(cmdId)
             cmdId in fixedTupleCommands -> fixedTupleCommands.getValue(cmdId)
             cmdId == 3877 -> "[${GameServerConfig.SERVER_ID}]"
-            cmdId == 4968 -> "[false,[]]"
             cmdId == 6092 -> "[[],0]"
             cmdId in dictionaryCommands -> GenericGameResponses.emptyObject()
             cmdId in pagedListCommands -> GenericGameResponses.emptyPagedList()
@@ -103,14 +101,12 @@ object NetworkResponsePolicy {
         2529 to "[0,0,[]]",
         2604 to "[0,[]]",
         3787 to "[[0,0],[]]",
-        3928 to "[\"\",\"\"]",
         5201 to "[0]",
         6242 to "[0]",
         6243 to "[[]]",
         6244 to "[[]]",
         8009 to "[0,0,{},0,[],null]",
         20003 to "[0,[]]",
-        40018 to "[0,0]",
     )
 
     private val pagedListCommands = setOf(

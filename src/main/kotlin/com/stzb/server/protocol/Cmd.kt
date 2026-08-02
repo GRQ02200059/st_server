@@ -98,6 +98,7 @@ object Cmd {
     const val GET_HOMEPAGE_INFO = 3686
     const val MAIL_NOTIFY_GET_ALL = 3758
     const val FRIEND_GROUP_GET_HISTORY_CHAT = 3846
+    const val FILE_PICKER_GET_TOKEN_DEFAULT = 3928
     const val BUILD_FACADE_APPLY_BUILD_SCHEME = 3945
     const val CHECK_HAVE_UNION_TO_JOIN = 4087
     const val RESFILE_LOG_HUB_RECORD = 4326
@@ -107,6 +108,7 @@ object Cmd {
     const val QUERY_ARMY_RELATED_FORT = 4159
     const val DAILY_REPORT_LOG = 4966
     const val QUERY_WANTED_TO_REPOTR = 4967
+    const val CHECK_ADD_WEIXIN = 4968
     const val GET_SEASON_HISTROY_PARAMS = 5021
     const val GET_WORLD_SCENCE_INFO = 5025
     const val SEND_WORLD_SCENCE_FULL_INFO = 5026
@@ -129,6 +131,7 @@ object Cmd {
     const val PRE_SERVER_GEN_H5_SIGN = 40004
     const val GET_PREBOOK_SERVER_INFO = 40008
     const val USER_GET_CUSTOMER_SERVICE_TOKEN_PRE = 40016
+    const val YOUTH_INK_MAP_TIPS = 40018
     const val QUERY_NEW_COMMUNITY_INFO = 40020
     const val QUERY_SIMULATE_TOKEN = 40021
     const val IP_USER_COUNT_PRE = 40022

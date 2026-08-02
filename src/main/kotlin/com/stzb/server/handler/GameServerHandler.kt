@@ -198,6 +198,12 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendRealNameLogout(ctx)
             }
 
+            Cmd.FILE_PICKER_GET_TOKEN_DEFAULT,
+            Cmd.CHECK_ADD_WEIXIN,
+            Cmd.YOUTH_INK_MAP_TIPS -> {
+                sendExternalServiceAndLoginFlagsResponse(ctx, msg.cmdId)
+            }
+
             Cmd.SWITCH_ROLE_QUERY_ROLE_LIST,
             Cmd.MAIL_INBOX,
             Cmd.MAIL_GET_CONTACTS,
@@ -634,6 +640,25 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 dataType = DownType.PLAIN,
             ),
         ).addListener(ChannelFutureListener.CLOSE)
+    }
+
+    private fun sendExternalServiceAndLoginFlagsResponse(
+        ctx: ChannelHandlerContext,
+        cmdId: Int,
+    ) {
+        val response: Any = when (cmdId) {
+            Cmd.FILE_PICKER_GET_TOKEN_DEFAULT -> listOf("", "")
+            Cmd.CHECK_ADD_WEIXIN -> listOf(false, emptyList<Any>())
+            Cmd.YOUTH_INK_MAP_TIPS -> listOf(0, 0)
+            else -> error("unsupported external/login response cmd: $cmdId")
+        }
+        ctx.writeAndFlush(
+            DownPacket.json(
+                cmdId,
+                mapper.writeValueAsString(response),
+                dataType = DownType.PLAIN,
+            ),
+        )
     }
 
     /**

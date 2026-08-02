@@ -739,6 +739,64 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `external service rejections and local login flags ignore arbitrary payloads without mutation`() {
+        val channel = newChannel()
+        val accountKey = "external-rejection-login-flags"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "External Rejection Login Flags User",
+        )
+        UnionStateRepository.create(state, "External Rejection Login Flags Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_012, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val session = channel.attr(GameServerHandler.SESSION).get() ?: error("missing session")
+        session.bind(accountKey, state.userId)
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val expectedBodies = mapOf(
+            Cmd.FILE_PICKER_GET_TOKEN_DEFAULT to """["",""]""",
+            Cmd.CHECK_ADD_WEIXIN to "[false,[]]",
+            Cmd.YOUTH_INK_MAP_TIPS to "[0,0]",
+        )
+        val arbitraryPayloads = listOf(
+            "null",
+            "[]",
+            """{"synthetic":"metadata","device":"local-device"}""",
+            """[{"opaque":true}] trailing""",
+            "not-json synthetic payload",
+        )
+
+        expectedBodies.forEach { (cmd, expectedBody) ->
+            arbitraryPayloads.forEach { request ->
+                channel.writeInbound(upPacket(cmd, request, userId = state.userId))
+
+                val response = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request",
+                )
+                assertEquals(cmd, response.cmd)
+                assertEquals(DownType.PLAIN, response.dataType)
+                assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request emitted an extra packet",
+                )
+            }
+        }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `unknown command is logged without fabricated success response`() {
         val channel = newChannel()
 

@@ -118,14 +118,24 @@ class CapturedShapeTest {
     fun `captured fixed tuples keep captured arity`() {
         val expectedSizes = mapOf(
             2604 to 2,
-            3928 to 2,
             8009 to 6,
-            40018 to 2,
         )
         expectedSizes.forEach { (cmd, size) ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(size, ShapeAssert.tupleSize(body), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `handler owned external rejections and login flags are absent from observed shape fallback`() {
+        listOf(
+            Cmd.FILE_PICKER_GET_TOKEN_DEFAULT,
+            Cmd.CHECK_ADD_WEIXIN,
+            Cmd.YOUTH_INK_MAP_TIPS,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
         }
     }
 

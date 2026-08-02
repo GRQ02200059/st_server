@@ -183,6 +183,9 @@ class NetworkResponsePolicyTest {
         listOf(
             Cmd.PRE_SERVER_QUERY_USER_OP,
             Cmd.PRE_SERVER_GEN_H5_SIGN,
+            Cmd.FILE_PICKER_GET_TOKEN_DEFAULT,
+            Cmd.CHECK_ADD_WEIXIN,
+            Cmd.YOUTH_INK_MAP_TIPS,
             Cmd.QUERY_NEW_COMMUNITY_INFO,
             Cmd.QUERY_SIMULATE_TOKEN,
             Cmd.IP_USER_COUNT_PRE,
@@ -225,7 +228,6 @@ class NetworkResponsePolicyTest {
     @Test
     fun `recorded tuple commands keep their wire shapes`() {
         assertEquals("[1001]", NetworkResponsePolicy.observedShapeBody(3877))
-        assertEquals("[false,[]]", NetworkResponsePolicy.observedShapeBody(4968))
         assertEquals("[[],0]", NetworkResponsePolicy.observedShapeBody(6092))
     }
 

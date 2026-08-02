@@ -133,6 +133,7 @@ object CommandContractCatalog {
                 Cmd.CHAT_GET_ZHAO_XIAN_MSG,
                 Cmd.PROGRESS_GET_INFO,
                 Cmd.MAIL_NOTIFY_GET_ALL,
+                Cmd.YOUTH_INK_MAP_TIPS,
             ).map(::provisionalClientRequest) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,
@@ -216,6 +217,22 @@ object CommandContractCatalog {
             ),
             CommandContract(
                 id = Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE,
+                names = emptyList(),
+                direction = CommandDirection.CLIENT_REQUEST,
+                domain = CommandDomain.EXTERNAL,
+                status = CommandStatus.REJECTED,
+                owner = "GameServerHandler",
+            ),
+            CommandContract(
+                id = Cmd.FILE_PICKER_GET_TOKEN_DEFAULT,
+                names = emptyList(),
+                direction = CommandDirection.CLIENT_REQUEST,
+                domain = CommandDomain.EXTERNAL,
+                status = CommandStatus.REJECTED,
+                owner = "GameServerHandler",
+            ),
+            CommandContract(
+                id = Cmd.CHECK_ADD_WEIXIN,
                 names = emptyList(),
                 direction = CommandDirection.CLIENT_REQUEST,
                 domain = CommandDomain.EXTERNAL,
