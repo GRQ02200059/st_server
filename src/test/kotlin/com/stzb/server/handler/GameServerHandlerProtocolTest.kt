@@ -24,6 +24,8 @@ import com.stzb.server.protocol.UpPacket
 import io.netty.buffer.ByteBuf
 import io.netty.channel.embedded.EmbeddedChannel
 import io.netty.util.ReferenceCountUtil
+import org.junit.jupiter.api.Assertions.assertAll
+import org.junit.jupiter.api.function.Executable
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -449,53 +451,58 @@ class GameServerHandlerProtocolTest {
             "[] {}",
         )
 
-        expectedBodies.forEach { (commandId, expectedBody) ->
-            requestBodies.forEach { request ->
-                channel.writeInbound(upPacket(commandId, request, userId = state.userId + 10_000))
+        assertAll(
+            "external identity and channel commands",
+            expectedBodies.map { (commandId, expectedBody) ->
+                Executable {
+                    requestBodies.forEach { request ->
+                        channel.writeInbound(upPacket(commandId, request, userId = state.userId + 10_000))
 
-                val response = assertIs<DownPacket>(
-                    channel.readOutbound<Any>(),
-                    "cmd=$commandId request=$request",
-                )
-                assertEquals(commandId, response.cmd, "cmd=$commandId request=$request")
-                assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, response.cmd, "cmd=$commandId request=$request")
-                assertEquals(DownType.PLAIN, response.dataType, "cmd=$commandId request=$request")
-                assertTrue(
-                    expectedBody.toByteArray().contentEquals(response.body),
-                    "cmd=$commandId request=$request emitted wrong wire bytes",
-                )
-                val parsed = mapper.readTree(response.body)
-                when (commandId) {
-                    331, 332 -> {
-                        assertTrue(parsed.isTextual, "cmd=$commandId must emit a JSON string")
-                        assertFalse(parsed.isBoolean, "cmd=$commandId must not emit a JSON boolean")
-                        assertEquals("false", parsed.textValue(), "cmd=$commandId")
-                    }
+                        val response = assertIs<DownPacket>(
+                            channel.readOutbound<Any>(),
+                            "cmd=$commandId request=$request",
+                        )
+                        assertEquals(commandId, response.cmd, "cmd=$commandId request=$request")
+                        assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, response.cmd, "cmd=$commandId request=$request")
+                        assertEquals(DownType.PLAIN, response.dataType, "cmd=$commandId request=$request")
+                        assertTrue(
+                            expectedBody.toByteArray().contentEquals(response.body),
+                            "cmd=$commandId request=$request emitted wrong wire bytes",
+                        )
+                        val parsed = mapper.readTree(response.body)
+                        when (commandId) {
+                            331, 332 -> {
+                                assertTrue(parsed.isTextual, "cmd=$commandId must emit a JSON string")
+                                assertFalse(parsed.isBoolean, "cmd=$commandId must not emit a JSON boolean")
+                                assertEquals("false", parsed.textValue(), "cmd=$commandId")
+                            }
 
-                    336, 9_010 -> {
-                        assertTrue(parsed.isInt, "cmd=$commandId must emit a JSON integer")
-                        assertEquals(2, parsed.intValue(), "cmd=$commandId")
-                    }
+                            336, 9_010 -> {
+                                assertTrue(parsed.isInt, "cmd=$commandId must emit a JSON integer")
+                                assertEquals(2, parsed.intValue(), "cmd=$commandId")
+                            }
 
-                    29_003 -> {
-                        assertTrue(parsed.isArray, "cmd=$commandId must emit a JSON array")
-                        assertEquals(1, parsed.size(), "cmd=$commandId")
-                        assertTrue(parsed[0].isInt, "cmd=$commandId slot 0 must be a JSON integer")
-                        assertEquals(0, parsed[0].intValue(), "cmd=$commandId")
-                    }
+                            29_003 -> {
+                                assertTrue(parsed.isArray, "cmd=$commandId must emit a JSON array")
+                                assertEquals(1, parsed.size(), "cmd=$commandId")
+                                assertTrue(parsed[0].isInt, "cmd=$commandId slot 0 must be a JSON integer")
+                                assertEquals(0, parsed[0].intValue(), "cmd=$commandId")
+                            }
 
-                    40_006 -> assertTrue(parsed.isNull, "cmd=$commandId must emit JSON null")
-                    40_007, 40_014 -> {
-                        assertTrue(parsed.isObject, "cmd=$commandId must emit a JSON object")
-                        assertTrue(parsed.isEmpty, "cmd=$commandId must emit an empty JSON object")
+                            40_006 -> assertTrue(parsed.isNull, "cmd=$commandId must emit JSON null")
+                            40_007, 40_014 -> {
+                                assertTrue(parsed.isObject, "cmd=$commandId must emit a JSON object")
+                                assertTrue(parsed.isEmpty, "cmd=$commandId must emit an empty JSON object")
+                            }
+                        }
+                        assertNull(
+                            channel.readOutbound<Any>(),
+                            "cmd=$commandId request=$request emitted an extra packet",
+                        )
                     }
                 }
-                assertNull(
-                    channel.readOutbound<Any>(),
-                    "cmd=$commandId request=$request emitted an extra packet",
-                )
-            }
-        }
+            },
+        )
 
         assertEquals(playerBefore, state.toSnapshot())
         assertTrue(

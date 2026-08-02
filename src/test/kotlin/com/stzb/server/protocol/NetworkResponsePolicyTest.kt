@@ -1,6 +1,8 @@
 package com.stzb.server.protocol
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import org.junit.jupiter.api.Assertions.assertAll
+import org.junit.jupiter.api.function.Executable
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -277,16 +279,23 @@ class NetworkResponsePolicyTest {
 
     @Test
     fun `external identity rejections require explicit handlers`() {
-        listOf(331, 332, 336, 9_010, 29_003, 40_006, 40_007, 40_014).forEach { cmd ->
-            val contract = CommandContractCatalog.registry.contract(cmd)
-            assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$cmd")
-            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
-            assertNull(
-                NetworkResponsePolicy.observedShapeBody(cmd, "not-json synthetic-credential-canary"),
-                "cmd=$cmd",
-            )
-            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
-        }
+        val commands = listOf(331, 332, 336, 9_010, 29_003, 40_006, 40_007, 40_014)
+
+        assertAll(
+            "external identity rejection policy boundaries",
+            commands.map { cmd ->
+                Executable {
+                    val contract = CommandContractCatalog.registry.contract(cmd)
+                    assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$cmd")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(cmd, "not-json synthetic-credential-canary"),
+                        "cmd=$cmd",
+                    )
+                    assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+                }
+            },
+        )
     }
 
     @Test

@@ -1,5 +1,7 @@
 package com.stzb.server.protocol
 
+import org.junit.jupiter.api.Assertions.assertAll
+import org.junit.jupiter.api.function.Executable
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -20,19 +22,24 @@ class CommandContractRegistryTest {
             "GET_CHANNEL_TRANSFER_TOKEN" to 40_014,
         )
 
-        commands.forEach { (name, expectedId) ->
-            val field = assertNotNull(
-                runCatching { Cmd::class.java.getField(name) }.getOrNull(),
-                "missing Cmd.$name",
-            )
-            assertEquals(expectedId, field.getInt(null), name)
-            val contract = CommandContractCatalog.registry.contract(expectedId)
-            assertEquals(listOf(name), contract?.names, "cmd=$expectedId")
-            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$expectedId")
-            assertEquals(CommandDomain.EXTERNAL, contract?.domain, "cmd=$expectedId")
-            assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$expectedId")
-            assertEquals("GameServerHandler", contract?.owner, "cmd=$expectedId")
-        }
+        assertAll(
+            "external identity and channel contracts",
+            commands.map { (name, expectedId) ->
+                Executable {
+                    val field = assertNotNull(
+                        runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+                        "missing Cmd.$name",
+                    )
+                    assertEquals(expectedId, field.getInt(null), name)
+                    val contract = CommandContractCatalog.registry.contract(expectedId)
+                    assertEquals(listOf(name), contract?.names, "cmd=$expectedId")
+                    assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$expectedId")
+                    assertEquals(CommandDomain.EXTERNAL, contract?.domain, "cmd=$expectedId")
+                    assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$expectedId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$expectedId")
+                }
+            },
+        )
     }
 
     @Test

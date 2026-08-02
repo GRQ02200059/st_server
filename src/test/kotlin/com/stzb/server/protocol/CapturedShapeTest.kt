@@ -1,5 +1,7 @@
 package com.stzb.server.protocol
 
+import org.junit.jupiter.api.Assertions.assertAll
+import org.junit.jupiter.api.function.Executable
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -92,16 +94,23 @@ class CapturedShapeTest {
 
     @Test
     fun `handler owned external identity rejections are absent from observed shape fallback`() {
-        listOf(331, 332, 336, 9_010, 29_003, 40_006, 40_007, 40_014).forEach { cmd ->
-            val contract = CommandContractCatalog.registry.contract(cmd)
-            assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$cmd")
-            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
-            assertNull(
-                NetworkResponsePolicy.observedShapeBody(cmd, "not-json synthetic-credential-canary"),
-                "cmd=$cmd",
-            )
-            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
-        }
+        val commands = listOf(331, 332, 336, 9_010, 29_003, 40_006, 40_007, 40_014)
+
+        assertAll(
+            "external identity rejection fallback boundaries",
+            commands.map { cmd ->
+                Executable {
+                    val contract = CommandContractCatalog.registry.contract(cmd)
+                    assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$cmd")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(cmd, "not-json synthetic-credential-canary"),
+                        "cmd=$cmd",
+                    )
+                    assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+                }
+            },
+        )
     }
 
     @Test
