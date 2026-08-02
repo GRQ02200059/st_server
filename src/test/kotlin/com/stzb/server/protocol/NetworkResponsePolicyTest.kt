@@ -55,6 +55,22 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `clan supreme list requires its explicit handler`() {
+        val commandId = 2_714
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-supreme-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `strict empty query projections require explicit handlers`() {
         val commands = listOf(3_845, 4_102, 6_089)
 

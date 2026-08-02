@@ -54,6 +54,22 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `clan supreme list stays outside captured shape fallback`() {
+        val commandId = 2_714
+
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "[] synthetic-supreme-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `strict empty query projections stay outside captured shape fallback`() {
         val commands = listOf(3_845, 4_102, 6_089)
 
