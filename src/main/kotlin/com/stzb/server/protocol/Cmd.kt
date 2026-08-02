@@ -91,6 +91,9 @@ object Cmd {
     const val DAILY_REPORT_LOG = 4966
     const val GET_WORLD_SCENCE_INFO = 5025
     const val SEND_WORLD_SCENCE_FULL_INFO = 5026
+    const val DAILY_REPORT_GET_DETAIL = 5070
+    const val GET_HERO_RECOMMEND_2 = 5210
+    const val GET_UDS_GUESS_SEASON = 6078
     const val BATTLE_REPORT_SHORT_DETAIL = 6231
     const val SET_FRONT_UNLOCK_ANIM = 7046
     const val SYS_PING = 90006

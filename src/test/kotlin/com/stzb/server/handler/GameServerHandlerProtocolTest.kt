@@ -215,7 +215,7 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
-    fun `first captured response batch uses the default observed shape route`() {
+    fun `remaining first captured response batch uses the default observed shape route`() {
         val channel = newChannel()
         val cases = listOf(
             Triple(202, "[]", "[]"),
@@ -223,7 +223,6 @@ class GameServerHandlerProtocolTest {
             Triple(727, "[]", "[]"),
             Triple(3758, "[]", "[]"),
             Triple(6030, "[]", "[]"),
-            Triple(6078, "[321,7]", "[7,[]]"),
         )
 
         cases.forEach { (cmd, request, expectedBody) ->
@@ -239,15 +238,33 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
-    fun `request aware observed shape fallbacks echo identity in one plain response`() {
+    fun `explicit request aware queries project valid integers without mutating repositories`() {
         val channel = newChannel()
+        val accountKey = "request-aware-query-valid-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Request Query Snapshot User",
+        )
+        UnionStateRepository.create(state, "Request Query Snapshot Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_002, nowSec = 1))
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
         val cases = listOf(
-            Triple(5070, "[1700000000]", """[[],0,"","",1700000000]"""),
-            Triple(5210, "[100521]", "[100521]"),
+            Triple(Cmd.UNION_GET_GROUP_LIST, """{"synthetic":"ignored"} trailing""", "[]"),
+            Triple(Cmd.DAILY_REPORT_GET_DETAIL, "[1700000000]", """[[],0,"","",1700000000]"""),
+            Triple(Cmd.DAILY_REPORT_GET_DETAIL, "[-42]", """[[],0,"","",-42]"""),
+            Triple(Cmd.GET_HERO_RECOMMEND_2, "[100521]", "[100521]"),
+            Triple(Cmd.GET_HERO_RECOMMEND_2, "[-17]", "[-17]"),
+            Triple(Cmd.GET_UDS_GUESS_SEASON, "[321,7]", "[7,[]]"),
+            Triple(Cmd.GET_UDS_GUESS_SEASON, "[-8,-9]", "[-9,[]]"),
         )
 
         cases.forEach { (cmd, request, expectedBody) ->
-            channel.writeInbound(upPacket(cmd, request))
+            channel.writeInbound(upPacket(cmd, request, userId = state.userId))
 
             val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "cmd=$cmd")
             assertEquals(cmd, response.cmd)
@@ -255,20 +272,85 @@ class GameServerHandlerProtocolTest {
             assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
             assertNull(channel.readOutbound<Any>(), "cmd=$cmd emitted an extra packet")
         }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
         channel.finishAndReleaseAll()
     }
 
     @Test
-    fun `union group list fallback returns exactly one plain empty row list`() {
+    fun `explicit request aware queries project malformed required slots to zero without mutation`() {
         val channel = newChannel()
+        val accountKey = "request-aware-query-invalid-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Invalid Request Query Snapshot User",
+        )
+        UnionStateRepository.create(state, "Invalid Request Query Snapshot Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_003, nowSec = 1))
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val singleSlotInvalidRequests = listOf(
+            "",
+            "not-json",
+            "0",
+            "{}",
+            "[]",
+            "[null]",
+            """["17"]""",
+            "[1.5]",
+            "[2147483648]",
+            "[-2147483649]",
+            "[17] true",
+        )
+        val cases = buildList {
+            singleSlotInvalidRequests.forEach { request ->
+                add(Triple(Cmd.DAILY_REPORT_GET_DETAIL, request, """[[],0,"","",0]"""))
+                add(Triple(Cmd.GET_HERO_RECOMMEND_2, request, "[0]"))
+            }
+            listOf(
+                "",
+                "not-json",
+                "0",
+                "{}",
+                "[]",
+                "[1]",
+                "[null,7]",
+                "[1,null]",
+                """["1",7]""",
+                """[1,"7"]""",
+                "[1.5,7]",
+                "[1,7.5]",
+                "[2147483648,7]",
+                "[1,-2147483649]",
+                "[1,7] true",
+            ).forEach { request ->
+                add(Triple(Cmd.GET_UDS_GUESS_SEASON, request, "[0,[]]"))
+            }
+        }
 
-        channel.writeInbound(upPacket(Cmd.UNION_GET_GROUP_LIST, "[]"))
+        cases.forEach { (cmd, request, expectedBody) ->
+            channel.writeInbound(upPacket(cmd, request, userId = state.userId))
 
-        val response = assertIs<DownPacket>(channel.readOutbound<Any>())
-        assertEquals(Cmd.UNION_GET_GROUP_LIST, response.cmd)
-        assertEquals(DownType.PLAIN, response.dataType)
-        assertEquals("[]", response.body.toString(Charsets.UTF_8))
-        assertNull(channel.readOutbound<Any>())
+            val response = assertIs<DownPacket>(channel.readOutbound<Any>(), "cmd=$cmd request=$request")
+            assertEquals(cmd, response.cmd)
+            assertEquals(DownType.PLAIN, response.dataType)
+            assertEquals(expectedBody, response.body.toString(Charsets.UTF_8))
+            assertNull(channel.readOutbound<Any>(), "cmd=$cmd request=$request emitted an extra packet")
+        }
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
         channel.finishAndReleaseAll()
     }
 

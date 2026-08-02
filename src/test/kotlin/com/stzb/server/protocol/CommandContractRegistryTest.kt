@@ -157,10 +157,27 @@ class CommandContractRegistryTest {
     }
 
     @Test
-    fun `union group contracts reflect policy and explicit handler ownership`() {
+    fun `request aware query contracts expose readable ids and explicit handler ownership`() {
+        assertEquals(142, Cmd.UNION_GET_GROUP_LIST)
+        assertEquals(5_070, Cmd.DAILY_REPORT_GET_DETAIL)
+        assertEquals(5_210, Cmd.GET_HERO_RECOMMEND_2)
+        assertEquals(6_078, Cmd.GET_UDS_GUESS_SEASON)
+
         val groupList = CommandContractCatalog.registry.contract(Cmd.UNION_GET_GROUP_LIST)
-        assertEquals(CommandStatus.OBSERVED_SHAPE, groupList?.status)
-        assertEquals("NetworkResponsePolicy", groupList?.owner)
+        assertEquals(CommandDirection.DUPLEX, groupList?.direction)
+        assertEquals(CommandStatus.PROVISIONAL, groupList?.status)
+        assertEquals("GameServerHandler", groupList?.owner)
+
+        listOf(
+            Cmd.DAILY_REPORT_GET_DETAIL,
+            Cmd.GET_HERO_RECOMMEND_2,
+            Cmd.GET_UDS_GUESS_SEASON,
+        ).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
 
         val chatMembers = CommandContractCatalog.registry.contract(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT)
         assertEquals(CommandStatus.PROVISIONAL, chatMembers?.status)

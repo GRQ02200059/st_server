@@ -15,8 +15,16 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
-    fun `union group list returns an empty row list instead of a one slot tuple`() {
-        assertEquals("[]", NetworkResponsePolicy.observedShapeBody(Cmd.UNION_GET_GROUP_LIST))
+    fun `request aware query handlers are not owned by network response policy`() {
+        listOf(
+            Cmd.UNION_GET_GROUP_LIST,
+            Cmd.DAILY_REPORT_GET_DETAIL,
+            Cmd.GET_HERO_RECOMMEND_2,
+            Cmd.GET_UDS_GUESS_SEASON,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
     }
 
     @Test
@@ -158,58 +166,6 @@ class NetworkResponsePolicyTest {
         assertEquals(0, response[2].size())
         assertEquals(10001, response[4].asInt())
         assertEquals("主公", response[7].asText())
-    }
-
-    @Test
-    fun `daily report detail echoes timestamp in the mandatory five slot tuple`() {
-        assertEquals(
-            """[[],0,"","",1700000000]""",
-            NetworkResponsePolicy.observedShapeBody(5070, "[1700000000]"),
-        )
-    }
-
-    @Test
-    fun `hero recommendation no data response echoes requested hero id`() {
-        assertEquals("[100521]", NetworkResponsePolicy.observedShapeBody(5210, "[100521]"))
-    }
-
-    @Test
-    fun `request aware fallbacks default invalid identity slots to zero`() {
-        val invalidRequests = listOf<String?>(
-            null,
-            "",
-            "not-json",
-            "0",
-            "{}",
-            "[]",
-            "[null]",
-            """["100521"]""",
-            "[1.5]",
-            "[2147483648]",
-            "[-2147483649]",
-        )
-
-        invalidRequests.forEach { request ->
-            assertEquals(
-                """[[],0,"","",0]""",
-                NetworkResponsePolicy.observedShapeBody(5070, request),
-                "cmd=5070 request=$request",
-            )
-            assertEquals(
-                "[0]",
-                NetworkResponsePolicy.observedShapeBody(5210, request),
-                "cmd=5210 request=$request",
-            )
-        }
-    }
-
-    @Test
-    fun `request aware fallbacks remain observed shapes owned by network policy`() {
-        listOf(5070, 5210).forEach { cmdId ->
-            val contract = CommandContractCatalog.registry.contract(cmdId)
-            assertEquals(CommandStatus.OBSERVED_SHAPE, contract?.status, "cmd=$cmdId")
-            assertEquals("NetworkResponsePolicy", contract?.owner, "cmd=$cmdId")
-        }
     }
 
     @Test

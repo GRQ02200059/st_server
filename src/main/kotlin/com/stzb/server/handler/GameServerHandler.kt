@@ -249,6 +249,22 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendUnionChatMembers(ctx, session, msg)
             }
 
+            Cmd.UNION_GET_GROUP_LIST -> {
+                sendUnionGroupList(ctx)
+            }
+
+            Cmd.DAILY_REPORT_GET_DETAIL -> {
+                sendDailyReportDetail(ctx, msg)
+            }
+
+            Cmd.GET_HERO_RECOMMEND_2 -> {
+                sendHeroRecommendation(ctx, msg)
+            }
+
+            Cmd.GET_UDS_GUESS_SEASON -> {
+                sendSeasonRecommendations(ctx, msg)
+            }
+
             Cmd.RANK_LIST -> {
                 logIn(msg)
                 sendRankList(ctx, session, msg)
@@ -1246,6 +1262,48 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             ?: GameResponses.emptyArray()
         ctx.writeAndFlush(DownPacket.json(msg.cmdId, json, dataType = DownType.PLAIN))
         log.info(">> cmd=143 同盟分组聊天成员已下发 (uid=$userId, hasUnion=${union != null})")
+    }
+
+    private fun sendUnionGroupList(ctx: ChannelHandlerContext) {
+        ctx.writeAndFlush(DownPacket.json(Cmd.UNION_GET_GROUP_LIST, "[]", dataType = DownType.PLAIN))
+    }
+
+    private fun sendDailyReportDetail(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val timestamp = requestInts(msg.bodyText, requiredSlots = 1)?.get(0) ?: 0
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.DAILY_REPORT_GET_DETAIL,
+                """[[],0,"","",$timestamp]""",
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendHeroRecommendation(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val heroId = requestInts(msg.bodyText, requiredSlots = 1)?.get(0) ?: 0
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.GET_HERO_RECOMMEND_2, "[$heroId]", dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendSeasonRecommendations(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val recType = requestInts(msg.bodyText, requiredSlots = 2)?.get(1) ?: 0
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.GET_UDS_GUESS_SEASON, "[$recType,[]]", dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun requestInts(body: String, requiredSlots: Int): List<Int>? {
+        val request = runCatching { strictRequestMapper.readTree(body) }.getOrNull() ?: return null
+        if (!request.isArray || request.size() < requiredSlots) return null
+
+        val values = ArrayList<Int>(requiredSlots)
+        for (index in 0 until requiredSlots) {
+            val value = request[index]
+            if (!value.isIntegralNumber || !value.canConvertToInt()) return null
+            values += value.asInt()
+        }
+        return values
     }
 
     private fun sendRankList(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {

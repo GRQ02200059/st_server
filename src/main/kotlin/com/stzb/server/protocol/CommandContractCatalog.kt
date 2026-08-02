@@ -38,6 +38,7 @@ object CommandContractCatalog {
             CurrentClientCommand.UNION_INFO,
             CurrentClientCommand.UNION_MEMBER,
             Cmd.UNION_OFFICIAL_LIST,
+            Cmd.UNION_GET_GROUP_LIST,
             Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT,
             CurrentClientCommand.GET_HOMEPAGE_INFO,
             CurrentClientCommand.CHAT,
@@ -106,6 +107,9 @@ object CommandContractCatalog {
                 Cmd.DAILY_REPORT_LOG,
                 Cmd.PRE_SERVER_QUERY_USER_OP,
                 Cmd.IP_USER_COUNT_PRE,
+                Cmd.DAILY_REPORT_GET_DETAIL,
+                Cmd.GET_HERO_RECOMMEND_2,
+                Cmd.GET_UDS_GUESS_SEASON,
             ).map(::provisionalClientRequest) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,

@@ -1,6 +1,5 @@
 package com.stzb.server.protocol
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -9,8 +8,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CapturedShapeTest {
-    private val mapper = jacksonObjectMapper()
-
     @Test
     fun `top level kind detects array object scalar`() {
         assertEquals("array", ShapeAssert.topLevelKind("[1,2]"))
@@ -114,7 +111,6 @@ class CapturedShapeTest {
     fun `captured indexed tuples reserve positional slots so client resp index reads survive`() {
         // 这些命令客户端按下标读取（resp[0]/resp[1]），空 [] 会取到 null 崩溃。
         val expectedSizes = mapOf(
-            5210 to 1,
             6242 to 1,
             6243 to 1,
             6244 to 1,
@@ -128,28 +124,22 @@ class CapturedShapeTest {
     }
 
     @Test
-    fun `captured request aware tuples keep mandatory slot kinds`() {
-        val dailyReport = mapper.readTree(
-            NetworkResponsePolicy.observedShapeBody(5070, "[1700000000]"),
-        )
-        assertEquals(5, dailyReport.size())
-        assertEquals(true, dailyReport[0].isArray)
-        assertEquals(true, dailyReport[1].isIntegralNumber)
-        assertEquals(true, dailyReport[2].isTextual)
-        assertEquals(true, dailyReport[3].isTextual)
-        assertEquals(true, dailyReport[4].isIntegralNumber)
-
-        val heroRecommendation = mapper.readTree(
-            NetworkResponsePolicy.observedShapeBody(5210, "[100521]"),
-        )
-        assertEquals(1, heroRecommendation.size())
-        assertEquals(true, heroRecommendation[0].isIntegralNumber)
+    fun `handler owned request aware queries are absent from observed shape fallback`() {
+        listOf(
+            Cmd.UNION_GET_GROUP_LIST,
+            Cmd.DAILY_REPORT_GET_DETAIL,
+            Cmd.GET_HERO_RECOMMEND_2,
+            Cmd.GET_UDS_GUESS_SEASON,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
     }
 
     @Test
     fun `captured list iterated commands stay empty arrays`() {
         // 这些命令客户端整体遍历列表，空 [] 即结构正确（保结构不保数值）。
-        listOf(92, 103, Cmd.UNION_GET_GROUP_LIST, 171, 711, 871, 6256).forEach { cmd ->
+        listOf(92, 103, 171, 711, 871, 6256).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("array", ShapeAssert.topLevelKind(body), "cmd=$cmd")
             assertEquals(0, ShapeAssert.tupleSize(body), "cmd=$cmd")
@@ -166,34 +156,8 @@ class CapturedShapeTest {
     }
 
     @Test
-    fun `captured transfer season response echoes recommendation type with an empty list`() {
-        val response = mapper.readTree(
-            NetworkResponsePolicy.observedShapeBody(6078, "[321,7]"),
-        )
-
-        assertEquals(2, response.size())
-        assertEquals(7, response[0].asInt())
-        assertEquals(true, response[1].isArray)
-        assertEquals(0, response[1].size())
-    }
-
-    @Test
-    fun `malformed transfer season request defaults to zero and an empty list`() {
-        listOf(null, "", "not-json", "{}", "[321]", """[321,"bad"]""").forEach { request ->
-            assertEquals("[0,[]]", NetworkResponsePolicy.observedShapeBody(6078, request), "request=$request")
-        }
-    }
-
-    @Test
-    fun `invalid transfer season group id defaults to zero and an empty list`() {
-        listOf("""["bad",7]""", "[1.5,7]", "[2147483648,7]").forEach { request ->
-            assertEquals("[0,[]]", NetworkResponsePolicy.observedShapeBody(6078, request), "request=$request")
-        }
-    }
-
-    @Test
     fun `first captured response batch is registered as observed shape`() {
-        listOf(202, 203, 727, 3758, 6030, 6078).forEach { cmd ->
+        listOf(202, 203, 727, 3758, 6030).forEach { cmd ->
             assertEquals(
                 CommandStatus.OBSERVED_SHAPE,
                 CommandContractCatalog.registry.contract(cmd)?.status,
