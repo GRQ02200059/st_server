@@ -75,8 +75,6 @@ object NetworkResponsePolicy {
         2601,
         Cmd.SET_CLIENT_RED_DOT_DATA,
         Cmd.GET_WORLD_SCENCE_INFO,
-        6037,
-        6351,
         7041,
     )
 
@@ -93,7 +91,6 @@ object NetworkResponsePolicy {
         261 to "[{}]",
         262 to "[{}]",
         725 to "[0,[],[],{}]",
-        2529 to "[0,0,[]]",
         2604 to "[0,[]]",
         3787 to "[[0,0],[]]",
         5201 to "[0]",

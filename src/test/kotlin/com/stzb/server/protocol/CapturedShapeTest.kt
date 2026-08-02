@@ -155,6 +155,18 @@ class CapturedShapeTest {
     }
 
     @Test
+    fun `handler owned optional social and world queries are absent from observed shape fallback`() {
+        listOf(
+            Cmd.CCLIVE_GET_FOLLOW_LIST,
+            Cmd.FIRST_STATE_COOUPY_MSG,
+            Cmd.UNION_RELATION_FULL_REQUEST,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `captured indexed tuples reserve positional slots so client resp index reads survive`() {
         // 这些命令客户端按下标读取（resp[0]/resp[1]），空 [] 会取到 null 崩溃。
         val expectedSizes = mapOf(

@@ -246,7 +246,7 @@ class NetworkResponsePolicyTest {
 
     @Test
     fun `recorded fire and forget commands still receive json null`() {
-        listOf(6, 2405, 3400, 5025, 6037, 6351, 7041).forEach { cmdId ->
+        listOf(6, 2405, 3400, 5025, 7041).forEach { cmdId ->
             assertEquals("null", NetworkResponsePolicy.observedShapeBody(cmdId), "cmd=$cmdId")
         }
     }
@@ -282,7 +282,6 @@ class NetworkResponsePolicyTest {
         val expectedSizes = mapOf(
             172 to 2,
             725 to 4,
-            2529 to 3,
             3686 to 2,
             3787 to 2,
             4979 to 3,

@@ -213,6 +213,15 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[]", dataType = DownType.PLAIN))
             }
 
+            Cmd.CCLIVE_GET_FOLLOW_LIST -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[0,0,[]]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.FIRST_STATE_COOUPY_MSG,
+            Cmd.UNION_RELATION_FULL_REQUEST -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "null", dataType = DownType.PLAIN))
+            }
+
             Cmd.SWITCH_ROLE_QUERY_ROLE_LIST,
             Cmd.MAIL_INBOX,
             Cmd.MAIL_GET_CONTACTS,

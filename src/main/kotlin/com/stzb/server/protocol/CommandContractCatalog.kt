@@ -143,6 +143,14 @@ object CommandContractCatalog {
                 Cmd.XUANFUQIU_RECEIVED_MSG,
                 Cmd.GAME_CHENGXIANGGE_RECEIVED,
             ).map(::provisionalClientRequest) +
+            listOf(
+                provisionalClientRequest(Cmd.CCLIVE_GET_FOLLOW_LIST)
+                    .copy(domain = CommandDomain.EXTERNAL),
+                provisionalClientRequest(Cmd.FIRST_STATE_COOUPY_MSG)
+                    .copy(domain = CommandDomain.WORLD),
+                provisionalClientRequest(Cmd.UNION_RELATION_FULL_REQUEST)
+                    .copy(domain = CommandDomain.SOCIAL),
+            ) +
             CommandContract(
                 id = Cmd.GET_PREBOOK_SERVER_INFO,
                 names = emptyList(),

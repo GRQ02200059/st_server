@@ -8,6 +8,24 @@ import kotlin.test.assertTrue
 
 class CommandContractRegistryTest {
     @Test
+    fun `optional social and world queries expose handler owned contracts`() {
+        val expectedDomains = mapOf(
+            Cmd.CCLIVE_GET_FOLLOW_LIST to (2_529 to CommandDomain.EXTERNAL),
+            Cmd.FIRST_STATE_COOUPY_MSG to (6_037 to CommandDomain.WORLD),
+            Cmd.UNION_RELATION_FULL_REQUEST to (6_351 to CommandDomain.SOCIAL),
+        )
+
+        expectedDomains.forEach { (cmd, expected) ->
+            assertEquals(expected.first, cmd)
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(expected.second, contract?.domain, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `read only union army and station queries expose handler owned contracts`() {
         val duplexCommands = mapOf(
             Cmd.UNION_NPC_CITY_LIST to 135,
