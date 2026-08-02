@@ -633,6 +633,7 @@ class GameServerHandlerProtocolTest {
         val unionsBefore = UnionStateRepository.all()
         PlayerStateRepository.configure(RejectingPlayerRepository)
         val expectedBodies = linkedMapOf(
+            2_679 to "[]",
             3_845 to "[]",
             4_102 to "{}",
             6_089 to "[0,0]",
@@ -683,7 +684,7 @@ class GameServerHandlerProtocolTest {
                         )
                         val parsed = mapper.readTree(packet.body)
                         when (commandId) {
-                            3_845 -> {
+                            2_679, 3_845 -> {
                                 assertTrue(parsed.isArray, "cmd=$commandId")
                                 assertTrue(parsed.isEmpty, "cmd=$commandId")
                             }

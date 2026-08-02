@@ -309,6 +309,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
             Cmd.GET_INVITE_LIST,
             Cmd.GET_ZHAOHUI_LIST,
+            Cmd.UNION_LEADER_CLAN_CITY_LIST,
             Cmd.CLAN_NEARBY_CLAN_LIST,
             Cmd.CLAN_NPC_CITY_LIST,
             Cmd.CLAN_GET_CONTRIBUTION_LIST,
@@ -2273,6 +2274,7 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val response = when (msg.cmdId) {
             Cmd.GET_INVITE_LIST,
             Cmd.GET_ZHAOHUI_LIST,
+            Cmd.UNION_LEADER_CLAN_CITY_LIST,
             Cmd.CLAN_NEARBY_CLAN_LIST,
             Cmd.CLAN_NPC_CITY_LIST,
             Cmd.CLAN_GET_CONTRIBUTION_LIST,

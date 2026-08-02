@@ -149,6 +149,24 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `union leader clan city list exposes exact constant and handler owned social duplex contract`() {
+        val name = "UNION_LEADER_CLAN_CITY_LIST"
+        val commandId = 2_679
+        val field = assertNotNull(
+            runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+            "missing Cmd.$name",
+        )
+
+        assertEquals(commandId, field.getInt(null))
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(listOf(name), contract?.names)
+        assertEquals(CommandDirection.DUPLEX, contract?.direction)
+        assertEquals(CommandDomain.SOCIAL, contract?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `strict empty query projections expose exact constants and handler owned contracts`() {
         val commands = linkedMapOf(
             "GET_NZ_EFFECT_LAND_LIST" to (3_845 to CommandDomain.WORLD),
