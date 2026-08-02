@@ -311,6 +311,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendClanLogGet(ctx, msg)
             }
 
+            Cmd.CHAT_GET_FIGHT_AREA_CHAT -> {
+                sendBattlefieldChatHistory(ctx, msg)
+            }
+
             Cmd.UNION_MEMBER_CLAN_LIST,
             Cmd.GET_INVITE_LIST,
             Cmd.GET_ZHAOHUI_LIST,
@@ -1808,6 +1812,17 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             ?.get(0)
             ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
             ?.asInt()
+
+    private fun sendBattlefieldChatHistory(ctx: ChannelHandlerContext, msg: UpPacket) {
+        exactSingleInt(msg.bodyText) ?: return
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.CHAT_GET_FIGHT_AREA_CHAT,
+                "[]",
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
 
     private fun sendNobilityOfficerRecord(ctx: ChannelHandlerContext, msg: UpPacket) {
         val requestedTimeStamp = exactSingleLong(msg.bodyText) ?: 0L

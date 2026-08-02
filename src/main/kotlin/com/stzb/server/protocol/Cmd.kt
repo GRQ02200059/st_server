@@ -122,6 +122,7 @@ object Cmd {
     const val USER_GET_USERS_HEADICON = 514
     const val SYNC_SERVER_TIME = 694
     const val CHAT_GET_CITY_HISTORY = 708
+    const val CHAT_GET_FIGHT_AREA_CHAT = 724
     const val CHAT_GET_ZHAO_XIAN_MSG = 727
     const val CHAT_GET_SAND_TABLE_ROOM_MSG = 736
     const val FRIEND_SEARCH = 741

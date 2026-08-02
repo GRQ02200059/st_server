@@ -178,6 +178,22 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `battlefield chat history requires its explicit handler`() {
+        val commandId = 724
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-battlefield-chat-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `summer farm record queries require explicit handlers`() {
         val commands = listOf(5_120, 5_121)
 

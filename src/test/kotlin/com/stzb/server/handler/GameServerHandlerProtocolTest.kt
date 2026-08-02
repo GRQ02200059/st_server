@@ -728,6 +728,117 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `battlefield chat history accepts only one Int32 block id and remains repository free`() {
+        val commandId = 724
+        val accountKey = "battlefield-chat-history-boundary"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Battlefield Chat History User",
+        )
+        state.resources.money = 724_000
+        state.addHero(heroId = 100_101, nowSec = 1_700_000_000)
+        UnionStateRepository.create(state, "Battlefield Chat History Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_026, nowSec = 1))
+        PlayerStateRepository.save(state)
+        val playerBefore = state.toSnapshot()
+        val persistedPath = repositoryRoot.resolve("accounts").resolve("$accountKey.json")
+        val persistedBytesBefore = Files.readAllBytes(persistedPath)
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        PlayerStateRepository.configure(RejectingPlayerRepository)
+        val invalidRequests = linkedMapOf(
+            "JSON null" to "null",
+            "empty text" to "",
+            "malformed JSON" to "[17",
+            "number scalar" to "17",
+            "string scalar" to """"17"""",
+            "boolean scalar" to "true",
+            "top-level object" to """{"blockId":17}""",
+            "empty array" to "[]",
+            "more than one slot" to "[17,18]",
+            "null slot" to "[null]",
+            "string slot" to """["17"]""",
+            "boolean slot" to "[true]",
+            "floating point" to "[17.0]",
+            "exponential" to "[1e3]",
+            "nested array" to "[[17]]",
+            "object slot" to """[{"blockId":17}]""",
+            "positive Int32 overflow" to "[2147483648]",
+            "negative Int32 overflow" to "[-2147483649]",
+            "trailing token" to "[17] []",
+        )
+        val validBlockIds = listOf(0, 17, -17, Int.MIN_VALUE, Int.MAX_VALUE)
+
+        fun assertStateUnchanged(stage: String) {
+            assertEquals(playerBefore, state.toSnapshot(), "$stage player state changed")
+            assertTrue(
+                persistedBytesBefore.contentEquals(Files.readAllBytes(persistedPath)),
+                "$stage persisted player bytes changed",
+            )
+            assertEquals(worldBefore, WorldStateRepository.projection(), "$stage world state changed")
+            assertEquals(unionsBefore, UnionStateRepository.all(), "$stage union state changed")
+        }
+
+        fun validBlockExecutable(blockId: Int) = Executable {
+            val channel = newChannel()
+            try {
+                channel.writeInbound(
+                    upPacket(commandId, "[$blockId]", userId = state.userId + 10_000),
+                )
+
+                val packet = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "blockId=$blockId emitted no response",
+                )
+                assertEquals(commandId, packet.cmd, "blockId=$blockId")
+                assertNotEquals(Cmd.SYS_NOTIFY_DB_UPDATE, packet.cmd, "blockId=$blockId")
+                assertEquals(DownType.PLAIN, packet.dataType, "blockId=$blockId")
+                assertTrue(
+                    "[]".toByteArray().contentEquals(packet.body),
+                    "blockId=$blockId emitted wrong wire bytes",
+                )
+                assertFalse(
+                    packet.body.toString(Charsets.UTF_8).contains(blockId.toString()),
+                    "blockId=$blockId was echoed",
+                )
+                val parsed = mapper.readTree(packet.body)
+                assertTrue(parsed.isArray, "blockId=$blockId response is not an array")
+                assertTrue(parsed.isEmpty, "blockId=$blockId response is not empty")
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "blockId=$blockId emitted an extra packet",
+                )
+                assertStateUnchanged("blockId=$blockId")
+            } finally {
+                channel.finishAndReleaseAll()
+            }
+        }
+
+        assertAll(
+            "battlefield chat history",
+            Executable {
+                val channel = newChannel()
+                try {
+                    invalidRequests.forEach { (case, request) ->
+                        channel.writeInbound(
+                            upPacket(commandId, request, userId = state.userId + 10_000),
+                        )
+                        assertNull(
+                            channel.readOutbound<Any>(),
+                            "case=$case emitted an outbound packet",
+                        )
+                    }
+                    assertStateUnchanged("invalid requests")
+                } finally {
+                    channel.finishAndReleaseAll()
+                }
+            },
+            *validBlockIds.map(::validBlockExecutable).toTypedArray(),
+        )
+    }
+
+    @Test
     fun `union letter query accepts only modes zero and one and remains repository free`() {
         val commandId = 9_015
         val accountKey = "union-letter-query-boundary"
