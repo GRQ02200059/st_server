@@ -177,6 +177,99 @@ class GameServerHandlerProtocolTest {
     }
 
     @Test
+    fun `season history queries ignore arbitrary payloads without mutating repositories`() {
+        val channel = newChannel()
+        val accountKey = "season-history-snapshot"
+        val state = PlayerStateRepository.getOrCreate(
+            accountKey = accountKey,
+            cityWid = GameServerConfig.CITY_WID,
+            roleName = "Season History Snapshot User",
+        )
+        UnionStateRepository.create(state, "Season History Snapshot Union", nowSec = 1)
+        assertTrue(WorldStateRepository.claimLand(state, wid = 10_005, nowSec = 1))
+        val playerBefore = requireNotNull(
+            FilePlayerRepository(repositoryRoot).findByAccount(accountKey),
+        ).toSnapshot()
+        val worldBefore = WorldStateRepository.projection()
+        val unionsBefore = UnionStateRepository.all()
+        val syntheticPayloads = listOf(
+            """[987654321,{"mode":"synthetic-alpha","h5":"local-only"}]""",
+            """{"roleId":"synthetic-beta","modeFlags":[false,42]}""",
+            "not-json synthetic payload",
+        )
+        val responseBodies = mutableMapOf<Int, String>()
+
+        listOf(
+            Cmd.GET_USER_SEASON_RECORD,
+            Cmd.GET_SEASON_HISTROY_PARAMS,
+        ).forEach { cmd ->
+            syntheticPayloads.forEach { request ->
+                channel.writeInbound(upPacket(cmd, request, userId = state.userId))
+
+                val response = assertIs<DownPacket>(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request",
+                )
+                assertEquals(cmd, response.cmd)
+                assertEquals(DownType.PLAIN, response.dataType)
+                val body = response.body.toString(Charsets.UTF_8)
+                assertEquals(responseBodies.putIfAbsent(cmd, body) ?: body, body)
+                assertNull(
+                    channel.readOutbound<Any>(),
+                    "cmd=$cmd request=$request emitted an extra packet",
+                )
+            }
+        }
+
+        val seasonRecordOuter = mapper.readTree(responseBodies.getValue(Cmd.GET_USER_SEASON_RECORD))
+        assertTrue(seasonRecordOuter.isTextual)
+        val seasonRecordInner = mapper.readTree(seasonRecordOuter.textValue())
+        assertTrue(seasonRecordInner.isObject)
+        assertEquals(
+            setOf(
+                "data",
+                "success",
+                "succeed",
+                "sourceHost",
+                "reqTiming",
+                "status",
+                "statusCode",
+                "reqId",
+            ),
+            seasonRecordInner.fieldNames().asSequence().toSet(),
+        )
+        assertTrue(seasonRecordInner["data"].isArray)
+        assertEquals(0, seasonRecordInner["data"].size())
+        assertTrue(seasonRecordInner["success"].isBoolean)
+        assertTrue(seasonRecordInner["success"].asBoolean())
+        assertTrue(seasonRecordInner["succeed"].isBoolean)
+        assertTrue(seasonRecordInner["succeed"].asBoolean())
+        assertTrue(seasonRecordInner["sourceHost"].isTextual)
+        assertEquals("", seasonRecordInner["sourceHost"].asText())
+        assertTrue(seasonRecordInner["reqTiming"].isNull)
+        assertTrue(seasonRecordInner["status"].isIntegralNumber)
+        assertEquals(200, seasonRecordInner["status"].asInt())
+        assertTrue(seasonRecordInner["statusCode"].isIntegralNumber)
+        assertEquals(200, seasonRecordInner["statusCode"].asInt())
+        assertTrue(seasonRecordInner["reqId"].isTextual)
+        assertEquals("", seasonRecordInner["reqId"].asText())
+
+        val seasonHistoryParams = mapper.readTree(
+            responseBodies.getValue(Cmd.GET_SEASON_HISTROY_PARAMS),
+        )
+        assertTrue(seasonHistoryParams.isObject)
+        assertEquals(0, seasonHistoryParams.size())
+
+        assertEquals(
+            playerBefore,
+            requireNotNull(FilePlayerRepository(repositoryRoot).findByAccount(accountKey)).toSnapshot(),
+        )
+        assertEquals(worldBefore, WorldStateRepository.projection())
+        assertEquals(unionsBefore, UnionStateRepository.all())
+        channel.finishAndReleaseAll()
+    }
+
+    @Test
     fun `pre server user operation query echoes only a valid integer user id`() {
         val channel = newChannel()
         val validRequests = listOf(

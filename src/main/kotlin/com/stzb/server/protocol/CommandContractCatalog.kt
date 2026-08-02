@@ -117,6 +117,8 @@ object CommandContractCatalog {
                 Cmd.DAILY_REPORT_GET_DETAIL,
                 Cmd.GET_HERO_RECOMMEND_2,
                 Cmd.GET_UDS_GUESS_SEASON,
+                Cmd.GET_USER_SEASON_RECORD,
+                Cmd.GET_SEASON_HISTROY_PARAMS,
                 Cmd.MAIL_OUTBOX,
                 Cmd.NOTICE_LIST,
                 Cmd.FRIEND_GROUP_GET_HISTORY_CHAT,

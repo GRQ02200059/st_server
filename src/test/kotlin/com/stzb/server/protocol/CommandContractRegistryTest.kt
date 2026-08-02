@@ -114,6 +114,22 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `season history queries expose handler owned provisional client request contracts`() {
+        val commands = mapOf(
+            Cmd.GET_USER_SEASON_RECORD to 980,
+            Cmd.GET_SEASON_HISTROY_PARAMS to 5_021,
+        )
+
+        commands.forEach { (cmd, expectedId) ->
+            assertEquals(expectedId, cmd)
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction, "cmd=$cmd")
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `union group commands expose readable ids`() {
         assertEquals(142, Cmd.UNION_GET_GROUP_LIST)
         assertEquals(143, Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT)

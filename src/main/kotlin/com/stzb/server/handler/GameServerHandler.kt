@@ -197,6 +197,14 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[]", dataType = DownType.PLAIN))
             }
 
+            Cmd.GET_USER_SEASON_RECORD -> {
+                sendUserSeasonRecord(ctx)
+            }
+
+            Cmd.GET_SEASON_HISTROY_PARAMS -> {
+                sendSeasonHistoryParams(ctx)
+            }
+
             Cmd.PRE_SERVER_QUERY_USER_OP -> {
                 sendPreServerQueryUserOp(ctx, msg)
             }
@@ -502,6 +510,32 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 logUnhandledOrFallback(ctx, msg)
             }
         }
+    }
+
+    private fun sendUserSeasonRecord(ctx: ChannelHandlerContext) {
+        val innerResponse = mapper.writeValueAsString(
+            linkedMapOf<String, Any?>(
+                "data" to emptyList<Any>(),
+                "success" to true,
+                "succeed" to true,
+                "sourceHost" to "",
+                "reqTiming" to null,
+                "status" to 200,
+                "statusCode" to 200,
+                "reqId" to "",
+            ),
+        )
+        val response = mapper.writeValueAsString(innerResponse)
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.GET_USER_SEASON_RECORD, response, dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendSeasonHistoryParams(ctx: ChannelHandlerContext) {
+        val response = mapper.writeValueAsString(emptyMap<String, Any?>())
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.GET_SEASON_HISTROY_PARAMS, response, dataType = DownType.PLAIN),
+        )
     }
 
     /**

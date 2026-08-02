@@ -74,6 +74,7 @@ object Cmd {
     const val USER_CLOSE_UI = 875
     const val USER_OPEN_UI = 885
     const val LOG_MUSIC_OPEN = 888
+    const val GET_USER_SEASON_RECORD = 980
     const val GEAR_EQUIP = 1226
     const val GEAR_FORGET = 1227
     const val HERO_ACTIVE_FACADE = 2520
@@ -95,6 +96,7 @@ object Cmd {
     const val QUERY_ARMY_RELATED_FORT = 4159
     const val DAILY_REPORT_LOG = 4966
     const val QUERY_WANTED_TO_REPOTR = 4967
+    const val GET_SEASON_HISTROY_PARAMS = 5021
     const val GET_WORLD_SCENCE_INFO = 5025
     const val SEND_WORLD_SCENCE_FULL_INFO = 5026
     const val HELP_GUIDE_TIPS_LOG = 5069

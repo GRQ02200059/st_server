@@ -78,19 +78,20 @@ class CapturedShapeTest {
 
     @Test
     fun `captured opaque string commands keep string kind`() {
-        // 980 GET_USER_SEASON_RECORD 正式服真实 recv 为序列化 JSON 字符串。
-        listOf(671, 980, 40016).forEach { cmd ->
+        listOf(671, 40016).forEach { cmd ->
             val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
             assertEquals("string", ShapeAssert.topLevelKind(body), "cmd=$cmd")
         }
     }
 
     @Test
-    fun `captured object command keeps object kind`() {
-        // 5021 GET_SEASON_HISTROY_PARAMS 正式服真实 recv 为对象。
-        listOf(5021).forEach { cmd ->
-            val body = NetworkResponsePolicy.observedShapeBody(cmd)!!
-            assertEquals("object", ShapeAssert.topLevelKind(body), "cmd=$cmd")
+    fun `handler owned season history queries are absent from observed shape fallback`() {
+        listOf(
+            Cmd.GET_USER_SEASON_RECORD,
+            Cmd.GET_SEASON_HISTROY_PARAMS,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
         }
     }
 

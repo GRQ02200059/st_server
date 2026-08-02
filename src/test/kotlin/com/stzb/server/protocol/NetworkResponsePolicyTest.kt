@@ -46,6 +46,17 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `season history handlers are not owned by network response policy`() {
+        listOf(
+            Cmd.GET_USER_SEASON_RECORD,
+            Cmd.GET_SEASON_HISTROY_PARAMS,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `union chat member list requires the explicit handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT))
     }

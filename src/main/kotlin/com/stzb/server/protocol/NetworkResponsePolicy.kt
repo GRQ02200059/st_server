@@ -94,11 +94,11 @@ object NetworkResponsePolicy {
 
     /** 抓包确认返回顶层字符串（不透明 token/序列化串）的命令，兜底回空串。 */
     private val stringCommands = setOf(
-        671, 980, 40016,
+        671, 40016,
     )
 
     private val dictionaryCommands = setOf(
-        510, 5021, 6053, 6068, 6219, 6239,
+        510, 6053, 6068, 6219, 6239,
     )
 
     private val fixedTupleCommands = mapOf(
