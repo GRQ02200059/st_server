@@ -21,6 +21,7 @@ object Cmd {
 
     const val CREATE_ROLE = 2
     const val ARMY_BATTLE = 6
+    const val RESIDE_FIELD = 60 // ArmyOpRequest.RequestDefend: 派部队驻守某地
     const val BATTLE_REPORT_PROFILE = 10
     const val BATTLE_REPORT_DETAIL = 11
     const val BUILD_BUILDING = 13

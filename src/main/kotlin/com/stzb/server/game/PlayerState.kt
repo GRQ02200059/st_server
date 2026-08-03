@@ -154,6 +154,7 @@ data class PlayerMarch(
     val endSec: Int,
     val participants: List<PlayerMarchHero> = emptyList(),
     val specialArmyFacadeId: Int = 0,
+    val targetType: Int = MarchTargetType.EXPEDITION,
 )
 
 data class PlayerMarchHero(
@@ -232,6 +233,15 @@ data class PlayerStateSnapshot(
  */
 object PlayerHeroTypes {
     fun forHero(heroId: Int): Int = HeroCatalog.heroType(heroId)
+}
+
+/**
+ * Distinguishes an outbound attack march (settled by PlayerBattleService) from a
+ * garrison-bound reside march (settled by GarrisonService into a world snapshot).
+ */
+object MarchTargetType {
+    const val EXPEDITION = 1
+    const val RESIDE_GOING = 2
 }
 
 class PlayerState(
@@ -636,6 +646,7 @@ class PlayerState(
         armyId: Int = primaryArmyId(),
         participants: List<PlayerMarchHero> = emptyList(),
         specialArmyFacadeId: Int = 0,
+        targetType: Int = MarchTargetType.EXPEDITION,
     ): PlayerMarch {
         val beginSec = nowSec.coerceAtLeast(1)
         return PlayerMarch(
@@ -648,6 +659,7 @@ class PlayerState(
             specialArmyFacadeId = specialArmyFacadeId.takeIf {
                 it != ArmyFacadeCatalog.YUXI_FACADE_ID && ArmyFacadeCatalog.isSpecialFacade(it)
             } ?: 0,
+            targetType = targetType,
         ).also { marches[it.armyId] = it }
     }
 
