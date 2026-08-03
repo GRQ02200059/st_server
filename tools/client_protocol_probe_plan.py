@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Validate versioned command probe plans and build safe probe batches."""
 
+import argparse
+import json
+from pathlib import Path
+
 
 ALLOWED_CLASSIFICATIONS = frozenset(
     {
@@ -59,6 +63,11 @@ def validate_probe_plan(manifest, baseline_inventory, current_inventory):
     if not isinstance(manifest, dict):
         raise ProbePlanError("probe manifest must be an object")
 
+    baseline_by_id = _inventory_by_id(
+        baseline_inventory,
+        "baseline",
+    )
+    current_by_id = _inventory_by_id(current_inventory, "current")
     baseline_version = baseline_inventory.get("clientVersion")
     current_version = current_inventory.get("clientVersion")
     if manifest.get("baselineVersion") != baseline_version:
@@ -70,11 +79,6 @@ def validate_probe_plan(manifest, baseline_inventory, current_inventory):
             "probe client version does not match current inventory",
         )
 
-    baseline_by_id = _inventory_by_id(
-        baseline_inventory,
-        "baseline",
-    )
-    current_by_id = _inventory_by_id(current_inventory, "current")
     expected_ids = set(current_by_id) - set(baseline_by_id)
 
     commands = manifest.get("commands")
@@ -159,3 +163,56 @@ def build_auto_probe_batch(validated_commands):
         for row in validated_commands
         if row["autoProbe"]
     ]
+
+
+def load_json(path):
+    """Load one UTF-8 JSON object from disk."""
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=(
+            "Validate a versioned command probe plan and export safe probes."
+        ),
+    )
+    parser.add_argument(
+        "--baseline-inventory",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        "--current-inventory",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args(argv)
+
+    rows = validate_probe_plan(
+        load_json(args.manifest),
+        load_json(args.baseline_inventory),
+        load_json(args.current_inventory),
+    )
+    batch = build_auto_probe_batch(rows)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
+        json.dumps(
+            batch,
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    print(
+        f"validated={len(rows)} "
+        f"auto_probes={len(batch)} "
+        f"output={args.output}",
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

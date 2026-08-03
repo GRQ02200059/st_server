@@ -2,6 +2,7 @@ import copy
 from collections import Counter
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tools.client_protocol_probe_plan import (
     ProbePlanError,
     build_auto_probe_batch,
+    main,
     validate_probe_plan,
 )
 
@@ -52,6 +54,66 @@ def row(
 
 
 class ProbePlanTest(unittest.TestCase):
+    def test_cli_exports_validated_batch(self):
+        with tempfile.TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            baseline_path = root / "baseline.json"
+            current_path = root / "current.json"
+            manifest_path = root / "manifest.json"
+            output_path = root / "batch.json"
+            baseline_path.write_text(
+                json.dumps(inventory("9.2.2", [(1, "OLD")])),
+                encoding="utf-8",
+            )
+            current_path.write_text(
+                json.dumps(
+                    inventory(
+                        "9.2.4",
+                        [(1, "OLD"), (42, "QUERY")],
+                    )
+                ),
+                encoding="utf-8",
+            )
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "clientVersion": "9.2.4",
+                        "baselineVersion": "9.2.2",
+                        "commands": [
+                            row(
+                                42,
+                                "QUERY",
+                                "READ_ONLY_STATIC",
+                                auto_probe=True,
+                                probe_payload=None,
+                            ),
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            exit_code = main(
+                [
+                    "--baseline-inventory",
+                    str(baseline_path),
+                    "--current-inventory",
+                    str(current_path),
+                    "--manifest",
+                    str(manifest_path),
+                    "--output",
+                    str(output_path),
+                ]
+            )
+
+            output_text = output_path.read_text(encoding="utf-8")
+            self.assertEqual(0, exit_code)
+            self.assertEqual(
+                [{"cmd": 42, "payload": None}],
+                json.loads(output_text),
+            )
+            self.assertTrue(output_text.endswith("\n"))
+
     def test_real_manifest_covers_added_ids_and_exports_only_safe_literals(self):
         root = Path(__file__).resolve().parent.parent
         baseline = json.loads(
@@ -252,6 +314,26 @@ class ProbePlanTest(unittest.TestCase):
         )
         with self.assertRaises(ProbePlanError):
             validate_probe_plan(valid_manifest, baseline, duplicate_current)
+
+    def test_rejects_non_object_inventories_as_probe_plan_errors(self):
+        manifest = {
+            "clientVersion": "9.2.4",
+            "baselineVersion": "9.2.2",
+            "commands": [],
+        }
+
+        with self.assertRaises(ProbePlanError):
+            validate_probe_plan(
+                manifest,
+                [],
+                inventory("9.2.4", []),
+            )
+        with self.assertRaises(ProbePlanError):
+            validate_probe_plan(
+                manifest,
+                inventory("9.2.2", []),
+                [],
+            )
 
 
 if __name__ == "__main__":
