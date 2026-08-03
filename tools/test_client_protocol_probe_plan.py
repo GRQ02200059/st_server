@@ -1,4 +1,6 @@
 import copy
+from collections import Counter
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -50,6 +52,59 @@ def row(
 
 
 class ProbePlanTest(unittest.TestCase):
+    def test_real_manifest_covers_added_ids_and_exports_only_safe_literals(self):
+        root = Path(__file__).resolve().parent.parent
+        baseline = json.loads(
+            (
+                root
+                / "src/main/resources/protocol/"
+                "client-9.2.2-command-inventory.json"
+            ).read_text(encoding="utf-8")
+        )
+        current = json.loads(
+            (
+                root
+                / "src/main/resources/protocol/"
+                "client-9.2.4-command-inventory.json"
+            ).read_text(encoding="utf-8")
+        )
+        manifest = json.loads(
+            (
+                root
+                / "tools/protocol/"
+                "client-9.2.4-added-command-probes.json"
+            ).read_text(encoding="utf-8")
+        )
+
+        rows = validate_probe_plan(manifest, baseline, current)
+
+        self.assertEqual(63, len(rows))
+        self.assertEqual(
+            {
+                "MUTATING": 38,
+                "READ_ONLY_CONTEXTUAL": 6,
+                "READ_ONLY_STATIC": 7,
+                "SERVER_PUSH": 1,
+                "SESSION_CONTROL": 2,
+                "UNRESOLVED": 9,
+            },
+            dict(
+                sorted(
+                    Counter(
+                        row["classification"]
+                        for row in rows
+                    ).items()
+                )
+            ),
+        )
+        self.assertEqual(
+            [3_720, 3_913, 4_383, 4_385, 4_386, 6_148, 6_156],
+            [
+                item["cmd"]
+                for item in build_auto_probe_batch(rows)
+            ],
+        )
+
     def test_validate_accepts_exact_delta_and_sorts_rows(self):
         rows = validate_probe_plan(
             manifest={
