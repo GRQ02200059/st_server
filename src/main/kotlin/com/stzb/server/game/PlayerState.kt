@@ -170,6 +170,9 @@ data class PlayerMarchHero(
     val activeFeatureId: Int = 0,
     val armyFacadeCardId: Int = 0,
     val advanceNum: Int = 0,
+    val equipmentIds: List<Int> = emptyList(),
+    val equipmentFeatureSkillIds: List<Int> = emptyList(),
+    val equipmentFeatureSkillLevels: List<Int> = emptyList(),
 )
 
 data class PlayerHeroSnapshot(

@@ -369,6 +369,37 @@ class PlayerBattleServiceTest {
     }
 
     @Test
+    fun `settled report reflects the equipped gear as battle equipment and its skills`() {
+        val state = PlayerState(userId = 917, cityWid = 1917, roleName = "主公")
+        val hero = state.addHero(heroId = 100021, nowSec = 1_700_000_001).apply {
+            troops = 10_000
+            level = 50
+        }
+        // 800001021 is a granted starter weapon (gearId 1021) whose base skill
+        // slots resolve to 400019/400020/400021 in the client gear table.
+        requireNotNull(state.equipGrantedGear(hero.heroUid, 800001021)) {
+            "granted gear should equip"
+        }
+        state.saveTeam(listOf(hero.heroUid))
+        val store = ClientBattleReportStore.createEmpty()
+        val service = PlayerBattleService(
+            reportStore = store,
+            battleRandomFactory = { FixedBattleRandom(0) },
+            defenderFactory = defendersOn2001(),
+        )
+
+        service.launchPveBattle(state, targetWid = 10_011, nowSec = 1_700_000_010)
+            ?: error("expedition should start")
+        val settlement = service.settlePveBattle(state, nowSec = 1_700_000_013)
+            ?: error("arrival should resolve battle")
+        val attacker = store.findOrDefault(state.userId, settlement.battleId)
+            .result.attacker.heroes.single()
+
+        assertEquals(listOf(1021), attacker.equipmentIds)
+        assertTrue(attacker.equipment.any { it.equipmentId == 400019 })
+    }
+
+    @Test
     fun `battle uses persistent hero slots and excludes a forgotten skill`() {
         val state = PlayerState(userId = 910, cityWid = 1910, roleName = "主公")
         val hero = state.addHero(heroId = 100021, nowSec = 1_700_000_001).apply {

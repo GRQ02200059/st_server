@@ -173,7 +173,7 @@ class ClientBattleReportStore private constructor(
             put("defender_life_end_time", "")
             put("attacker_army_effect", "")
             put("defender_army_effect", "")
-            put("attacker_gear_info", emptyFourRows(3))
+            put("attacker_gear_info", attacker.toGearInfo())
             put("defender_gear_info", emptyFourRows(3))
             put("attacker_surface", attackerSurfaces.toBattleSurfaceInfo())
             put("defender_surface", defenderSurfaces.toBattleSurfaceInfo())
@@ -231,6 +231,22 @@ class ClientBattleReportStore private constructor(
 
     private fun emptyRows(rows: Int, width: Int): String =
         List(rows) { List(width) { 0 }.joinToString(",") }.joinToString(";")
+
+    /**
+     * attacker_gear_info / defender_gear_info: 4 rows x 3 columns
+     * (gear_id, level, feature_id), rows separated by ';'. Row 0 is a placeholder
+     * the client never reads; hero rows 1..3 map to positions 0..2. The client
+     * only needs a non-zero gear_id (column 0) to render the weapon, and it must
+     * be a valid Tcfg_gear id, which BattleHero.equipmentIds already carries.
+     */
+    private fun List<BattleHero>.toGearInfo(): String =
+        (listOf("0,0,0") + (0..2).map { position ->
+            val gearId = firstOrNull { it.position == position }
+                ?.equipmentIds
+                ?.firstOrNull { it > 0 }
+                ?: 0
+            "$gearId,0,0"
+        }).joinToString(";")
 
     companion object {
         private val nf: JsonNodeFactory = JsonNodeFactory.instance

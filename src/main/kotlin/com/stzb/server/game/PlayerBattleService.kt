@@ -54,6 +54,7 @@ class PlayerBattleService(
             nowSec = nowSec,
             armyId = armyId,
             participants = participants.map { (position, hero) ->
+                val loadout = InventoryCatalog.battleLoadoutForGearUid(hero.gearUid)
                 PlayerMarchHero(
                     heroUid = hero.heroUid,
                     position = position,
@@ -68,6 +69,9 @@ class PlayerBattleService(
                     dynamicIcon = hero.dynamicIcon,
                     armyFacadeCardId = hero.armyFacadeCardId,
                     advanceNum = hero.advanceNum,
+                    equipmentIds = loadout?.equipmentIds.orEmpty(),
+                    equipmentFeatureSkillIds = loadout?.equipmentFeatureSkillIds.orEmpty(),
+                    equipmentFeatureSkillLevels = loadout?.equipmentFeatureSkillLevels.orEmpty(),
                 )
             },
             specialArmyFacadeId = state.activeSpecialArmyFacadeId(),
@@ -88,6 +92,8 @@ class PlayerBattleService(
                     state.hero(heroUid)
                         ?.takeIf { it.troops > 0 }
                         ?.let { hero ->
+                            val loadout =
+                                InventoryCatalog.battleLoadoutForGearUid(hero.gearUid)
                             PlayerMarchHero(
                                 heroUid = hero.heroUid,
                                 position = position,
@@ -102,6 +108,11 @@ class PlayerBattleService(
                                 dynamicIcon = hero.dynamicIcon,
                                 armyFacadeCardId = hero.armyFacadeCardId,
                                 advanceNum = hero.advanceNum,
+                                equipmentIds = loadout?.equipmentIds.orEmpty(),
+                                equipmentFeatureSkillIds =
+                                    loadout?.equipmentFeatureSkillIds.orEmpty(),
+                                equipmentFeatureSkillLevels =
+                                    loadout?.equipmentFeatureSkillLevels.orEmpty(),
                             )
                         }
                 }
@@ -131,6 +142,9 @@ class PlayerBattleService(
                     surfaceSkillId = participant.activeFeatureId,
                     attributePoints = participant.attributePoints,
                     advanceLevel = participant.advanceNum,
+                    equipmentIds = participant.equipmentIds,
+                    equipmentFeatureSkillIds = participant.equipmentFeatureSkillIds,
+                    equipmentFeatureSkillLevels = participant.equipmentFeatureSkillLevels,
                 )
             },
         )
@@ -168,6 +182,9 @@ class PlayerBattleService(
                         surfaceSkillId = participant.activeFeatureId,
                         attributePoints = participant.attributePoints,
                         advanceLevel = participant.advanceNum,
+                        equipmentIds = participant.equipmentIds,
+                        equipmentFeatureSkillIds = participant.equipmentFeatureSkillIds,
+                        equipmentFeatureSkillLevels = participant.equipmentFeatureSkillLevels,
                     )
                 },
             )

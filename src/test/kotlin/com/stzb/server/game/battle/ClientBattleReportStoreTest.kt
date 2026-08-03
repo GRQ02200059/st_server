@@ -231,6 +231,36 @@ class ClientBattleReportStoreTest {
         assertTrue(report.battleId > 0)
     }
 
+    @Test
+    fun `profile encodes attacker equipped gear ids as gear info column zero`() {
+        val store = ClientBattleReportStore.createDefault(nowSec = 1_700_000_000)
+        val base = store.getOrCreateDefault()
+        val equippedAttacker = base.result.attacker.copy(
+            heroes = base.result.attacker.heroes.map { hero ->
+                hero.copy(equipmentIds = listOf(1000 + hero.position))
+            },
+        )
+        val report = store.record(
+            ownerUserId = 10001,
+            wid = 10001,
+            timeSec = 1_700_000_001,
+            result = base.result.copy(attacker = equippedAttacker),
+        )
+
+        val profile = mapper.readTree(
+            store.profileResponse(listOf(report.battleId), serverId = 0),
+        )[1][0]
+        val gearRows = profile["attacker_gear_info"].asText().split(";")
+
+        // 4 rows x 3 columns; row 0 is the placeholder, hero rows are 1..3.
+        assertEquals(4, gearRows.size)
+        assertTrue(gearRows.all { it.split(",").size == 3 })
+        assertEquals("0,0,0", gearRows[0])
+        assertEquals("1000", gearRows[1].split(",")[0])
+        assertEquals("1001", gearRows[2].split(",")[0])
+        assertEquals("1002", gearRows[3].split(",")[0])
+    }
+
     private fun assertActionSegmentsAreBalanced(actions: List<ClientReportAction>) {
         var openSegment: Int? = null
         actions.forEach { action ->

@@ -14,12 +14,24 @@ data class InventoryGearDefinition(
     val phase: Int,
     val isSeason: Int,
     val skill: String,
+    val featureSkillIds: List<Int> = emptyList(),
+    val featureSkillLevels: List<Int> = emptyList(),
 )
 
 data class InventoryItemDefinition(
     val id: Int,
     val itemId: Int,
     val repoType: Int,
+)
+
+/**
+ * Battle-facing view of a granted gear: the equipment id (its base skills are
+ * resolved by the formation calculator) plus the hongji feature skill loadout.
+ */
+data class BattleGearLoadout(
+    val equipmentIds: List<Int>,
+    val equipmentFeatureSkillIds: List<Int>,
+    val equipmentFeatureSkillLevels: List<Int>,
 )
 
 /**
@@ -37,6 +49,22 @@ object InventoryCatalog {
 
     fun isGrantedGearUid(gearUid: Int): Boolean =
         gearUid > 0 && gearUid in inventory.grantedGearUids
+
+    /**
+     * Resolves a granted gear uid into the battle loadout fields consumed by
+     * [BattleHeroSpec]. Base equipment skills are auto-filled by the formation
+     * calculator from [BattleGearLoadout.equipmentIds]; the hongji feature
+     * skills must be supplied explicitly, mirroring the NPC defender path.
+     * Returns null for any uid the server did not grant.
+     */
+    fun battleLoadoutForGearUid(gearUid: Int): BattleGearLoadout? {
+        val gear = inventory.grantedGearByUid[gearUid] ?: return null
+        return BattleGearLoadout(
+            equipmentIds = listOf(gear.gearId),
+            equipmentFeatureSkillIds = gear.featureSkillIds,
+            equipmentFeatureSkillLevels = gear.featureSkillLevels,
+        )
+    }
 
     private fun load(): GeneratedInventory {
         val gears = parseGears(readResource(GEAR_RESOURCE))
@@ -62,6 +90,8 @@ object InventoryCatalog {
                 phase = gear.phase,
                 isSeason = gear.isSeason,
                 skill = gear.skill,
+                featureSkillIds = feature.skillIds,
+                featureSkillLevels = feature.skillLevels,
             )
         }
 
@@ -75,6 +105,8 @@ object InventoryCatalog {
                 phase = hongjiBody.phase,
                 isSeason = hongjiBody.isSeason,
                 skill = hongjiBody.skill,
+                featureSkillIds = globalHongji.skillIds,
+                featureSkillLevels = globalHongji.skillLevels,
             )
         }
 
@@ -145,12 +177,15 @@ object InventoryCatalog {
                 val skill = table.string(table.reader.int()).orEmpty()
                 table.reader.int() // desc
                 val policy = table.string(table.reader.int()).orEmpty()
+                val skillSlots = parseIdLevels(skill)
                 add(
                     StoredFeature(
                         id = id,
                         gearType = gearType,
                         tier = InventoryFeatureTier(advance, levelType, level),
                         isRenderable = skill.isNotEmpty() || policy.isNotEmpty(),
+                        skillIds = skillSlots.map(Pair<Int, Int>::first),
+                        skillLevels = skillSlots.map(Pair<Int, Int>::second),
                     ),
                 )
             }
@@ -185,7 +220,19 @@ object InventoryCatalog {
     ) {
         val grantedGearUids: Set<Int> =
             (baseWeapons + hongjiCopies).map(InventoryGearDefinition::uid).toSet()
+
+        val grantedGearByUid: Map<Int, InventoryGearDefinition> =
+            (baseWeapons + hongjiCopies).associateBy(InventoryGearDefinition::uid)
     }
+
+    private fun parseIdLevels(value: String): List<Pair<Int, Int>> =
+        value.split(';')
+            .mapNotNull { item ->
+                val parts = item.split(',')
+                val id = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
+                val level = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
+                (id to level).takeIf { id > 0 && level > 0 }
+            }
 
     private data class StoredGear(
         val id: Int,
@@ -205,6 +252,8 @@ object InventoryCatalog {
         val gearType: Int,
         val tier: InventoryFeatureTier,
         val isRenderable: Boolean,
+        val skillIds: List<Int> = emptyList(),
+        val skillLevels: List<Int> = emptyList(),
     )
 
     private data class StoredItem(
