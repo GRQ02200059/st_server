@@ -31,6 +31,7 @@ class ClientBattleReportStore private constructor(
     private val nowSec: Int,
     private val reports: ConcurrentHashMap<Int, ClientBattleReport>,
     private val battleRandomFactory: (Int) -> BattleRandom,
+    private val equipmentRepository: BattleEquipmentRepository,
 ) {
     private val battleSeq = AtomicInteger(maxOf(reports.keys.maxOrNull() ?: 0, nextBattleIdRange()))
     private val defaultBattleIds = ConcurrentHashMap<Int, Int>()
@@ -245,7 +246,11 @@ class ClientBattleReportStore private constructor(
                 ?.equipmentIds
                 ?.firstOrNull { it > 0 }
                 ?: 0
-            "$gearId,0,0"
+            if (gearId > 0) {
+                "$gearId,0,${equipmentRepository.defaultFeatureIdForGear(gearId)}"
+            } else {
+                "0,0,0"
+            }
         }).joinToString(";")
 
     companion object {
@@ -264,11 +269,15 @@ class ClientBattleReportStore private constructor(
         fun createDefault(
             nowSec: Int = (System.currentTimeMillis() / 1000).toInt(),
             battleRandomFactory: (Int) -> BattleRandom = ::SeededBattleRandom,
+            equipmentRepository: BattleEquipmentRepository = BattleEquipmentRepository.loadDefault(),
         ): ClientBattleReportStore =
-            ClientBattleReportStore(nowSec, ConcurrentHashMap(), battleRandomFactory)
+            ClientBattleReportStore(nowSec, ConcurrentHashMap(), battleRandomFactory, equipmentRepository)
 
-        fun createEmpty(nowSec: Int = (System.currentTimeMillis() / 1000).toInt()): ClientBattleReportStore =
-            ClientBattleReportStore(nowSec, ConcurrentHashMap(), ::SeededBattleRandom)
+        fun createEmpty(
+            nowSec: Int = (System.currentTimeMillis() / 1000).toInt(),
+            equipmentRepository: BattleEquipmentRepository = BattleEquipmentRepository.loadDefault(),
+        ): ClientBattleReportStore =
+            ClientBattleReportStore(nowSec, ConcurrentHashMap(), ::SeededBattleRandom, equipmentRepository)
 
         private fun nextBattleIdRange(): Int =
             nextBattleIdRangeStart.getAndUpdate { current ->

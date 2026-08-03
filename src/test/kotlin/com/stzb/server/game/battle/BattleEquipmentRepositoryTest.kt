@@ -42,6 +42,20 @@ class BattleEquipmentRepositoryTest {
     }
 
     @Test
+    fun `resolves default weapon feature ids from client config`() {
+        assertEquals(10101, repo.defaultFeatureIdForGear(1024))
+        assertEquals(30101, repo.defaultFeatureIdForGear(1025))
+        assertEquals(40101, repo.defaultFeatureIdForGear(1028))
+    }
+
+    @Test
+    fun `returns zero feature id for unknown or empty gear`() {
+        assertEquals(0, repo.defaultFeatureIdForGear(0))
+        assertEquals(0, repo.defaultFeatureIdForGear(-1))
+        assertEquals(0, repo.defaultFeatureIdForGear(999999))
+    }
+
+    @Test
     fun `loads equipment config from a standalone server checkout`() {
         val serverRoot = Files.createTempDirectory("stzb-server-checkout")
         try {

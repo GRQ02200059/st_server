@@ -261,6 +261,39 @@ class ClientBattleReportStoreTest {
         assertEquals("1002", gearRows[3].split(",")[0])
     }
 
+    @Test
+    fun `attacker gear info carries default weapon feature ids`() {
+        val store = ClientBattleReportStore.createDefault(nowSec = 1_700_000_000)
+        val base = store.getOrCreateDefault()
+        val attackerHeroes = base.result.attacker.heroes.sortedBy { it.position }
+        val equippedAttacker = base.result.attacker.copy(
+            heroes = listOf(
+                attackerHeroes[0].copy(equipmentIds = listOf(1024)),
+                attackerHeroes[1].copy(equipmentIds = emptyList()),
+                attackerHeroes[2].copy(equipmentIds = emptyList()),
+            ),
+        )
+        val report = store.record(
+            ownerUserId = 10001,
+            wid = 10001,
+            timeSec = 1_700_000_001,
+            result = base.result.copy(attacker = equippedAttacker),
+        )
+
+        val profile = mapper.readTree(
+            store.profileResponse(listOf(report.battleId), serverId = 0),
+        )[1][0]
+        val gearRows = profile["attacker_gear_info"].asText().split(";")
+
+        assertEquals(4, gearRows.size)
+        assertEquals("0,0,0", gearRows[0])
+        assertEquals("1024,0,10101", gearRows[1])
+        assertEquals("0,0,0", gearRows[2])
+        assertEquals("0,0,0", gearRows[3])
+
+        assertEquals("0,0,0;0,0,0;0,0,0;0,0,0", profile["defender_gear_info"].asText())
+    }
+
     private fun assertActionSegmentsAreBalanced(actions: List<ClientReportAction>) {
         var openSegment: Int? = null
         actions.forEach { action ->
