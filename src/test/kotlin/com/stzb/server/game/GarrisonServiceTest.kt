@@ -1,11 +1,24 @@
 package com.stzb.server.game
 
+import java.nio.file.Files
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class GarrisonServiceTest {
+    @BeforeTest
+    fun setUp() {
+        WorldStateRepository.configure(Files.createTempDirectory("stzb-garrison-service-"))
+    }
+
+    @AfterTest
+    fun tearDown() {
+        WorldStateRepository.reset()
+    }
+
     @Test
     fun `reside arrival records a garrison snapshot at the target wid`() {
         val state = PlayerState(userId = 601, cityWid = 15061510, roleName = "主公")

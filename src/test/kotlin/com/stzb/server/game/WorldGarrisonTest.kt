@@ -1,11 +1,24 @@
 package com.stzb.server.game
 
 import com.stzb.server.game.battle.BattleHeroSpec
+import java.nio.file.Files
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class WorldGarrisonTest {
+    @BeforeTest
+    fun setUp() {
+        WorldStateRepository.configure(Files.createTempDirectory("stzb-world-garrison-"))
+    }
+
+    @AfterTest
+    fun tearDown() {
+        WorldStateRepository.reset()
+    }
+
     private fun snapshot(wid: Int, owner: Int) = GarrisonSnapshot(
         wid = wid,
         ownerUserId = owner,
