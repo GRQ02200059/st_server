@@ -93,6 +93,7 @@ object UserInitTableBuilder {
         root.add(schema)                                   // [0] schema
         root.add(table("Tb_user", tbUser(state, union)))
         root.add(table("Tb_user_res", tbUserRes(state)))
+        root.add(table("Tb_user_revenue", tbUserRevenue(state)))
         root.add(table("Tb_user_city", tbUserCity(playerId, playerCityWid, serverOpenTime)))
         root.add(table("Tb_world_city", *tbWorldCities(worldProjection).toTypedArray()))
         val buildLevels = state.allBuildLevels().toMutableMap().apply {
@@ -300,16 +301,29 @@ object UserInitTableBuilder {
             .i(55, 0)                     // force = UserForceType.NORMAL(0) 正式军 (1=BANDIT 流浪军)
             .arr
 
-    /** Tb_user_res: 0=userid, 2=money_cur, 3~6=木石铁粮 cur, 9~12=木石铁粮 max。 */
+    /** Tb_user_res: 0=userid, 1=money_accumulated, 2=money_cur, 3~6=木石铁粮 cur, 9~12=木石铁粮 max。 */
     private fun tbUserRes(state: PlayerState): ArrayNode =
         row("Tb_user_res")
             .i(0, state.userId)
+            .i(1, state.resources.moneyAccumulated)
             .i(2, state.resources.money)  // money_cur
             .i(3, state.resources.wood).i(4, state.resources.stone).i(5, state.resources.iron).i(6, state.resources.food)
             .i(9, PlayerResources.UNLIMITED_AMOUNT)
             .i(10, PlayerResources.UNLIMITED_AMOUNT)
             .i(11, PlayerResources.UNLIMITED_AMOUNT)
             .i(12, PlayerResources.UNLIMITED_AMOUNT) // *_max
+            .arr
+
+    private fun tbUserRevenue(state: PlayerState): ArrayNode =
+        row("Tb_user_revenue")
+            .i(0, state.userId)
+            .s(1, RevenueService.revenueInfo(state.revenue))
+            .i(2, state.revenue.revenueTime)
+            .i(3, state.revenue.nextRefreshTime)
+            .i(4, state.revenue.forceCount)
+            .s(5, "")
+            .s(6, RevenueService.lastRevenueInfo(state.revenue))
+            .s(7, "")
             .arr
 
     /** Tb_user_inner_city: 初始内城资源和新手状态。 */

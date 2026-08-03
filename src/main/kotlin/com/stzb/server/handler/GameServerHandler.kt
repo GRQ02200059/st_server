@@ -1,5 +1,6 @@
 package com.stzb.server.handler
 
+import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.stzb.server.auth.AccountIdentity
 import com.stzb.server.auth.AccountIdentityResolver
@@ -11,14 +12,20 @@ import com.stzb.server.game.ClientCardPackCatalog
 import com.stzb.server.game.CityFacadeOperationRequestParser
 import com.stzb.server.game.GearOperationRequestParser
 import com.stzb.server.game.GameResponses
+import com.stzb.server.game.MailBriefInfoResponses
+import com.stzb.server.game.MailInfoResponses
 import com.stzb.server.game.PlayerBattleService
 import com.stzb.server.game.PlayerConscriptService
 import com.stzb.server.game.PlayerStateRepository
 import com.stzb.server.game.ProfileResponses
+import com.stzb.server.game.RankListResponses
 import com.stzb.server.game.RecruitResultParser
+import com.stzb.server.game.RevenueService
 import com.stzb.server.game.SkillOperationRequestParser
 import com.stzb.server.game.TeamRequestParser
+import com.stzb.server.game.UnionOfficialListResponses
 import com.stzb.server.game.UnionStateRepository
+import com.stzb.server.game.UserHeadIconResponses
 import com.stzb.server.game.WorldChatRecord
 import com.stzb.server.game.WorldChatStore
 import com.stzb.server.game.WorldProjection
@@ -35,6 +42,7 @@ import com.stzb.server.protocol.SysPackets
 import com.stzb.server.protocol.UpPacket
 import com.stzb.server.session.Session
 import com.stzb.server.session.OnlineSessionRegistry
+import io.netty.channel.ChannelFutureListener
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.util.AttributeKey
@@ -143,9 +151,300 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendServerTimeMillis(ctx)
             }
 
+            Cmd.LOG_FPS -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.LOG_FPS, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.SEND_ACSDK_CHEAT_INFO -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.SEND_ACSDK_CHEAT_INFO, "true", dataType = DownType.PLAIN))
+            }
+
+            Cmd.USER_CLOSE_UI -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.USER_CLOSE_UI, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.USER_OPEN_UI -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.USER_OPEN_UI, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.LOG_MUSIC_OPEN -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.LOG_MUSIC_OPEN, "true", dataType = DownType.PLAIN))
+            }
+
+            Cmd.RESFILE_LOG_HUB_RECORD -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.RESFILE_LOG_HUB_RECORD, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.DAILY_REPORT_LOG -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.DAILY_REPORT_LOG, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.CCLIVE_MAIN_BTN_OPEN_LOG,
+            Cmd.LOG_SHIELD_WORDS,
+            Cmd.FEED_CLICKED_LOG,
+            Cmd.ACTIVITY_SCENE_DIALOG_LOG,
+            Cmd.ANNIVERSARY_COMPETITION_FOR_LOG,
+            Cmd.TRIAL_SAND_TABLE_LOG,
+            Cmd.REPORT_NEWBIE_GUIDE -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.HELP_GUIDE_TIPS_LOG -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.HELP_GUIDE_TIPS_LOG, "200", dataType = DownType.PLAIN))
+            }
+
+            Cmd.UPDATE_GUIDE_RECORD -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.UPDATE_GUIDE_RECORD, "200", dataType = DownType.PLAIN))
+            }
+
+            Cmd.CHECK_HAVE_UNION_TO_JOIN -> {
+                sendUnionJoinEligibility(ctx, session)
+            }
+
+            Cmd.SET_CHANNEL_CERTIFICATION -> {
+                sendChannelCertificationRejection(ctx)
+            }
+
+            Cmd.PHONE_BIND_SEND_VERIFY_CODE,
+            Cmd.PHONE_BIND_CHECK_VERIFY_CODE -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, """"false"""", dataType = DownType.PLAIN))
+            }
+
+            Cmd.PHONE_UNBIND,
+            Cmd.GET_WHICH_CHANNEL_SERVER -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "2", dataType = DownType.PLAIN))
+            }
+
+            Cmd.DMM_ACCOUNT_CHECK -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[0]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.PRE_SERVER_QUERY_S2_RETRUN_ROLE_INFO -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.PRE_SERVER_QUERY_ADVERTISEMENT_SIGN,
+            Cmd.GET_CHANNEL_TRANSFER_TOKEN -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "{}", dataType = DownType.PLAIN))
+            }
+
+            Cmd.REALNAME_LOGOUT -> {
+                sendRealNameLogout(ctx)
+            }
+
+            Cmd.FILE_PICKER_GET_TOKEN_DEFAULT,
+            Cmd.CHECK_ADD_WEIXIN,
+            Cmd.YOUTH_INK_MAP_TIPS -> {
+                sendExternalServiceAndLoginFlagsResponse(ctx, msg.cmdId)
+            }
+
+            Cmd.XUANFUQIU_RECEIVED_MSG,
+            Cmd.GAME_CHENGXIANGGE_RECEIVED -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.SOLDIER_GIFT_ACTIVATE -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.BLACK_MARKET_REFRESH_AUTO,
+            Cmd.PATORL_GET,
+            Cmd.PATORL_HANDLE -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.PATORL_REWARD_GET -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[0,[]]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.CCLIVE_GET_FOLLOW_LIST -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[0,0,[]]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.FIRST_STATE_COOUPY_MSG,
+            Cmd.UNION_RELATION_FULL_REQUEST -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "null", dataType = DownType.PLAIN))
+            }
+
+            Cmd.UNION_STATION_ENTER_SCENE -> {
+                sendMultiplexedUnionStationResponse(ctx, msg.bodyText)
+            }
+
+            Cmd.SWITCH_ROLE_QUERY_ROLE_LIST,
+            Cmd.MAIL_INBOX,
+            Cmd.MAIL_GET_CONTACTS,
+            Cmd.USER_GET_SEASON_COURSE_LIST,
+            Cmd.CHAT_GET_ZHAO_XIAN_MSG,
+            Cmd.PROGRESS_GET_INFO,
+            Cmd.MAIL_NOTIFY_GET_ALL -> {
+                sendReadOnlyEmptyList(ctx, msg.cmdId)
+            }
+
+            Cmd.UNION_APPLICANT_LIST,
+            Cmd.CHAT_GET_SAND_TABLE_ROOM_MSG,
+            Cmd.FRIEND_SEARCH,
+            Cmd.UNION_SEARCH_UNION_LIST,
+            Cmd.UNION_SEARCH_PLAYER_LIST -> {
+                sendReadOnlyEmptyList(ctx, msg.cmdId)
+            }
+
+            Cmd.SEARCH_USER -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[0]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.FAMILY_PRAY_RESULT_LIST,
+            Cmd.FAMILY_MINI_GAME_GET_SCORE_LIST,
+            Cmd.FAMILY_MINI_GAME_GET_ROOM_LIST,
+            Cmd.QUERY_OTHER_REGION_CLAN_LIST -> {
+                sendReadOnlyEmptyList(ctx, msg.cmdId)
+            }
+
+            Cmd.GET_USER_RES_WID_LEVEL_MAP -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "{}", dataType = DownType.PLAIN))
+            }
+
+            Cmd.CLAN_SEARCH_CLAN_LIST -> {
+                sendClanSearchClanList(ctx, msg)
+            }
+
+            Cmd.CLAN_LOG_GET -> {
+                sendClanLogGet(ctx, msg)
+            }
+
+            Cmd.CHAT_GET_FIGHT_AREA_CHAT -> {
+                sendBattlefieldChatHistory(ctx, msg)
+            }
+
+            Cmd.CHAT_UNION_PLAN_HISTORY -> {
+                sendUnionPlanChatHistory(ctx, msg)
+            }
+
+            Cmd.INVITATIONAL_QUERY_LOG -> {
+                sendInvitationalTeamLog(ctx, msg)
+            }
+
+            Cmd.FAMILY_LOG_GET -> {
+                sendFamilyLog(ctx, msg)
+            }
+
+            Cmd.UNION_MEMBER_CLAN_LIST,
+            Cmd.GET_INVITE_LIST,
+            Cmd.GET_ZHAOHUI_LIST,
+            Cmd.CHAT_GET_CITY_HISTORY,
+            Cmd.UNION_LEADER_CLAN_CITY_LIST,
+            Cmd.CLAN_APPLICANT_LIST,
+            Cmd.CLAN_NEARBY_NEARBY_PLAYER_LIST,
+            Cmd.CLAN_NEARBY_CLAN_LIST,
+            Cmd.CLAN_NPC_CITY_LIST,
+            Cmd.CLAN_GET_CONTRIBUTION_LIST,
+            Cmd.CLAN_GET_JUNXIAN_LIST,
+            Cmd.CLAN_SUPREME_LIST,
+            Cmd.GET_MILITARY_STRATEGY_UNION_LOG,
+            Cmd.GET_NZ_EFFECT_LAND_LIST,
+            Cmd.GET_FIELD_RES_TOTAL_STORE,
+            Cmd.QUERY_USER_MARKET_SCORE -> {
+                sendStrictEmptyQueryProjection(ctx, msg)
+            }
+
+            Cmd.SUMMER_FARM_GET_USER_LIST -> {
+                sendSummerFarmUserList(ctx, msg)
+            }
+
+            Cmd.SUMMER_FARM_MESSAGE_RECORD,
+            Cmd.SUMMER_FARM_VISIT_RECORD -> {
+                sendSummerFarmRecordQuery(ctx, msg)
+            }
+
+            Cmd.GET_UNION_LETTER -> {
+                sendUnionLetterQuery(ctx, msg)
+            }
+
+            Cmd.NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD -> {
+                sendNobilityOfficerRecord(ctx, msg)
+            }
+
+            Cmd.UNION_NPC_CITY_LIST,
+            Cmd.CHAT_UNION_PLAN_HISTORY_ID,
+            Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER,
+            Cmd.ARMY_REINFORCE_STAY_CHECK,
+            Cmd.UNION_STATION_GET_DATA,
+            Cmd.UNION_STATION_ALL_RECORDS -> {
+                sendReadOnlyUnionArmyStationResponse(ctx, msg.cmdId)
+            }
+
+            Cmd.GET_UNION_BATTLE_REPORT,
+            Cmd.MAIL_OUTBOX,
+            Cmd.GET_BLACK_LIST,
+            Cmd.NOTICE_LIST,
+            Cmd.FRIEND_GROUP_GET_HISTORY_CHAT,
+            Cmd.QUERY_WANTED_TO_REPOTR,
+            Cmd.STRATEGY_HELP_GET,
+            Cmd.COMMAND_PLAN_GET_UNION_TEMP_GROUP,
+            Cmd.UNION_STATION_PLAYER_DANMU_LIST_GET -> {
+                ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.GET_USER_SEASON_RECORD -> {
+                sendUserSeasonRecord(ctx)
+            }
+
+            Cmd.GET_SEASON_HISTROY_PARAMS -> {
+                sendSeasonHistoryParams(ctx)
+            }
+
+            Cmd.CARD_RECORD -> {
+                sendCardRecord(ctx, session)
+            }
+
+            Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE -> {
+                sendCustomerServiceTokenRejection(ctx)
+            }
+
+            Cmd.PRE_SERVER_QUERY_USER_OP -> {
+                sendPreServerQueryUserOp(ctx, msg)
+            }
+
+            Cmd.PRE_SERVER_GEN_H5_SIGN -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.PRE_SERVER_GEN_H5_SIGN, "\"\"", dataType = DownType.PLAIN))
+            }
+
+            Cmd.QUERY_NEW_COMMUNITY_INFO -> {
+                ctx.writeAndFlush(
+                    DownPacket.json(Cmd.QUERY_NEW_COMMUNITY_INFO, """[0,"",{},[],""]""", dataType = DownType.PLAIN),
+                )
+            }
+
+            Cmd.QUERY_SIMULATE_TOKEN -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.QUERY_SIMULATE_TOKEN, "[0]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.IP_USER_COUNT_PRE -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.IP_USER_COUNT_PRE, "[0,0]", dataType = DownType.PLAIN))
+            }
+
             Cmd.BATTLE_REPORT_PROFILE -> {
                 logIn(msg)
                 sendBattleReportProfile(ctx, session, msg)
+            }
+
+            Cmd.MAIL_INFO -> {
+                logIn(msg)
+                sendMailInfo(ctx, msg)
+            }
+
+            Cmd.MAIL_BRIEF_INFO_BY_MAIL_ID -> {
+                logIn(msg)
+                sendMailBriefInfo(ctx, msg)
+            }
+
+            Cmd.GET_PREBOOK_SERVER_INFO -> {
+                logIn(msg)
+                sendPrebookServerInfo(ctx)
+            }
+
+            Cmd.COMMUNITY_GET_USER_TOKEN -> {
+                logIn(msg)
+                sendCommunityUserTokenRejection(ctx)
             }
 
             Cmd.UNION_CREATE -> {
@@ -161,6 +460,65 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.UNION_MEMBER -> {
                 logIn(msg)
                 sendUnionMembers(ctx, session, msg)
+            }
+
+            Cmd.UNION_OFFICIAL_LIST -> {
+                logIn(msg)
+                sendUnionOfficialList(ctx, msg)
+            }
+
+            Cmd.UNION_NEARBY_PLAYER_LIST -> {
+                ctx.writeAndFlush(DownPacket.json(Cmd.UNION_NEARBY_PLAYER_LIST, "[]", dataType = DownType.PLAIN))
+            }
+
+            Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT -> {
+                logIn(msg)
+                sendUnionChatMembers(ctx, session, msg)
+            }
+
+            Cmd.UNION_GET_GROUP_LIST -> {
+                sendUnionGroupList(ctx)
+            }
+
+            Cmd.DAILY_REPORT_GET_DETAIL -> {
+                sendDailyReportDetail(ctx, msg)
+            }
+
+            Cmd.GET_HERO_RECOMMEND_2 -> {
+                sendHeroRecommendation(ctx, msg)
+            }
+
+            Cmd.GET_UDS_GUESS_SEASON -> {
+                sendSeasonRecommendations(ctx, msg)
+            }
+
+            Cmd.RANK_LIST -> {
+                logIn(msg)
+                sendRankList(ctx, session, msg)
+            }
+
+            Cmd.OWN_RANK,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX,
+            Cmd.FENGLU_LEVEL_STATUS -> {
+                sendWorldRankDomesticStatus(ctx, msg)
+            }
+
+            Cmd.REVENUE -> {
+                sendRevenue(ctx, session, msg)
+            }
+
+            Cmd.REVENUE_DOUBLE -> {
+                sendDoubleRevenue(ctx, session, msg)
+            }
+
+            Cmd.WORLD_BOSS_TOP_THREE_RANK -> {
+                sendWorldBossTopThreeRank(ctx, session)
+            }
+
+            Cmd.USER_GET_USERS_HEADICON -> {
+                logIn(msg)
+                sendUserHeadIcons(ctx, msg)
             }
 
             Cmd.GET_HOMEPAGE_INFO -> {
@@ -372,6 +730,240 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         }
     }
 
+    private fun sendUserSeasonRecord(ctx: ChannelHandlerContext) {
+        val innerResponse = mapper.writeValueAsString(
+            linkedMapOf<String, Any?>(
+                "data" to emptyList<Any>(),
+                "success" to true,
+                "succeed" to true,
+                "sourceHost" to "",
+                "reqTiming" to null,
+                "status" to 200,
+                "statusCode" to 200,
+                "reqId" to "",
+            ),
+        )
+        val response = mapper.writeValueAsString(innerResponse)
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.GET_USER_SEASON_RECORD, response, dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendSeasonHistoryParams(ctx: ChannelHandlerContext) {
+        val response = mapper.writeValueAsString(emptyMap<String, Any?>())
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.GET_SEASON_HISTROY_PARAMS, response, dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendCardRecord(ctx: ChannelHandlerContext, session: Session?) {
+        val playerId = session?.playerId
+        val recordText = session?.accountKey
+            ?.takeIf { playerId != null }
+            ?.let(PlayerStateRepository::findExisting)
+            ?.takeIf { state -> state.userId == playerId }
+            ?.allHeroes()
+            ?.asSequence()
+            ?.filterNot { hero -> hero.isAdvanceMaterial }
+            ?.groupBy { hero -> hero.heroId }
+            ?.mapValues { (_, heroes) -> heroes.minOf { hero -> hero.createdAtSec } }
+            ?.toSortedMap()
+            ?.entries
+            ?.joinToString(separator = ";") { (heroId, createdAtSec) ->
+                "$heroId,$createdAtSec"
+            }
+            .orEmpty()
+        val response = mapper.writeValueAsString(recordText)
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.CARD_RECORD, response, dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendRevenue(
+        ctx: ChannelHandlerContext,
+        session: Session?,
+        msg: UpPacket,
+    ) {
+        val validRequest = (
+            runCatching { strictRequestMapper.readTree(msg.bodyText) }
+                .getOrNull()
+                ?.takeIf { it.isArray && it.size() == 1 }
+                ?.get(0)
+                ?.takeIf { it.isIntegralNumber && it.canConvertToInt() && it.asInt() == 0 }
+        ) != null
+        val state = if (validRequest) boundExistingPlayer(session) else null
+        val amount = state?.let { RevenueService.collectOrdinary(it, revenueEpochSeconds()) }
+        if (state == null || amount == null) {
+            writeRevenueScalar(ctx, Cmd.REVENUE, 0)
+            log.info(">> cmd=${Cmd.REVENUE} 本地税收请求已拒绝")
+            return
+        }
+
+        PlayerStateRepository.save(state)
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.SYS_NOTIFY_DB_UPDATE,
+                GameResponses.ordinaryRevenueUpdateNotify(state),
+                dataType = DownType.PLAIN,
+            ),
+        )
+        writeRevenueScalar(ctx, Cmd.REVENUE, 0)
+        log.info(">> cmd=${Cmd.REVENUE} 本地税收已领取")
+    }
+
+    private fun sendDoubleRevenue(
+        ctx: ChannelHandlerContext,
+        session: Session?,
+        msg: UpPacket,
+    ) {
+        val giftIndex = runCatching { strictRequestMapper.readTree(msg.bodyText) }
+            .getOrNull()
+            ?.takeIf { it.isArray && it.size() == 1 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+        val state = if (giftIndex != null) boundExistingPlayer(session) else null
+        val amount = if (state != null && giftIndex != null) {
+            RevenueService.claimDouble(state, giftIndex)
+        } else {
+            null
+        }
+        if (state == null || amount == null) {
+            writeRevenueScalar(ctx, Cmd.REVENUE_DOUBLE, 0)
+            log.info(">> cmd=${Cmd.REVENUE_DOUBLE} 本地双倍税收请求已拒绝")
+            return
+        }
+
+        PlayerStateRepository.save(state)
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.SYS_NOTIFY_DB_UPDATE,
+                GameResponses.doubleRevenueUpdateNotify(state),
+                dataType = DownType.PLAIN,
+            ),
+        )
+        writeRevenueScalar(ctx, Cmd.REVENUE_DOUBLE, amount)
+        log.info(">> cmd=${Cmd.REVENUE_DOUBLE} 本地双倍税收已领取")
+    }
+
+    private fun boundExistingPlayer(session: Session?): com.stzb.server.game.PlayerState? {
+        val accountKey = session?.accountKey ?: return null
+        val playerId = session.playerId ?: return null
+        return PlayerStateRepository.findExisting(accountKey)
+            ?.takeIf { state -> state.userId == playerId }
+    }
+
+    private fun writeRevenueScalar(
+        ctx: ChannelHandlerContext,
+        cmd: Int,
+        amount: Int,
+    ) {
+        ctx.writeAndFlush(
+            DownPacket.json(cmd, amount.toString(), dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendCustomerServiceTokenRejection(ctx: ChannelHandlerContext) {
+        val response = mapper.writeValueAsString("")
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE,
+                response,
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendUnionJoinEligibility(ctx: ChannelHandlerContext, session: Session?) {
+        val isEligible = session?.playerId
+            ?.let { playerId -> UnionStateRepository.forUser(playerId) == null }
+            ?: true
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.CHECK_HAVE_UNION_TO_JOIN,
+                isEligible.toString(),
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendChannelCertificationRejection(ctx: ChannelHandlerContext) {
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.SET_CHANNEL_CERTIFICATION,
+                "false",
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendRealNameLogout(ctx: ChannelHandlerContext) {
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.REALNAME_LOGOUT,
+                "true",
+                dataType = DownType.PLAIN,
+            ),
+        ).addListener(ChannelFutureListener.CLOSE)
+    }
+
+    private fun sendExternalServiceAndLoginFlagsResponse(
+        ctx: ChannelHandlerContext,
+        cmdId: Int,
+    ) {
+        val response: Any = when (cmdId) {
+            Cmd.FILE_PICKER_GET_TOKEN_DEFAULT -> listOf("", "")
+            Cmd.CHECK_ADD_WEIXIN -> listOf(false, emptyList<Any>())
+            Cmd.YOUTH_INK_MAP_TIPS -> listOf(0, 0)
+            else -> error("unsupported external/login response cmd: $cmdId")
+        }
+        ctx.writeAndFlush(
+            DownPacket.json(
+                cmdId,
+                mapper.writeValueAsString(response),
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendReadOnlyUnionArmyStationResponse(
+        ctx: ChannelHandlerContext,
+        cmdId: Int,
+    ) {
+        val response = when (cmdId) {
+            Cmd.UNION_NPC_CITY_LIST -> "[[],{},{},{},{}]"
+            Cmd.CHAT_UNION_PLAN_HISTORY_ID,
+            Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER,
+            Cmd.ARMY_REINFORCE_STAY_CHECK -> "{}"
+            Cmd.UNION_STATION_GET_DATA,
+            Cmd.UNION_STATION_ALL_RECORDS -> "[[]]"
+            else -> error("unsupported read-only union/army/station cmd: $cmdId")
+        }
+        ctx.writeAndFlush(DownPacket.json(cmdId, response, dataType = DownType.PLAIN))
+    }
+
+    private fun sendMultiplexedUnionStationResponse(
+        ctx: ChannelHandlerContext,
+        requestBody: String,
+    ) {
+        val request = runCatching { strictRequestMapper.readTree(requestBody) }.getOrNull()
+        val isSceneControl = request
+            ?.takeIf { it.isArray && it.size() == 1 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?.let { it == 1 || it == 2 }
+            ?: false
+        val response = if (isSceneControl) "[0]" else "[]"
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.UNION_STATION_ENTER_SCENE,
+                response,
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
     /**
      * 99992 establishes the stable player identity before the client opens its
      * game-server session. 98888's user id remains wire-only.
@@ -411,6 +1003,35 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val json = GameResponses.preServerTokenCheck()
         ctx.writeAndFlush(DownPacket.json(Cmd.SYS_PRE_SERVER_TOKEN_CHECK, json, dataType = DownType.PLAIN))
         log.info(">> cmd=99994 预登录校验已下发")
+    }
+
+    private fun sendPreServerQueryUserOp(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val requestedUserId = runCatching { strictRequestMapper.readTree(msg.bodyText) }
+            .getOrNull()
+            ?.takeIf { it.isArray && it.size() > 0 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: 0
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.PRE_SERVER_QUERY_USER_OP,
+                "[0,$requestedUserId,[]]",
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendPrebookServerInfo(ctx: ChannelHandlerContext) {
+        val json = GameResponses.prebookServerInfo()
+        ctx.writeAndFlush(DownPacket.json(Cmd.GET_PREBOOK_SERVER_INFO, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=40008 预预约服务器信息已下发")
+    }
+
+    private fun sendCommunityUserTokenRejection(ctx: ChannelHandlerContext) {
+        val json = GameResponses.communityUserTokenRejection()
+        ctx.writeAndFlush(DownPacket.json(Cmd.COMMUNITY_GET_USER_TOKEN, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=1436 社区凭证请求已本地拒绝")
     }
 
     /** 下发 20003/98702 服务器列表; 广播的 host:port 即本进程监听地址。 */
@@ -1096,6 +1717,261 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         log.info(">> cmd=103 同盟成员已下发 (uid=$userId, hasUnion=${UnionStateRepository.forUser(userId) != null})")
     }
 
+    private fun sendUnionOfficialList(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val unionId = requestedUnionId(msg)
+        val union = UnionStateRepository.find(unionId)
+        val json = UnionOfficialListResponses.response(union)
+        ctx.writeAndFlush(DownPacket.json(Cmd.UNION_OFFICIAL_LIST, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=110 同盟官员列表已下发 (unionId=$unionId, found=${union != null})")
+    }
+
+    private fun requestedUnionId(msg: UpPacket): Int =
+        runCatching { strictRequestMapper.readTree(msg.bodyText) }
+            .getOrNull()
+            ?.takeIf { it.isArray && it.size() > 0 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.intValue()
+            ?: 0
+
+    private fun sendUnionChatMembers(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val union = UnionStateRepository.forUser(userId)
+        val json = union
+            ?.let(GameResponses::unionChatMembers)
+            ?: GameResponses.emptyArray()
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=143 同盟分组聊天成员已下发 (uid=$userId, hasUnion=${union != null})")
+    }
+
+    private fun sendUnionGroupList(ctx: ChannelHandlerContext) {
+        ctx.writeAndFlush(DownPacket.json(Cmd.UNION_GET_GROUP_LIST, "[]", dataType = DownType.PLAIN))
+    }
+
+    private fun sendDailyReportDetail(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val timestamp = requestInts(msg.bodyText, requiredSlots = 1)?.get(0) ?: 0
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.DAILY_REPORT_GET_DETAIL,
+                """[[],0,"","",$timestamp]""",
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendHeroRecommendation(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val heroId = requestInts(msg.bodyText, requiredSlots = 1)?.get(0) ?: 0
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.GET_HERO_RECOMMEND_2, "[$heroId]", dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendSeasonRecommendations(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val recType = requestInts(msg.bodyText, requiredSlots = 2)?.get(1) ?: 0
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.GET_UDS_GUESS_SEASON, "[$recType,[]]", dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun requestInts(body: String, requiredSlots: Int): List<Int>? {
+        val request = runCatching { strictRequestMapper.readTree(body) }.getOrNull() ?: return null
+        if (!request.isArray || request.size() < requiredSlots) return null
+
+        val values = ArrayList<Int>(requiredSlots)
+        for (index in 0 until requiredSlots) {
+            val value = request[index]
+            if (!value.isIntegralNumber || !value.canConvertToInt()) return null
+            values += value.asInt()
+        }
+        return values
+    }
+
+    private fun sendRankList(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.playerId ?: msg.userId
+        val json = RankListResponses.response(
+            requestBody = msg.bodyText,
+            userId = userId,
+            world = WorldStateRepository.projection(),
+            unions = UnionStateRepository.all(),
+        )
+        ctx.writeAndFlush(DownPacket.json(Cmd.RANK_LIST, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=700 排行榜已下发 (uid=$userId)")
+    }
+
+    private fun sendWorldRankDomesticStatus(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val response = when (msg.cmdId) {
+            Cmd.OWN_RANK -> "-1"
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX -> {
+                val stateId = exactSingleInt(msg.bodyText) ?: 0
+                "[$stateId,{}]"
+            }
+            Cmd.FENGLU_LEVEL_STATUS -> {
+                exactSingleInt(msg.bodyText)
+                    ?.let { level ->
+                        """{"level":$level,"contributions":[],"officers":[]}"""
+                    }
+                    ?: "{}"
+            }
+            else -> error("unsupported world/rank/domestic-status cmd: ${msg.cmdId}")
+        }
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, response, dataType = DownType.PLAIN))
+    }
+
+    private fun exactSingleInt(body: String): Int? =
+        runCatching { strictRequestMapper.readTree(body) }
+            .getOrNull()
+            ?.takeIf { it.isArray && it.size() == 1 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+
+    private fun sendBattlefieldChatHistory(ctx: ChannelHandlerContext, msg: UpPacket) {
+        exactSingleInt(msg.bodyText) ?: return
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.CHAT_GET_FIGHT_AREA_CHAT,
+                "[]",
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendUnionPlanChatHistory(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val planId = exactSingleInt(msg.bodyText) ?: return
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.CHAT_UNION_PLAN_HISTORY,
+                "[$planId,[]]",
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun sendInvitationalTeamLog(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
+            ?.takeIf { it.isArray && it.size() == 2 }
+            ?: return
+        val start = request[0]
+            .takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: return
+        val limit = request[1]
+            .takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: return
+        if (start != 0 || limit != 20_000) return
+
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.INVITATIONAL_QUERY_LOG, "[]", dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendFamilyLog(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
+            ?.takeIf { it.isArray && it.size() == 2 }
+            ?: return
+        val start = request[0]
+            .takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: return
+        val limit = request[1]
+            .takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: return
+        if (start != 0 || limit != 20_000) return
+
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.FAMILY_LOG_GET, "[]", dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendNobilityOfficerRecord(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val requestedTimeStamp = exactSingleLong(msg.bodyText) ?: 0L
+        ctx.writeAndFlush(
+            DownPacket.json(
+                Cmd.NOBILITY_TITLE_QUERY_EIGHT_OFFICER_RECORD,
+                "[$requestedTimeStamp,[]]",
+                dataType = DownType.PLAIN,
+            ),
+        )
+    }
+
+    private fun exactSingleLong(body: String): Long? =
+        runCatching { strictRequestMapper.readTree(body) }
+            .getOrNull()
+            ?.takeIf { it.isArray && it.size() == 1 }
+            ?.get(0)
+            ?.takeIf { it.isIntegralNumber && it.canConvertToLong() }
+            ?.longValue()
+
+    private fun sendSummerFarmUserList(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val channelId = exactSingleInt(msg.bodyText)?.takeIf { it in 1..3 } ?: return
+        ctx.writeAndFlush(
+            DownPacket.json(msg.cmdId, "[$channelId,[]]", dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendSummerFarmRecordQuery(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
+        val key = request?.takeIf { it.isArray && it.size() == 1 }?.get(0) ?: return
+        val validKey = (key.isIntegralNumber && key.canConvertToLong()) ||
+            (key.isTextual && key.textValue().isNotEmpty())
+        if (!validKey) return
+
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, "[]", dataType = DownType.PLAIN))
+    }
+
+    private fun sendUnionLetterQuery(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val validRequest = (
+            runCatching { strictRequestMapper.readTree(msg.bodyText) }
+                .getOrNull()
+                ?.takeIf { it.isArray && it.size() == 1 }
+                ?.get(0)
+                ?.takeIf { it.isIntegralNumber && it.canConvertToInt() }
+                ?.intValue()
+                ?.takeIf { it == 0 || it == 1 }
+        ) != null
+        if (!validRequest) return
+
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, """["",""]""", dataType = DownType.PLAIN))
+    }
+
+    private fun sendWorldBossTopThreeRank(ctx: ChannelHandlerContext, session: Session?) {
+        val userId = requireNotNull(session).userId
+        val json = RankListResponses.response(
+            requestBody = "[0,3,51]",
+            userId = userId,
+            world = WorldStateRepository.projection(),
+            unions = UnionStateRepository.all(),
+        )
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.WORLD_BOSS_TOP_THREE_RANK, json, dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendUserHeadIcons(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val json = UserHeadIconResponses.response(msg.bodyText)
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.USER_GET_USERS_HEADICON, json, dataType = DownType.PLAIN),
+        )
+        log.info(">> cmd=514 用户头像已下发")
+    }
+
+    private fun sendMailInfo(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val json = MailInfoResponses.response(msg.bodyText)
+        ctx.writeAndFlush(DownPacket.json(Cmd.MAIL_INFO, json, dataType = DownType.PLAIN))
+        log.info(">> cmd=204 邮件详情已下发")
+    }
+
+    private fun sendMailBriefInfo(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val json = MailBriefInfoResponses.response(msg.bodyText)
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.MAIL_BRIEF_INFO_BY_MAIL_ID, json, dataType = DownType.PLAIN),
+        )
+        log.info(">> cmd=209 邮件概要已下发")
+    }
+
     private fun sendHomepageInfo(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
         val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
         val state = playerState(session, userId, GameServerConfig.CITY_WID)
@@ -1451,6 +2327,70 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         log.info(">> cmd=${msg.cmdId} 记录类请求已应答")
     }
 
+    private fun sendReadOnlyEmptyList(ctx: ChannelHandlerContext, cmdId: Int) {
+        ctx.writeAndFlush(DownPacket.json(cmdId, "[]", dataType = DownType.PLAIN))
+    }
+
+    private fun sendClanSearchClanList(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
+            ?.takeIf { it.isArray && it.size() == 2 }
+            ?: return
+        if (!request[0].isTextual || request[0].textValue().isEmpty()) return
+        val mode = request[1]
+        if (!mode.isIntegralNumber || !mode.canConvertToInt() || mode.asInt() != 0) return
+
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.CLAN_SEARCH_CLAN_LIST, "[]", dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendClanLogGet(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
+            ?.takeIf { it.isArray && it.size() == 2 }
+            ?: return
+        val logIdCur = request[0]
+            .takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: return
+        val logNum = request[1]
+            .takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: return
+        if (logIdCur != 0 || logNum != 20_000) return
+
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.CLAN_LOG_GET, "[]", dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendStrictEmptyQueryProjection(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
+        val acceptsNull = msg.cmdId == Cmd.GET_INVITE_LIST && request?.isNull == true
+        val acceptsEmptyArray = request?.isArray == true && request.isEmpty
+        if (!acceptsNull && !acceptsEmptyArray) return
+
+        val response = when (msg.cmdId) {
+            Cmd.UNION_MEMBER_CLAN_LIST,
+            Cmd.GET_INVITE_LIST,
+            Cmd.GET_ZHAOHUI_LIST,
+            Cmd.CHAT_GET_CITY_HISTORY,
+            Cmd.UNION_LEADER_CLAN_CITY_LIST,
+            Cmd.CLAN_APPLICANT_LIST,
+            Cmd.CLAN_NEARBY_NEARBY_PLAYER_LIST,
+            Cmd.CLAN_NEARBY_CLAN_LIST,
+            Cmd.CLAN_NPC_CITY_LIST,
+            Cmd.CLAN_GET_CONTRIBUTION_LIST,
+            Cmd.CLAN_GET_JUNXIAN_LIST,
+            Cmd.CLAN_SUPREME_LIST,
+            Cmd.GET_MILITARY_STRATEGY_UNION_LOG,
+            Cmd.GET_NZ_EFFECT_LAND_LIST -> "[]"
+            Cmd.GET_FIELD_RES_TOTAL_STORE -> "{}"
+            Cmd.QUERY_USER_MARKET_SCORE -> "[0,0]"
+            else -> error("unsupported strict empty query projection cmd: ${msg.cmdId}")
+        }
+        ctx.writeAndFlush(DownPacket.json(msg.cmdId, response, dataType = DownType.PLAIN))
+    }
+
     private fun sendRecordedAcknowledgement(ctx: ChannelHandlerContext, msg: UpPacket) {
         val response = requireNotNull(
             NetworkResponsePolicy.observedShapeBody(msg.cmdId, msg.bodyText),
@@ -1573,10 +2513,14 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
     companion object {
         private val log = LoggerFactory.getLogger(GameServerHandler::class.java)
         private val mapper = jacksonObjectMapper()
+        private val strictRequestMapper = jacksonObjectMapper()
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
         private val defaultHeroIds = listOf(100003, 100004, 100005, 100011, 100013, 100015, 100016, 100017)
         private val serverSessions = ServerSessionRegistry()
         private val onlineSessions = OnlineSessionRegistry()
         private val nextChatId = AtomicInteger(1)
+        @Volatile
+        private var revenueEpochSeconds: () -> Int = ::systemEpochSeconds
         val SESSION: AttributeKey<Session> = AttributeKey.valueOf("stzb.session")
         val KEEP_ALIVE: AttributeKey<ScheduledFuture<*>> = AttributeKey.valueOf("stzb.keepAlive")
 
@@ -1586,7 +2530,17 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             serverSessions.clear()
             nextChatId.set(1)
             WorldChatStore.reset()
+            revenueEpochSeconds = ::systemEpochSeconds
         }
+
+        fun setRevenueEpochSecondsForTests(epochSeconds: Int) {
+            revenueEpochSeconds = { epochSeconds }
+        }
+
+        private fun systemEpochSeconds(): Int =
+            (System.currentTimeMillis() / 1_000L)
+                .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
+                .toInt()
 
         private const val WORLD_CHAT_CHANNEL_ID = 0
         private const val WORLD_CHAT_HISTORY_SLOT = 0

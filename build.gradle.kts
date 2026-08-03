@@ -51,7 +51,7 @@ tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileTestKotlin"
 
 tasks.register<JavaExec>("protocolCoverageReport") {
     group = "verification"
-    description = "Writes the 9.2.2 command contract coverage report."
+    description = "Writes the active client command contract coverage report."
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("com.stzb.server.protocol.CommandCoverageReport")
     args(layout.buildDirectory.file("reports/protocol/command-coverage.md").get().asFile.absolutePath)

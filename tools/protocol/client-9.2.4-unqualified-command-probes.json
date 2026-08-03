@@ -1,0 +1,189 @@
+{
+  "clientVersion": "9.2.4",
+  "commands": [
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": [
+        "Game.Data.GamePlay/Tenth.Data/CardRecordData.cs:33-36",
+        "monitor-agent/samples/protocol/671/send-bacc409f655c.json"
+      ],
+      "id": 671,
+      "names": ["CARD_RECORD"],
+      "probePayload": [],
+      "reason": "Reads the current account's card record; the historical send sample confirms an empty-array wire request.",
+      "requestShapes": ["[]", "null"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay/Tenth.UI/LoginServerListUI.cs:786-794"],
+      "id": 885,
+      "names": ["USER_OPEN_UI"],
+      "reason": "Writes a UI-open telemetry event rather than reading account state.",
+      "requestShapes": ["UserOpenUI{uiName:String,action:String}"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay.Heros/Tenth.UI/CardOperateHeroRetrieve.cs:156-162"],
+      "id": 2628,
+      "names": ["REQUEST_HERO_RESET_LIST"],
+      "probePayload": "",
+      "reason": "Reads the current hero reset list using the client's fixed empty-string request.",
+      "requestShapes": ["empty string"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay.Heros/Tenth.UI/ArmyConsultOverviewUI.cs:189-202"],
+      "id": 3611,
+      "names": ["ARMY_CONSULT_MY_SUGGESTION"],
+      "probePayload": null,
+      "reason": "Reads the current account's saved army consultation suggestions.",
+      "requestShapes": ["null"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Activity/Tenth.UI/ActivityXiaoManMainUI.cs:130-136"],
+      "id": 3674,
+      "names": ["GRAIN_FULL_ACTIVITY_DRAW"],
+      "reason": "Draws and grants an official activity reward.",
+      "requestShapes": ["null"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay.Heros/Tenth.UI/PictorialOverview.cs:130-146"],
+      "id": 3801,
+      "names": ["GEAR_RECORD"],
+      "probePayload": null,
+      "reason": "Reads the current account's gear record before loading card records.",
+      "requestShapes": ["null"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay.Systems/Tenth.UI/FamilyApplyProcessUI.cs:103-124"],
+      "id": 3864,
+      "names": ["FAMILY_GET_APPLY_RECORD"],
+      "probePayload": null,
+      "reason": "Reads the current family's applicant record list.",
+      "requestShapes": ["null"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "READ_ONLY_CONTEXTUAL",
+      "evidence": ["Game.Data.GamePlay/Tenth.Data/InviteSeasonGameMapData.cs:1744-1770"],
+      "id": 3990,
+      "names": ["FAMILY_INVITATIONAL_GET_WORLD_EVENT"],
+      "reason": "Reads world-event data but requires the live invitational ID.",
+      "requestShapes": ["[inviteId:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "READ_ONLY_CONTEXTUAL",
+      "evidence": [
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonGameMapData.cs:1420-1430",
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonGameMapData.cs:1734-1767"
+      ],
+      "id": 4000,
+      "names": ["FAMILY_INVITATIONAL_GET_SEASON_DATA"],
+      "reason": "Reads season data but requires live invitational, operation, and sometimes event IDs.",
+      "requestShapes": ["[inviteId:Int32,operation:Int32]", "[inviteId:Int32,operation:Int32,eventId:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Systems/Tenth.UI/FamilyPrayMainUI.cs:285-298"],
+      "id": 4091,
+      "names": ["FAMILY_PRAY"],
+      "reason": "Performs a family prayer and can grant or change official account state.",
+      "requestShapes": ["null"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Activity/Tenth.UI/SolartermBookMsgUI.cs:180-197"],
+      "id": 4203,
+      "names": ["SOLAR_TERM_BOOK_WRITE_MSG"],
+      "reason": "Writes the user-entered solar-term book message.",
+      "requestShapes": ["message:String"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Activity/Tenth.UI/SolartermBookMsgUI.cs:160-170"],
+      "id": 4204,
+      "names": ["SOLAR_TERM_BOOK_DEL_MSG"],
+      "reason": "Deletes the selected solar-term book message.",
+      "requestShapes": ["bookId:Int32"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "READ_ONLY_CONTEXTUAL",
+      "evidence": [
+        "Game.Data.GamePlay/Tenth.Data/InviteNewPaperData.cs:164-168",
+        "Game.Data.GamePlay/Tenth.Data/RankingData.cs:2239-2243"
+      ],
+      "id": 5140,
+      "names": ["SCHOOL_INVITATIONAL_GET_SEASON_DATA"],
+      "reason": "Reads school-invitational data but requires a live server ID, operation code, and operation-specific arguments.",
+      "requestShapes": ["[serverId:Int32,operation:Int32,optionalData:Any]"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": [
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonBornMapData.cs:435-439",
+        "Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonMainView.cs:1033-1043"
+      ],
+      "id": 6130,
+      "names": ["TEAM_INVITATIONAL_GET_CFG_SCHOOL_REGION"],
+      "probePayload": [],
+      "reason": "Reads the school-region configuration using an empty request.",
+      "requestShapes": ["[]", "null"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonFamilyList.cs:412-425"],
+      "id": 6156,
+      "names": ["INVITATIONAL_2026_GET_COLLECT_FAMILY"],
+      "probePayload": null,
+      "reason": "Reads collected families but is already exported by the added-command probe batch.",
+      "requestShapes": ["null"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay.Heros/Tenth.UI/MutualAidNeedTab.cs:264-275"],
+      "id": 6220,
+      "names": ["MUTUAL_AID_CHECK_ARMY_STATE"],
+      "probePayload": null,
+      "reason": "Reads the current mutual-aid army state.",
+      "requestShapes": ["null"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Systems/Tenth.UI/RoleForcesRealWarehouseUI.cs:207-265"],
+      "id": 6260,
+      "names": ["RESOURCE_SHI_CANG"],
+      "reason": "Collects warehouse resources and displays the granted reward rows.",
+      "requestShapes": ["null"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay.Activity/Tenth.UI/BczhTournamentBracketMainUI.cs:40-50"],
+      "id": 6291,
+      "names": ["REGION_CHAMPION_GET_MATCH_INFO"],
+      "probePayload": null,
+      "reason": "Reads the current region-champion tournament bracket.",
+      "requestShapes": ["null"]
+    }
+  ],
+  "scope": "EXPLICIT"
+}

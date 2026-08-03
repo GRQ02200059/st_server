@@ -1,6 +1,8 @@
 package com.stzb.server.protocol
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import org.junit.jupiter.api.Assertions.assertAll
+import org.junit.jupiter.api.function.Executable
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -10,8 +12,629 @@ class NetworkResponsePolicyTest {
     private val mapper = jacksonObjectMapper()
 
     @Test
+    fun `clan search list requires its explicit handler`() {
+        val commandId = 2_675
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                """["synthetic-private-canary",0]""",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `backflow empty lists require explicit handlers`() {
+        val commands = listOf(2_576, 2_577)
+
+        assertAll(
+            "backflow empty list fallback boundaries",
+            commands.map { commandId ->
+                Executable {
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(
+                            commandId,
+                            "not-json synthetic-backflow-canary",
+                        ),
+                        "cmd=$commandId",
+                    )
+                    assertTrue(
+                        commandId !in NetworkResponsePolicy.observedShapeCommandIds(),
+                        "cmd=$commandId",
+                    )
+                    val contract = CommandContractCatalog.registry.contract(commandId)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$commandId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$commandId")
+                }
+            },
+        )
+    }
+
+    @Test
+    fun `clan log get requires its explicit handler`() {
+        val commandId = 2_678
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-clan-log-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `nearby clan list requires its explicit handler`() {
+        val commandId = 2_701
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "[] synthetic-nearby-clan-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `clan npc city list requires its explicit handler`() {
+        val commandId = 2_709
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-npc-city-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `clan contribution list requires its explicit handler`() {
+        val commandId = 2_711
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-contribution-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `clan junxian list requires its explicit handler`() {
+        val commandId = 2_712
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-junxian-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `clan supreme list requires its explicit handler`() {
+        val commandId = 2_714
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-supreme-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `strict empty query projections require explicit handlers`() {
+        val commands = listOf(708, 2_670, 2_679, 2_683, 2_698, 3_845, 4_102, 6_089)
+
+        assertAll(
+            "strict empty query projection fallback boundaries",
+            commands.map { commandId ->
+                Executable {
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(
+                            commandId,
+                            "not-json synthetic-private-canary",
+                        ),
+                        "cmd=$commandId",
+                    )
+                    assertTrue(
+                        commandId !in NetworkResponsePolicy.observedShapeCommandIds(),
+                        "cmd=$commandId",
+                    )
+                    val contract = CommandContractCatalog.registry.contract(commandId)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$commandId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$commandId")
+                }
+            },
+        )
+    }
+
+    @Test
+    fun `battlefield chat history requires its explicit handler`() {
+        val commandId = 724
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-battlefield-chat-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `union plan chat history requires its explicit handler`() {
+        val commandId = 6_054
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-union-plan-chat-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `summer farm record queries require explicit handlers`() {
+        val commands = listOf(5_120, 5_121)
+
+        assertAll(
+            "summer farm record query fallback boundaries",
+            commands.map { commandId ->
+                Executable {
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(
+                            commandId,
+                            "not-json synthetic-record-canary",
+                        ),
+                        "cmd=$commandId",
+                    )
+                    assertTrue(
+                        commandId !in NetworkResponsePolicy.observedShapeCommandIds(),
+                        "cmd=$commandId",
+                    )
+                    val contract = CommandContractCatalog.registry.contract(commandId)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$commandId")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$commandId")
+                }
+            },
+        )
+    }
+
+    @Test
+    fun `summer farm user list requires its explicit handler`() {
+        val commandId = 5_109
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-summer-farm-user-list-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `union letter query requires its explicit handler`() {
+        val commandId = 9_015
+
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                commandId,
+                "not-json synthetic-letter-canary",
+            ),
+        )
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `nobility officer record query requires its explicit handler`() {
+        val commandId = 5_212
+
+        assertNull(NetworkResponsePolicy.observedShapeBody(commandId, "[1700000123]"))
+        assertNull(NetworkResponsePolicy.observedShapeBody(commandId, "[17] []"))
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
+    fun `read only empty projections require explicit handlers`() {
+        val commands = listOf(3_739, 4_092, 4_112, 4_114, 5_096, 5_218)
+
+        assertAll(
+            "read only empty projection fallback boundaries",
+            commands.map { cmd ->
+                Executable {
+                    val contract = CommandContractCatalog.registry.contract(cmd)
+                    assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(cmd, "not-json opaque text"),
+                        "cmd=$cmd",
+                    )
+                    assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+                }
+            },
+        )
+    }
+
+    @Test
+    fun `revenue commands require persistent local handlers`() {
+        listOf(Cmd.REVENUE, Cmd.REVENUE_DOUBLE).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
     fun `explicit recorded array command returns its observed shape`() {
         assertEquals("[]", NetworkResponsePolicy.observedShapeBody(959))
+    }
+
+    @Test
+    fun `request aware query handlers are not owned by network response policy`() {
+        listOf(
+            Cmd.UNION_GET_GROUP_LIST,
+            Cmd.DAILY_REPORT_GET_DETAIL,
+            Cmd.GET_HERO_RECOMMEND_2,
+            Cmd.GET_UDS_GUESS_SEASON,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `sampled empty list query handlers are not owned by network response policy`() {
+        listOf(
+            Cmd.GET_UNION_BATTLE_REPORT,
+            Cmd.MAIL_OUTBOX,
+            Cmd.GET_BLACK_LIST,
+            Cmd.NOTICE_LIST,
+            Cmd.FRIEND_GROUP_GET_HISTORY_CHAT,
+            Cmd.QUERY_WANTED_TO_REPOTR,
+            Cmd.STRATEGY_HELP_GET,
+            Cmd.COMMAND_PLAN_GET_UNION_TEMP_GROUP,
+            Cmd.UNION_STATION_PLAYER_DANMU_LIST_GET,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `read only empty query handlers are not owned by network response policy`() {
+        listOf(
+            Cmd.SWITCH_ROLE_QUERY_ROLE_LIST,
+            Cmd.MAIL_INBOX,
+            Cmd.MAIL_GET_CONTACTS,
+            Cmd.USER_GET_SEASON_COURSE_LIST,
+            Cmd.CHAT_GET_ZHAO_XIAN_MSG,
+            Cmd.PROGRESS_GET_INFO,
+            Cmd.MAIL_NOTIFY_GET_ALL,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `read only union army and station queries require explicit handlers`() {
+        listOf(
+            Cmd.UNION_NPC_CITY_LIST,
+            Cmd.CHAT_UNION_PLAN_HISTORY_ID,
+            Cmd.COMMAND_PLAN_GEL_UNION_TEMP_GROUP_MEMBER,
+            Cmd.ARMY_REINFORCE_STAY_CHECK,
+            Cmd.UNION_STATION_GET_DATA,
+            Cmd.UNION_STATION_ALL_RECORDS,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `invitational team log requires its explicit handler`() {
+        val commandId = 3_519
+        assertNull(NetworkResponsePolicy.observedShapeBody(commandId, "[0,20000]"))
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
+    fun `family log requires its explicit handler`() {
+        val commandId = 3_908
+        assertNull(NetworkResponsePolicy.observedShapeBody(commandId, "[0,20000]"))
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
+    fun `military strategy union log requires its explicit handler`() {
+        val commandId = 3_635
+        assertNull(NetworkResponsePolicy.observedShapeBody(commandId, "[]"))
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
+    fun `union nearby player list requires its explicit handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_NEARBY_PLAYER_LIST))
+        assertTrue(Cmd.UNION_NEARBY_PLAYER_LIST !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
+    fun `union social empty queries require explicit handlers`() {
+        listOf(104, 736, 741, 3_410, 3_411).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `multiplexed 6242 requires its request aware handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_STATION_ENTER_SCENE))
+        assertTrue(
+            Cmd.UNION_STATION_ENTER_SCENE !in NetworkResponsePolicy.observedShapeCommandIds(),
+        )
+    }
+
+    @Test
+    fun `season history handlers are not owned by network response policy`() {
+        listOf(
+            Cmd.GET_USER_SEASON_RECORD,
+            Cmd.GET_SEASON_HISTROY_PARAMS,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `card record and customer service rejection require explicit handlers`() {
+        listOf(
+            Cmd.CARD_RECORD,
+            Cmd.USER_GET_CUSTOMER_SERVICE_TOKEN_PRE,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `union eligibility and channel certification require explicit handlers`() {
+        listOf(
+            Cmd.CHECK_HAVE_UNION_TO_JOIN,
+            Cmd.SET_CHANNEL_CERTIFICATION,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `real name logout requires the explicit channel closing handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.REALNAME_LOGOUT))
+        assertTrue(Cmd.REALNAME_LOGOUT !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
+    fun `message acknowledgements and gift rejection require explicit handlers`() {
+        listOf(
+            Cmd.XUANFUQIU_RECEIVED_MSG,
+            Cmd.GAME_CHENGXIANGGE_RECEIVED,
+            Cmd.SOLDIER_GIFT_ACTIVATE,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `black market and patrol rejections require explicit handlers`() {
+        listOf(
+            Cmd.BLACK_MARKET_REFRESH_AUTO,
+            Cmd.PATORL_GET,
+            Cmd.PATORL_HANDLE,
+            Cmd.PATORL_REWARD_GET,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `union chat member list requires the explicit handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_GET_ALL_MEMBER_LIST_FOR_CHAT))
+    }
+
+    @Test
+    fun `union official list requires the explicit local state handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_OFFICIAL_LIST, "[1005]"))
+        assertTrue(Cmd.UNION_OFFICIAL_LIST !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
+    fun `rank list requires the explicit handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.RANK_LIST))
+    }
+
+    @Test
+    fun `world boss top three rank requires the explicit handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.WORLD_BOSS_TOP_THREE_RANK))
+        assertTrue(
+            Cmd.WORLD_BOSS_TOP_THREE_RANK !in NetworkResponsePolicy.observedShapeCommandIds(),
+        )
+    }
+
+    @Test
+    fun `world rank and domestic status queries require explicit handlers`() {
+        listOf(
+            Cmd.OWN_RANK,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO,
+            Cmd.PROGRESS_GET_NPC_OCCUPY_INFO_ZFJX,
+            Cmd.FENGLU_LEVEL_STATUS,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd, "[17]"), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `user head icon lookup requires the explicit handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.USER_GET_USERS_HEADICON))
+    }
+
+    @Test
+    fun `mail info requires the explicit request aware handler`() {
+        assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.MAIL_INFO, "[677829,1,9]"))
+        assertTrue(Cmd.MAIL_INFO !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
+    fun `mail brief info requires the explicit request aware handler`() {
+        assertNull(
+            NetworkResponsePolicy.observedShapeBody(
+                Cmd.MAIL_BRIEF_INFO_BY_MAIL_ID,
+                "[677829,0]",
+            ),
+        )
+        assertTrue(
+            Cmd.MAIL_BRIEF_INFO_BY_MAIL_ID !in NetworkResponsePolicy.observedShapeCommandIds(),
+        )
+    }
+
+    @Test
+    fun `prebook info and community token require explicit handlers`() {
+        listOf(
+            Cmd.GET_PREBOOK_SERVER_INFO to """["11"]""",
+            Cmd.COMMUNITY_GET_USER_TOKEN to "[]",
+        ).forEach { (cmd, request) ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd, request), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `telemetry acknowledgements require explicit handlers`() {
+        listOf(
+            Cmd.LOG_FPS,
+            Cmd.SEND_ACSDK_CHEAT_INFO,
+            Cmd.USER_CLOSE_UI,
+            Cmd.USER_OPEN_UI,
+            Cmd.LOG_MUSIC_OPEN,
+            Cmd.RESFILE_LOG_HUB_RECORD,
+            Cmd.DAILY_REPORT_LOG,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `body blind telemetry acknowledgements require explicit handlers`() {
+        listOf(2_524, 3_402, 3_604, 4_019, 5_202, 5_242, 8_040).forEach { cmd ->
+            val contract = CommandContractCatalog.registry.contract(cmd)
+            assertEquals(CommandStatus.PROVISIONAL, contract?.status, "cmd=$cmd")
+            assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+            assertNull(
+                NetworkResponsePolicy.observedShapeBody(cmd, "not-json private-marker"),
+                "cmd=$cmd",
+            )
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `external identity rejections require explicit handlers`() {
+        val commands = listOf(331, 332, 336, 9_010, 29_003, 40_006, 40_007, 40_014)
+
+        assertAll(
+            "external identity rejection policy boundaries",
+            commands.map { cmd ->
+                Executable {
+                    val contract = CommandContractCatalog.registry.contract(cmd)
+                    assertEquals(CommandStatus.REJECTED, contract?.status, "cmd=$cmd")
+                    assertEquals("GameServerHandler", contract?.owner, "cmd=$cmd")
+                    assertNull(
+                        NetworkResponsePolicy.observedShapeBody(cmd, "not-json synthetic-credential-canary"),
+                        "cmd=$cmd",
+                    )
+                    assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+                }
+            },
+        )
+    }
+
+    @Test
+    fun `guide log acknowledgements require explicit handlers`() {
+        listOf(
+            Cmd.HELP_GUIDE_TIPS_LOG,
+            Cmd.UPDATE_GUIDE_RECORD,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
+    }
+
+    @Test
+    fun `pre login and external commands require explicit handlers`() {
+        listOf(
+            Cmd.PRE_SERVER_QUERY_USER_OP,
+            Cmd.PRE_SERVER_GEN_H5_SIGN,
+            Cmd.FILE_PICKER_GET_TOKEN_DEFAULT,
+            Cmd.CHECK_ADD_WEIXIN,
+            Cmd.YOUTH_INK_MAP_TIPS,
+            Cmd.QUERY_NEW_COMMUNITY_INFO,
+            Cmd.QUERY_SIMULATE_TOKEN,
+            Cmd.IP_USER_COUNT_PRE,
+        ).forEach { cmd ->
+            assertNull(NetworkResponsePolicy.observedShapeBody(cmd), "cmd=$cmd")
+            assertTrue(cmd !in NetworkResponsePolicy.observedShapeCommandIds(), "cmd=$cmd")
+        }
     }
 
     @Test
@@ -27,36 +650,31 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
-    fun `reinforce stay checks return dictionaries required by conquest army ui`() {
-        assertEquals("{}", NetworkResponsePolicy.observedShapeBody(6219))
+    fun `legion reinforce stay check keeps fallback dictionary required by conquest army ui`() {
         assertEquals("{}", NetworkResponsePolicy.observedShapeBody(6239))
     }
 
     @Test
-    fun `recorded acknowledgement commands return booleans instead of arrays`() {
-        listOf(191, 748, 888, 2311).forEach { cmdId ->
-            assertEquals("true", NetworkResponsePolicy.observedShapeBody(cmdId), "cmd=$cmdId")
-        }
+    fun `recorded acknowledgement command returns a boolean instead of an array`() {
+        assertEquals("true", NetworkResponsePolicy.observedShapeBody(748))
     }
 
     @Test
     fun `recorded fire and forget commands still receive json null`() {
-        listOf(6, 875, 885, 2405, 3400, 5025, 6037, 6351, 7041).forEach { cmdId ->
+        listOf(6, 2405, 3400, 5025, 7041).forEach { cmdId ->
             assertEquals("null", NetworkResponsePolicy.observedShapeBody(cmdId), "cmd=$cmdId")
         }
     }
 
     @Test
-    fun `recorded scalar and tuple commands keep their wire shapes`() {
-        assertEquals("200", NetworkResponsePolicy.observedShapeBody(5091))
+    fun `recorded tuple commands keep their wire shapes`() {
         assertEquals("[1001]", NetworkResponsePolicy.observedShapeBody(3877))
-        assertEquals("[false,[]]", NetworkResponsePolicy.observedShapeBody(4968))
         assertEquals("[[],0]", NetworkResponsePolicy.observedShapeBody(6092))
     }
 
     @Test
     fun `recorded dictionary commands return objects instead of arrays`() {
-        listOf(510, 6053, 6068, 6219, 6239).forEach { cmdId ->
+        listOf(510, 6239).forEach { cmdId ->
             assertEquals("{}", NetworkResponsePolicy.observedShapeBody(cmdId), "cmd=$cmdId")
         }
     }
@@ -77,12 +695,8 @@ class NetworkResponsePolicyTest {
     @Test
     fun `recorded fixed tuple queries keep minimum client readable arity`() {
         val expectedSizes = mapOf(
-            135 to 5,
             172 to 2,
-            700 to 6,
             725 to 4,
-            1436 to 3,
-            2529 to 3,
             3686 to 2,
             3787 to 2,
             4979 to 3,

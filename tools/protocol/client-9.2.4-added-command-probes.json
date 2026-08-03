@@ -1,0 +1,621 @@
+{
+  "baselineVersion": "9.2.2",
+  "clientVersion": "9.2.4",
+  "commands": [
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/NzzzQixingJinnangData.cs:170-175"],
+      "id": 2630,
+      "names": ["NZZZ_SILK_BAG_SELECT"],
+      "reason": "Selects a silk-bag card for the official account.",
+      "requestShapes": ["[cardId:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/NzzzQixingJinnangData.cs:178-181"],
+      "id": 2631,
+      "names": ["NZZZ_SILK_BAG_REFRESH"],
+      "reason": "Refreshes the account's silk-bag choices.",
+      "requestShapes": ["[]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/NzzzQixingJinnangData.cs:184-187"],
+      "id": 2632,
+      "names": ["NZZZ_SILK_BAG_RESET"],
+      "reason": "Resets the account's silk-bag state.",
+      "requestShapes": ["[]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "SERVER_PUSH",
+      "evidence": ["Game.UI.GamePlay.Systems/Tenth.UI/MainUI.cs:505"],
+      "id": 2633,
+      "names": ["NOTIFY_MIASMA_OCCUPY_REWARD"],
+      "reason": "The client registers a receive observer and has no request constructor.",
+      "requestShapes": ["none (receive-only observer)"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "READ_ONLY_CONTEXTUAL",
+      "evidence": ["Game.UI.GamePlay.Heros/Tenth.UI/ArmyMoveUI.cs:803-809"],
+      "id": 2634,
+      "names": ["NZZZ_CHECK_SHEGU_CONNECTED_WID"],
+      "reason": "Queries connectivity for a live target shegu world ID.",
+      "requestShapes": ["[targetWid:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": [
+        "Game.UI.GamePlay.Heros/Tenth.UI/ReportProfileItemBase.cs:1037-1042",
+        "Game.UI.GamePlay.Heros/Tenth.UI/ReportProfileView.cs:1885-1909"
+      ],
+      "id": 2635,
+      "names": ["NZZZ_MIASMA_BLIND_REPORT_READ"],
+      "reason": "Marks one or more official battle reports as read.",
+      "requestShapes": ["[battleId:Int64, ...]"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay/Tenth.UI/UnionMainUI.cs:348-352"],
+      "id": 3720,
+      "names": ["QUERY_UNION_WEIXIN_GROUP_INFO"],
+      "probePayload": [],
+      "reason": "Queries the current union Weixin-group state without changing it.",
+      "requestShapes": ["[]"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": [
+        "Game.UI.GamePlay.Systems/Tenth.UI/FamilyReputationMainUI.cs:102-105",
+        "Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonMainView.cs:123-125"
+      ],
+      "id": 3913,
+      "names": ["GET_SELF_FAMILY_FAME"],
+      "probePayload": [],
+      "reason": "Reads the current account's family-fame state.",
+      "requestShapes": ["[]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "UNRESOLVED",
+      "evidence": ["Game.Data.GamePlay/Tenth.Data/SdzcOuterCmd.cs:3-5"],
+      "id": 4359,
+      "names": ["IO_MOD_INVITE_TEAMMATE"],
+      "reason": "Only the command constant was found; no complete request constructor was resolved.",
+      "requestShapes": ["unresolved"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "UNRESOLVED",
+      "evidence": ["Game.Data.GamePlay/Tenth.Data/SdzcOuterCmd.cs:3-7"],
+      "id": 4360,
+      "names": ["IO_MOD_REPLY_INVITE"],
+      "reason": "Only the command constant was found; no complete request constructor was resolved.",
+      "requestShapes": ["unresolved"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "UNRESOLVED",
+      "evidence": ["Game.Data.GamePlay/Tenth.Data/SdzcOuterCmd.cs:3-9"],
+      "id": 4361,
+      "names": ["IO_MOD_TEAM_MANAGE"],
+      "reason": "Only the command constant was found; no complete request constructor was resolved.",
+      "requestShapes": ["unresolved"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "UNRESOLVED",
+      "evidence": ["Game.Data.GamePlay/Tenth.Data/SdzcOuterCmd.cs:3-11"],
+      "id": 4362,
+      "names": ["IO_MOD_START_MATCH"],
+      "reason": "Only the command constant was found; no complete request constructor was resolved.",
+      "requestShapes": ["unresolved"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "SESSION_CONTROL",
+      "evidence": ["Game.UI.GamePlay.Activity/Tenth.UI/ModSdzcHelper.cs:89-92"],
+      "id": 4363,
+      "names": ["IO_MOD_CANCEL_MATCH"],
+      "reason": "Cancels the current official matchmaking session.",
+      "requestShapes": ["null"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcRecruitConfirmPopGearUI.cs:340-349",
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcRecruitConfirmPopHeroUI.cs:316-331",
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcRecruitConfirmPopSkillUI.cs:175-184"
+      ],
+      "id": 4364,
+      "names": ["IO_MOD_BUY_ARMS", "IO_SERVER_BUY_ARMS"],
+      "reason": "Purchases a hero, skill, gear, or armament on the official account.",
+      "requestShapes": ["[costOrType:Int32, targetId:Int32, featureOrAdvance:Int32, guideFlag:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcJoinArmamentsUI.cs:1360-1386"],
+      "id": 4365,
+      "names": ["IO_MOD_CONFIG_ARMS"],
+      "reason": "Commits the selected armament configuration.",
+      "requestShapes": ["armament configuration list"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcJoinArmamentsUI.cs:1685-1693"],
+      "id": 4366,
+      "names": ["IO_MOD_QUICK_ARMS"],
+      "reason": "Applies a quick armament configuration before matching.",
+      "requestShapes": ["[]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcJoinArmamentsUI.cs:706-711",
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcJoinArmamentsUI.cs:1550-1554"
+      ],
+      "id": 4367,
+      "names": ["IO_MOD_SAVE_ARMS_PLAN"],
+      "reason": "Persists an armament plan on the official account.",
+      "requestShapes": ["[planOrSlotId:Int32, armamentConfig:Array]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcMarketMainUI.cs:1072-1080"],
+      "id": 4368,
+      "names": ["IO_MOD_MARKET_EXCHANGE"],
+      "reason": "Exchanges the selected official-market slot.",
+      "requestShapes": ["[slotIndex:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcMarketMainUI.cs:1018-1030"],
+      "id": 4369,
+      "names": ["IO_MOD_MARKET_LOCK_SLOT"],
+      "reason": "Locks or unlocks an official-market slot.",
+      "requestShapes": ["[slotIndex:Int32, lockFlag:0|1]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcMarketMainUI.cs:1125-1152"],
+      "id": 4370,
+      "names": ["IO_MOD_RECRUIT_START"],
+      "reason": "Starts an official-market recruitment operation.",
+      "requestShapes": ["nested recruit-cost selection list"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcMarketMainUI.cs:1178-1183"],
+      "id": 4374,
+      "names": ["IO_MOD_RECRUIT_CLAIM"],
+      "reason": "Claims a completed recruited hero.",
+      "requestShapes": ["[heroId:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcOutGameKnapsackUI.cs:536-541",
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcOutGameKnapsackUI.cs:867-872"
+      ],
+      "id": 4375,
+      "names": ["SDZC_OUT_GAME_SELL"],
+      "reason": "Sells selected official-account collection items.",
+      "requestShapes": ["[[userCollectionId:Int32, ...], ...]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcOutGameKnapsackUI.cs:804-809"],
+      "id": 4376,
+      "names": ["SDZC_OUT_GAME_LOCK"],
+      "reason": "Changes the lock state of an official-account collection item.",
+      "requestShapes": ["[userCollectionId:Int32, lockFlag:0|1]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcOutGameKnapsackUI.cs:824-829"],
+      "id": 4378,
+      "names": ["SDZC_OUT_GAME_LIKE"],
+      "reason": "Changes the favorite state of an official-account collection item.",
+      "requestShapes": ["[userCollectionId:Int32, favoriteFlag:0|1]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcOutGameKnapsackUI.cs:569-574",
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcOutGameKnapsackUI.cs:858-863"
+      ],
+      "id": 4379,
+      "names": ["SDZC_OUT_GAME_SELL_TEMP"],
+      "reason": "Sells temporary official-account collection items.",
+      "requestShapes": ["[[configId:Int32, count:Int32], ...]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcMainUI.cs:290-295",
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SeasonIO2026TaskUI.cs:650-655"
+      ],
+      "id": 4380,
+      "names": ["IO_TASK_RECEIVE_REWARD"],
+      "reason": "Claims an official activity task reward.",
+      "requestShapes": ["[taskId:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcArmoryHelper.cs:338-346"],
+      "id": 4381,
+      "names": ["IO_MOD_UPGRADE_ARMORY"],
+      "reason": "Upgrades an official activity armory facility.",
+      "requestShapes": ["[facilityType:Int32]"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcRecordMainUI.cs:219-226"],
+      "id": 4383,
+      "names": ["IO_GET_RECORD"],
+      "probePayload": [0, 10],
+      "reason": "Reads the first page of activity records.",
+      "requestShapes": ["[offset:Int32, count:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcRecordDetailUI.cs:274-282",
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcRecordMainUI.cs:619-624"
+      ],
+      "id": 4384,
+      "names": ["IO_FAVOR_RECORD"],
+      "reason": "Changes the favorite state of an official activity record.",
+      "requestShapes": ["[recordId:Int64, favoriteFlag:0|1]"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcMarketMainUI.cs:73-78",
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SdzcMarketMainUI.cs:1239-1244"
+      ],
+      "id": 4385,
+      "names": ["IO_MOD_GET_MARKET_RECRUIT_INFO"],
+      "probePayload": [],
+      "reason": "Refreshes the current market and recruitment snapshot.",
+      "requestShapes": ["[]"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcMainUI.cs:42-47"],
+      "id": 4386,
+      "names": ["IO_MOD_GET_LAST_RECORD"],
+      "probePayload": [],
+      "reason": "Reads the current account's last activity record.",
+      "requestShapes": ["[]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "READ_ONLY_CONTEXTUAL",
+      "evidence": ["Game.Data.GamePlay/Tenth.Data/SdzcOutSkillRecommendData.cs:9-14"],
+      "id": 4387,
+      "names": ["IO_MOD_GET_HERO_SKILL_RECOMMEND"],
+      "reason": "Reads recommendations for a live hero configuration ID.",
+      "requestShapes": ["[heroConfigId:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/SdzcMainUI.cs:103-108"],
+      "id": 4388,
+      "names": ["IO_MOD_SEASON_SWITCH"],
+      "reason": "Refreshes or switches persisted official activity-season state.",
+      "requestShapes": ["[]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "UNRESOLVED",
+      "evidence": ["Game.Network/Tenth.Network/NetCommandDef.cs:3465"],
+      "id": 4389,
+      "names": ["IO_MOD_CLAIM_NEWBIE_REWARD"],
+      "reason": "Only the command constant was found; no complete request constructor was resolved.",
+      "requestShapes": ["unresolved"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "READ_ONLY_CONTEXTUAL",
+      "evidence": ["Game.Data.GamePlay/Tenth.Data/TreasureDataManager.cs:184-194"],
+      "id": 4991,
+      "names": ["GEAR_HERO_RECOMMEND"],
+      "reason": "Reads gear recommendations for a live hero unique ID.",
+      "requestShapes": ["[heroUid:Int64]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Systems/Tenth.UI/UserMainViewBgUI.cs:1586-1604"],
+      "id": 5271,
+      "names": ["ROLL_HOMEPAGE_BACKGROUND"],
+      "reason": "Changes the account's homepage-background rotation pool.",
+      "requestShapes": ["[addBackgroundIds:Array<Int32>, removeBackgroundIds:Array<Int32>]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "READ_ONLY_CONTEXTUAL",
+      "evidence": ["Game.Data.GamePlay/Tenth.Data/InviteSeasonTeamBornMapData.cs:263-271"],
+      "id": 6128,
+      "names": ["TEAM_INVITATIONAL_QUERY_REGION_BET"],
+      "reason": "Reads region-bet state for a live run-server ID.",
+      "requestShapes": ["[runServerId:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI/InviteSeasonTeamScoreBet.cs:23-28"],
+      "id": 6129,
+      "names": ["TEAM_INVITATIONAL_REGION_BET"],
+      "reason": "Places an official invitational region bet.",
+      "requestShapes": ["[stateId:Int32, cost:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "READ_ONLY_CONTEXTUAL",
+      "evidence": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/InviteSeasonTeamBornMapRight.cs:206-209",
+        "Game.UI.GamePlay.Systems/Tenth.UI/InviteSeasonTeamBornMiniMap3DMainUI.cs:383-388"
+      ],
+      "id": 6131,
+      "names": ["TEAM_INVITATIONAL_QUERY_REGION_BET_TEAMS"],
+      "reason": "Reads team state for live state and run-server IDs.",
+      "requestShapes": ["[stateId:Int32, runServerId:Int32]"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonRecommendMemberList.cs:137-142"],
+      "id": 6148,
+      "names": ["INVITATIONAL_2026_QUERY_FAMILY_QUALIFY"],
+      "probePayload": [],
+      "reason": "Reads the current family's invitational qualification list.",
+      "requestShapes": ["[]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonRecommendConfirmUI.cs:122-127",
+        "Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonRecommendMemberList.cs:552-557"
+      ],
+      "id": 6149,
+      "names": ["INVITATIONAL_2026_FAMILY_SIGN_UP"],
+      "reason": "Signs up or changes a member's official invitational state.",
+      "requestShapes": ["[roleId:Int64, signUpFlag:0|1]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": [
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonData2026.cs:124-127",
+        "Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonRecommendInputConfirmDialog.cs:148-168",
+        "Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonRecommendMemberList.cs:581-586"
+      ],
+      "id": 6150,
+      "names": ["INVITATIONAL_2026_MEMBER_CONFIRM"],
+      "reason": "Confirms, rejects, or changes official invitational membership.",
+      "requestShapes": ["[]", "[confirmState:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "UNRESOLVED",
+      "evidence": ["Game.Network/Tenth.Network/NetCommandDef.cs:4511"],
+      "id": 6153,
+      "names": ["INVITATIONAL_2026_QUERY_RANK_LEADERBOARD"],
+      "reason": "Only the command constant was found; no complete request constructor was resolved.",
+      "requestShapes": ["unresolved"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "UNRESOLVED",
+      "evidence": ["Game.Network/Tenth.Network/NetCommandDef.cs:4519"],
+      "id": 6154,
+      "names": ["INVITATIONAL_2026_GET_FAMILY_GROUP_LIST"],
+      "reason": "Only the command constant was found; no complete request constructor was resolved.",
+      "requestShapes": ["unresolved"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonFamilyList.cs:711-718"],
+      "id": 6155,
+      "names": ["INVITATIONAL_2026_COLLECT_FAMILY"],
+      "reason": "Adds or removes a family from the account's collected list.",
+      "requestShapes": ["[groupId:Int32, collectFlag:0|1]"]
+    },
+    {
+      "autoProbe": true,
+      "classification": "READ_ONLY_STATIC",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonFamilyList.cs:412-425"],
+      "id": 6156,
+      "names": ["INVITATIONAL_2026_GET_COLLECT_FAMILY"],
+      "probePayload": null,
+      "reason": "Reads the current account's collected-family list.",
+      "requestShapes": ["null"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "READ_ONLY_CONTEXTUAL",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonFamilyList.cs:848-856"],
+      "id": 6157,
+      "names": ["INVITATIONAL_2026_SEARCH_FAMILY"],
+      "reason": "Searches families using user-supplied text.",
+      "requestShapes": ["[1, searchText:String]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonRecommendMemberList.cs:889-900"],
+      "id": 6164,
+      "names": ["INVITATIONAL_2026_APPLY"],
+      "reason": "Applies for or cancels official invitational participation.",
+      "requestShapes": ["[applyState:0|1]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Heros/Tenth.UI/ArmyConsultSubviewArmyCollection.cs:1468-1480"],
+      "id": 6379,
+      "names": ["PIN_BATTLE_ARRAY"],
+      "reason": "Pins or unpins an army recommendation on the official account.",
+      "requestShapes": ["[collectionId:Int64, pinFlag:0|1]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "SESSION_CONTROL",
+      "evidence": ["Game.UI.GamePlay.Activity/Tenth.UI/ModCmbManager.cs:25-33"],
+      "id": 7005,
+      "names": ["SIMULATE_LEAVE_SCENE_GAME_SERVER"],
+      "reason": "Leaves the current activity scene on the official game server.",
+      "requestShapes": ["[activityId:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Activity/Tenth.UI/ChargeActivityYouthChargePriority.cs:680-705"],
+      "id": 7034,
+      "names": ["YOUTH_PRIORITY_SELECT_WARFARE_SKILL"],
+      "reason": "Selects or claims an official privilege warfare skill.",
+      "requestShapes": ["[skillId:Int32]", "null"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Activity/Tenth.UI/ChargeActivityYouthChargePriority.cs:897-907"],
+      "id": 7042,
+      "names": ["YOUTH_PRIORITY_DAILY_SKILL_VALUE"],
+      "reason": "Claims the account's daily privilege skill value.",
+      "requestShapes": ["null"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Systems/Tenth.Data/PayData.cs:689-694"],
+      "id": 7101,
+      "names": ["VOUCHER_BUY_GOODS"],
+      "reason": "Purchases official goods with vouchers.",
+      "requestShapes": ["[goodsId:Int32, count:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.Map/Tenth.Map.Map2d/InnerCityBuildSpeedupUIMgr.cs:187-192"],
+      "id": 8041,
+      "names": ["INNER_CITY_BUILD_SPEEDUP"],
+      "reason": "Speeds up an official inner-city building.",
+      "requestShapes": ["[wid:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "UNRESOLVED",
+      "evidence": ["Game.Network/Tenth.Network/NetCommandDef.cs:5311"],
+      "id": 8050,
+      "names": ["PSC_TASK_REWARD"],
+      "reason": "Only the command constant was found; no complete request constructor was resolved.",
+      "requestShapes": ["unresolved"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Activity/Tenth.UI/CmbGeneratorTipsViewInfo.cs:276-284"],
+      "id": 8051,
+      "names": ["PSC_GEN_COLLECT"],
+      "reason": "Collects generated resources from an official activity entity.",
+      "requestShapes": ["[generatorId:Int64, gainTimes:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.Map/Tenth.Map.Map2d.Tyzm/TyzmCloud.cs:310-319"],
+      "id": 8052,
+      "names": ["TYZM_UNLOCK_AREA"],
+      "reason": "Unlocks an official activity-map area.",
+      "requestShapes": ["[areaId:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ModCmbManager.cs:46-51",
+        "Game.UI.GamePlay.Systems/Tenth.UI/PlotSpecialFunc.cs:478-483"
+      ],
+      "id": 8054,
+      "names": ["PSC_FINISH_GUIDE"],
+      "reason": "Marks the official activity guide as finished.",
+      "requestShapes": ["[1]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "UNRESOLVED",
+      "evidence": ["Game.Network/Tenth.Network/NetCommandDef.cs:5317"],
+      "id": 8057,
+      "names": ["PSC_USE_ITEM"],
+      "reason": "Only the command constant was found; no complete request constructor was resolved.",
+      "requestShapes": ["unresolved"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Activity/Tenth.UI/TaoyuanHeheActivityUI.cs:247-250"],
+      "id": 8058,
+      "names": ["PSC_DIALOG_FINISH"],
+      "reason": "Marks an official activity dialog complete and invokes its reward callback.",
+      "requestShapes": ["[]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.Map/Tenth.Map.Map2d.Tyzm/EntityData.cs:1925-1939"],
+      "id": 8059,
+      "names": ["TYZM_ENTITY_OP"],
+      "reason": "Executes an operation on an official activity-map entity.",
+      "requestShapes": ["nested entity operation list"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.UI.GamePlay.Heros/Tenth.UI/ArmyWholeView.cs:1265-1272"],
+      "id": 9104,
+      "names": ["ONE_KEY_DEPLOY_ARMY"],
+      "reason": "Deploys an official army with one-key configuration.",
+      "requestShapes": ["[armyId:Int32]"]
+    },
+    {
+      "autoProbe": false,
+      "classification": "MUTATING",
+      "evidence": ["Game.Data.GamePlay/Tenth.Data/PoliticsData.cs:1690-1695"],
+      "id": 9105,
+      "names": ["WORLD_DESERT_FIELD_BATCH"],
+      "reason": "Applies a batch mutation to official world desert fields.",
+      "requestShapes": ["[widList:Array<Int32>, flag:Int32]"]
+    }
+  ]
+}
