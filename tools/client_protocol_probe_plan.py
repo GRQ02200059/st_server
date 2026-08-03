@@ -86,6 +86,7 @@ def validate_probe_plan(manifest, baseline_inventory, current_inventory):
         raise ProbePlanError("probe manifest commands must be a list")
 
     manifest_by_id = {}
+    manifest_ids = []
     for row in commands:
         if not isinstance(row, dict):
             raise ProbePlanError("probe manifest command must be an object")
@@ -97,6 +98,10 @@ def validate_probe_plan(manifest, baseline_inventory, current_inventory):
                 f"probe manifest has duplicate command id {command_id}",
             )
         manifest_by_id[command_id] = row
+        manifest_ids.append(command_id)
+
+    if manifest_ids != sorted(manifest_ids):
+        raise ProbePlanError("probe manifest command ids must be sorted")
 
     actual_ids = set(manifest_by_id)
     if actual_ids != expected_ids:

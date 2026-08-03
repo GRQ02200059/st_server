@@ -167,13 +167,12 @@ class ProbePlanTest(unittest.TestCase):
             ],
         )
 
-    def test_validate_accepts_exact_delta_and_sorts_rows(self):
+    def test_validate_accepts_exact_delta_in_manifest_order(self):
         rows = validate_probe_plan(
             manifest={
                 "clientVersion": "9.2.4",
                 "baselineVersion": "9.2.2",
                 "commands": [
-                    row(43, "WRITE", "MUTATING"),
                     row(
                         42,
                         "QUERY",
@@ -181,6 +180,7 @@ class ProbePlanTest(unittest.TestCase):
                         auto_probe=True,
                         probe_payload=None,
                     ),
+                    row(43, "WRITE", "MUTATING"),
                 ],
             },
             baseline_inventory=inventory("9.2.2", [(1, "OLD")]),
@@ -314,6 +314,29 @@ class ProbePlanTest(unittest.TestCase):
         )
         with self.assertRaises(ProbePlanError):
             validate_probe_plan(valid_manifest, baseline, duplicate_current)
+
+    def test_rejects_unsorted_manifest_ids(self):
+        manifest = {
+            "clientVersion": "9.2.4",
+            "baselineVersion": "9.2.2",
+            "commands": [
+                row(43, "WRITE", "MUTATING"),
+                row(
+                    42,
+                    "QUERY",
+                    "READ_ONLY_STATIC",
+                    probe_payload=[],
+                ),
+            ],
+        }
+        baseline = inventory("9.2.2", [(1, "OLD")])
+        current = inventory(
+            "9.2.4",
+            [(1, "OLD"), (42, "QUERY"), (43, "WRITE")],
+        )
+
+        with self.assertRaises(ProbePlanError):
+            validate_probe_plan(manifest, baseline, current)
 
     def test_rejects_non_object_inventories_as_probe_plan_errors(self):
         manifest = {
