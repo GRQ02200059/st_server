@@ -300,10 +300,6 @@ object GameResponses {
         removedArmyId: Int?,
     ) =
         nf.objectNode().apply {
-            if (marches.isEmpty()) {
-                removedArmyId?.let { putArray(it.toString()).add(0) }
-                return@apply
-            }
             marches.forEach { march ->
                 putArray(march.armyId.toString()).apply {
                 add(1) // 0 state: IN_EXPEDITION
@@ -338,6 +334,44 @@ object GameResponses {
                 add("") // 29 buffs
                 add(0) // 30 lu jiao wid
                 add("") // 31 battle show
+                }
+            }
+            // Static player garrisons stored in WorldState are visible to everyone,
+            // independent of the owner being online, so other players can attack them.
+            WorldStateRepository.garrisons().forEach { g ->
+                putArray(g.armyId.toString()).apply {
+                    add(5)              // 0 state: RESIDE
+                    add(g.ownerUserId)  // 1 user id
+                    add(g.wid)          // 2 from wid
+                    add(g.wid)          // 3 target wid
+                    add(g.residedAtSec) // 4 begin time
+                    add(0)              // 5 end time (0 = static garrison)
+                    add(0)              // 6 army group id
+                    add(0)              // 7 center wid
+                    add(0)              // 8 shop cancel move
+                    add(0)              // 9 target type
+                    add(g.wid)          // 10 reside wid
+                    add(0)              // 11 stay wid
+                    add(0)              // 12 tech jianjun
+                    add(0)              // 13 tech quanxiang
+                    add(0)              // 14 invited user id
+                    add("")             // 15 facade ids
+                    add("")             // 16 army hero type
+                    add("")             // 17 emotion
+                    add("")             // 18 battle effect
+                    addNull()           // 19 facade data
+                    add(nf.objectNode())// 20 facade data by type
+                    add(0)              // 21 serious injury time
+                    add(0)              // 22 fort army group
+                    add(g.residedAtSec) // 23 reside time
+                    add(0)              // 24 siege camp next attack time
+                    add(0)              // 25 attack-heart shiqi down
+                    add(0)              // 26 countdown facade
+                    add(0)              // 27 shiqi
+                    add(0)              // 28 real march id
+                    add("")             // 29 buffs
+                    add(0)              // 30 lu jiao wid
+                    add("")             // 31 battle show
                 }
             }
             removedArmyId?.takeIf { removedId -> marches.none { it.armyId == removedId } }
