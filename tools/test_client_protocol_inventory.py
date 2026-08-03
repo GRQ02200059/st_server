@@ -6,8 +6,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from client_protocol_inventory import (
+from tools.client_protocol_inventory import (
     build_inventory,
+    load_capture_index,
     parse_command_constants,
     scan_client_sources,
 )
@@ -101,6 +102,7 @@ class ClientProtocolInventoryTests(unittest.TestCase):
             constants={42: ["REQUEST"], 43: ["PUSH"]},
             discovered=discovered,
             capture_index={"42": {"send": 2, "recv": 1}},
+            client_version="9.2.2",
         )
 
         self.assertEqual("9.2.2", inventory["clientVersion"])
@@ -112,6 +114,22 @@ class ClientProtocolInventoryTests(unittest.TestCase):
             json.dumps(inventory, ensure_ascii=False, sort_keys=True),
             json.dumps(inventory, ensure_ascii=False, sort_keys=True),
         )
+
+    def test_inventory_uses_explicit_client_version(self):
+        inventory = build_inventory(
+            constants={42: ["REQUEST"]},
+            discovered={
+                42: {"requestSources": ["A.cs:1"], "receiveSources": []},
+                "unresolvedRequestSources": [],
+            },
+            capture_index={},
+            client_version="9.2.4",
+        )
+
+        self.assertEqual("9.2.4", inventory["clientVersion"])
+
+    def test_missing_capture_index_is_an_empty_version_scoped_capture(self):
+        self.assertEqual({}, load_capture_index(None))
 
 
 if __name__ == "__main__":

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Generate a deterministic command inventory from 9.2.2 client evidence."""
+"""Generate a deterministic command inventory from versioned client evidence."""
 
 import argparse
 import json
 import re
 from collections import defaultdict
 from pathlib import Path
+from typing import Optional
 
 
-CLIENT_VERSION = "9.2.2"
 CONST_RE = re.compile(r"public\s+const\s+int\s+([A-Z0-9_]+)\s*=\s*(\d+)\s*;")
 SEND_RE = re.compile(
     r"\.Send(?:<[^\r\n]+?>)?[ \t]*\([ \t]*(?:NetCommandDef\.)?"
@@ -95,8 +95,14 @@ def _capture_ids(capture_index):
     return ids
 
 
-def build_inventory(constants, discovered, capture_index):
-    """Merge constant, source, and capture evidence into a stable JSON shape."""
+def load_capture_index(path: Optional[Path]) -> dict:
+    if path is None:
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def build_inventory(constants, discovered, capture_index, client_version):
+    """Merge constant, source, and same-version capture evidence."""
     all_ids = set(constants)
     all_ids.update(
         command_id
@@ -108,7 +114,10 @@ def build_inventory(constants, discovered, capture_index):
     commands = []
     for command_id in sorted(all_ids):
         sources = discovered.get(command_id, {})
-        captures = capture_index.get(str(command_id), capture_index.get(command_id, {}))
+        captures = capture_index.get(
+            str(command_id),
+            capture_index.get(command_id, {}),
+        )
         commands.append(
             {
                 "id": command_id,
@@ -121,7 +130,7 @@ def build_inventory(constants, discovered, capture_index):
         )
 
     return {
-        "clientVersion": CLIENT_VERSION,
+        "clientVersion": client_version,
         "commands": commands,
         "unresolvedRequestSources": discovered.get(
             "unresolvedRequestSources",
@@ -134,8 +143,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Generate the versioned client protocol command inventory.",
     )
+    parser.add_argument("--client-version", required=True)
     parser.add_argument("--client-root", type=Path, required=True)
-    parser.add_argument("--capture-index", type=Path, required=True)
+    parser.add_argument("--capture-index", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -145,11 +155,12 @@ def main():
     constants = parse_command_constants(
         constants_file.read_text(encoding="utf-8"),
     )
-    captures = json.loads(args.capture_index.read_text(encoding="utf-8"))
+    captures = load_capture_index(args.capture_index)
     inventory = build_inventory(
         constants,
         scan_client_sources(args.client_root, constants),
         captures,
+        client_version=args.client_version,
     )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
