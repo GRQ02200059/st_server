@@ -391,6 +391,13 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `military strategy union log requires its explicit handler`() {
+        val commandId = 3_635
+        assertNull(NetworkResponsePolicy.observedShapeBody(commandId, "[]"))
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `union nearby player list requires its explicit handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_NEARBY_PLAYER_LIST))
         assertTrue(Cmd.UNION_NEARBY_PLAYER_LIST !in NetworkResponsePolicy.observedShapeCommandIds())

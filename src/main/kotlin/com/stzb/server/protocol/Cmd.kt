@@ -137,6 +137,7 @@ object Cmd {
     const val UNION_SEARCH_PLAYER_LIST = 3411
     const val INVITATIONAL_QUERY_LOG = 3519
     const val FEED_CLICKED_LOG = 3604
+    const val GET_MILITARY_STRATEGY_UNION_LOG = 3635
     const val GET_HOMEPAGE_INFO = 3686
     const val SEARCH_USER = 3739
     const val MAIL_NOTIFY_GET_ALL = 3758

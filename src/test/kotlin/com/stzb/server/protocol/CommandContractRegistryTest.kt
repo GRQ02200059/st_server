@@ -344,6 +344,24 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `military strategy union log exposes exact constant and handler owned social duplex contract`() {
+        val name = "GET_MILITARY_STRATEGY_UNION_LOG"
+        val commandId = 3_635
+        val field = assertNotNull(
+            runCatching { Cmd::class.java.getField(name) }.getOrNull(),
+            "missing Cmd.$name",
+        )
+
+        assertEquals(commandId, field.getInt(null))
+        val contract = CommandContractCatalog.registry.contract(commandId)
+        assertEquals(listOf(name), contract?.names)
+        assertEquals(CommandDirection.DUPLEX, contract?.direction)
+        assertEquals(CommandDomain.SOCIAL, contract?.domain)
+        assertEquals(CommandStatus.PROVISIONAL, contract?.status)
+        assertEquals("GameServerHandler", contract?.owner)
+    }
+
+    @Test
     fun `summer farm record queries expose exact constants and handler owned activity contracts`() {
         val commands = linkedMapOf(
             "SUMMER_FARM_MESSAGE_RECORD" to 5_120,
