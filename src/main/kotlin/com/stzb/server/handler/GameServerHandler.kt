@@ -12,14 +12,17 @@ import com.stzb.server.game.ClientCardPackCatalog
 import com.stzb.server.game.CityFacadeOperationRequestParser
 import com.stzb.server.game.GearOperationRequestParser
 import com.stzb.server.game.GameResponses
+import com.stzb.server.game.GarrisonService
 import com.stzb.server.game.MailBriefInfoResponses
 import com.stzb.server.game.MailInfoResponses
 import com.stzb.server.game.PlayerBattleService
 import com.stzb.server.game.PlayerConscriptService
 import com.stzb.server.game.PlayerStateRepository
+import com.stzb.server.game.PvpBattleService
 import com.stzb.server.game.ProfileResponses
 import com.stzb.server.game.RankListResponses
 import com.stzb.server.game.RecruitResultParser
+import com.stzb.server.game.ResideRequestParser
 import com.stzb.server.game.RevenueService
 import com.stzb.server.game.SkillOperationRequestParser
 import com.stzb.server.game.TeamRequestParser
@@ -539,6 +542,11 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
             Cmd.ARMY_BATTLE -> {
                 logIn(msg)
                 sendArmyBattle(ctx, session, msg)
+            }
+
+            Cmd.RESIDE_FIELD -> {
+                logIn(msg)
+                sendReside(ctx, session, msg)
             }
 
             Cmd.BATTLE_REPORT_DETAIL,
@@ -2023,6 +2031,54 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         }
     }
 
+    private fun sendReside(ctx: ChannelHandlerContext, session: Session?, msg: UpPacket) {
+        val userId = session?.userId ?: msg.userId.takeIf { it > 0 } ?: 10001
+        val request = ResideRequestParser.parse(msg.bodyText)
+        if (request == null) {
+            ctx.writeAndFlush(DownPacket.json(Cmd.RESIDE_FIELD, "null", dataType = DownType.PLAIN))
+            log.info(">> cmd=60 驻守请求无效 (uid=$userId, body=${msg.bodyText})")
+            return
+        }
+        val state = playerState(session, userId, GameServerConfig.CITY_WID)
+        val garrisonService = GarrisonService()
+        val march = garrisonService.startReside(
+            state = state,
+            wid = request.wid,
+            armyId = request.armyId,
+            nowSec = (System.currentTimeMillis() / 1000).toInt(),
+        )
+        ctx.writeAndFlush(DownPacket.json(Cmd.RESIDE_FIELD, "null", dataType = DownType.PLAIN))
+        if (march != null) {
+            PlayerStateRepository.save(state)
+            sendArmyStateNotify(ctx, userId, state, request.armyId)
+            sendWorldSceneFullInfo(ctx, session)
+            scheduleResideArrival(ctx, session, userId, state, garrisonService, request.armyId)
+            log.info(">> cmd=60 驻守出发 (uid=$userId, wid=${request.wid}, armyId=${request.armyId})")
+        } else {
+            log.info(">> cmd=60 驻守未执行: 队伍无可战斗武将或目标非法 (uid=$userId, wid=${request.wid})")
+        }
+    }
+
+    private fun scheduleResideArrival(
+        ctx: ChannelHandlerContext,
+        session: Session?,
+        userId: Int,
+        state: com.stzb.server.game.PlayerState,
+        garrisonService: GarrisonService,
+        armyId: Int,
+    ) {
+        val march = state.activeMarch(armyId) ?: return
+        val delayMillis = (march.endSec * 1_000L - System.currentTimeMillis()).coerceAtLeast(0L)
+        ctx.channel().eventLoop().schedule({
+            if (!ctx.channel().isActive) return@schedule
+            val snapshot = garrisonService.settleReside(state, armyId) ?: return@schedule
+            PlayerStateRepository.save(state)
+            sendArmyStateNotify(ctx, userId, state, armyId)
+            broadcastWorldScene(removedArmyUserId = userId, removedArmyId = armyId)
+            log.info(">> cmd=60 驻守抵达 (uid=$userId, wid=${snapshot.wid}, armyId=$armyId)")
+        }, delayMillis, TimeUnit.MILLISECONDS)
+    }
+
     private fun schedulePveBattleSettlement(
         ctx: ChannelHandlerContext,
         session: Session?,
@@ -2035,6 +2091,58 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
         val delayMillis = (march.endSec * 1_000L - System.currentTimeMillis()).coerceAtLeast(0L)
         ctx.channel().eventLoop().schedule({
             if (!ctx.channel().isActive) return@schedule
+            val activeMarch = state.activeMarch(armyId)
+            val garrison = activeMarch?.let { WorldStateRepository.garrisonAt(it.targetWid) }
+            if (activeMarch != null && garrison != null && garrison.ownerUserId != userId) {
+                val due = state.completeMarchIfDue((System.currentTimeMillis() / 1000).toInt(), armyId)
+                if (due != null) {
+                    val pvp = PvpBattleService(ClientBattleReportStore.global()).settle(
+                        attacker = state,
+                        march = due,
+                        garrison = garrison,
+                        nowSec = (System.currentTimeMillis() / 1000).toInt(),
+                        loadDefenderState = { uid ->
+                            PlayerStateRepository.findExistingByUserId(uid)
+                        },
+                    )
+                    PlayerStateRepository.save(state)
+                    ctx.writeAndFlush(
+                        DownPacket.json(
+                            Cmd.SYS_NOTIFY_DB_UPDATE,
+                            GameResponses.battleReportAttackInsertNotify(
+                                userId = userId,
+                                battleId = pvp.battleId,
+                                armyId = armyId,
+                                targetWid = pvp.targetWid,
+                                outcome = pvp.outcome,
+                                heroIds = state.teamHeroes(armyId)
+                                    .mapNotNull { state.hero(it)?.heroId }
+                                    .filter { it > 0 },
+                            ),
+                            dataType = DownType.PLAIN,
+                        ),
+                    )
+                    if (pvp.ownershipTransferred) {
+                        ctx.writeAndFlush(
+                            DownPacket.json(
+                                Cmd.SYS_NOTIFY_DB_UPDATE,
+                                GameResponses.occupiedLandUpsertNotify(
+                                    userId = userId,
+                                    cityWid = state.cityWid,
+                                    landWid = pvp.targetWid,
+                                ),
+                                dataType = DownType.PLAIN,
+                            ),
+                        )
+                        broadcastWorldScene(removedArmyUserId = userId, removedArmyId = armyId)
+                    } else {
+                        sendArmyStateNotify(ctx, userId, state, armyId)
+                        sendWorldSceneFullInfo(ctx, session, removedArmyId = armyId)
+                    }
+                    log.info(">> cmd=6 PvP 结算 (uid=$userId, wid=${pvp.targetWid}, outcome=${pvp.outcome}, transfer=${pvp.ownershipTransferred})")
+                    return@schedule
+                }
+            }
             val result = battleService.settlePveBattle(state, armyId) ?: return@schedule
             PlayerStateRepository.save(state)
             ctx.writeAndFlush(

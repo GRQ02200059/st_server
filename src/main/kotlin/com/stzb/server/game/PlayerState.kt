@@ -1112,6 +1112,17 @@ object PlayerStateRepository {
         return players.putIfAbsent(accountKey, loaded) ?: loaded
     }
 
+    /**
+     * Best-effort lookup by numeric user id for cross-player flows (e.g. PvP
+     * defender reconciliation). Prefers an in-memory (online) player, then the
+     * legacy per-user account key. Returns null when the defender is offline and
+     * their real account key is unknown; that state self-heals on their next
+     * login via registerOrRestorePlayer.
+     */
+    fun findExistingByUserId(userId: Int): PlayerState? =
+        players.values.firstOrNull { it.userId == userId }
+            ?: findExisting("legacy-user-$userId")
+
     fun getOrCreate(userId: Int, cityWid: Int, roleName: String): PlayerState {
         val accountKey = "legacy-user-$userId"
         return relocateLegacyMainCityIfNeeded(players.computeIfAbsent(accountKey) {
