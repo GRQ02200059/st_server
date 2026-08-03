@@ -323,6 +323,10 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
                 sendInvitationalTeamLog(ctx, msg)
             }
 
+            Cmd.FAMILY_LOG_GET -> {
+                sendFamilyLog(ctx, msg)
+            }
+
             Cmd.UNION_MEMBER_CLAN_LIST,
             Cmd.GET_INVITE_LIST,
             Cmd.GET_ZHAOHUI_LIST,
@@ -1859,6 +1863,25 @@ class GameServerHandler : SimpleChannelInboundHandler<UpPacket>() {
 
         ctx.writeAndFlush(
             DownPacket.json(Cmd.INVITATIONAL_QUERY_LOG, "[]", dataType = DownType.PLAIN),
+        )
+    }
+
+    private fun sendFamilyLog(ctx: ChannelHandlerContext, msg: UpPacket) {
+        val request = runCatching { strictRequestMapper.readTree(msg.bodyText) }.getOrNull()
+            ?.takeIf { it.isArray && it.size() == 2 }
+            ?: return
+        val start = request[0]
+            .takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: return
+        val limit = request[1]
+            .takeIf { it.isIntegralNumber && it.canConvertToInt() }
+            ?.asInt()
+            ?: return
+        if (start != 0 || limit != 20_000) return
+
+        ctx.writeAndFlush(
+            DownPacket.json(Cmd.FAMILY_LOG_GET, "[]", dataType = DownType.PLAIN),
         )
     }
 
