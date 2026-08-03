@@ -131,6 +131,10 @@ internal object OfficialReportFixture {
                     val sourcePosition = action.intParam(0)
                     recoveryBySide.add(sideForPosition(sourcePosition), action.intParam(3))
                 }
+                ClientBattleTextReplayProtocol.ATTACK_DAMAGE_RECOVERY -> {
+                    val sourcePosition = action.intParam(0)
+                    recoveryBySide.add(sideForPosition(sourcePosition), action.intParam(1))
+                }
                 ClientBattleTextReplayProtocol.FINAL_TROOPS ->
                     finalTroops[action.intParam(0)] = action.intParam(1)
                 ClientBattleTextReplayProtocol.ATTACKER_WIN ->
@@ -871,10 +875,9 @@ internal object OfficialReportFixture {
             if (queue.isEmpty()) return@BattleTargetDecisionSource null
             val targetPositions = buildList {
                 addAll(queue.removeFirst())
-                while (
-                    size < request.limit &&
-                    queue.firstOrNull()?.size == 1
-                ) {
+                while (size < request.limit) {
+                    val next = queue.firstOrNull()?.singleOrNull() ?: break
+                    if (next in this) break
                     addAll(queue.removeFirst())
                 }
             }

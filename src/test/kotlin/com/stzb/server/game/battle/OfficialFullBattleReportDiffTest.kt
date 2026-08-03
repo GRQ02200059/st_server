@@ -1050,6 +1050,241 @@ class OfficialFullBattleReportDiffTest {
     }
 
     @Test
+    fun `fenji paper repeatedly reaches the attacker front`() {
+        val report = java.nio.file.Path.of(
+            "assent/cfg/paper/11/cap_20260311223905520_0000000b_zlib.json",
+        )
+        val config = BattleConfigRepository.loadDefault()
+        val actions = OfficialReportFixture.read(report)
+        val official = OfficialReportFixture.fullBattleSummary(actions)
+        val officialFenjiHits = actions.filter { action ->
+            action.id == ClientBattleTextReplayProtocol.ATTACK_SKILL_DAMAGE &&
+                action.params[0].toInt() == 4 &&
+                action.params[1].toInt() == 211961 &&
+                action.params[2].toInt() == 3
+        }
+        assertEquals(7, officialFenjiHits.size)
+        assertEquals(9_581, officialFenjiHits.sumOf { it.params[3].toInt() })
+
+        val request = OfficialReportFixture.reconstructBattleRequest(actions, config)
+        val simulations = (0 until 32).map { seed ->
+            seed to BattleEngine.resolve(request, config, SeededBattleRandom(seed))
+        }
+        val hitCounts = simulations.map { (_, result) ->
+            result.events.filterIsInstance<BattleEvent.SkillDamage>()
+                .count {
+                    ClientBattleTextReplayProtocol.position(it.source) == 4 &&
+                        it.skillId == 211961 &&
+                        ClientBattleTextReplayProtocol.position(it.target) == 3
+                }
+        }
+        val damageTotals = simulations.map { (_, result) ->
+            result.events.filterIsInstance<BattleEvent.SkillDamage>()
+                .filter {
+                    ClientBattleTextReplayProtocol.position(it.source) == 4 &&
+                        it.skillId == 211961 &&
+                        ClientBattleTextReplayProtocol.position(it.target) == 3
+                }
+                .sumOf(BattleEvent.SkillDamage::damage)
+        }
+        val finalTroops = simulations.map { (_, result) ->
+            OfficialReportFixture.fullBattleSummary(result)
+                .finalTroopsByPosition
+                .getValue(3)
+        }
+        val diagnostics = simulations.joinToString(separator = "\n") { (seed, result) ->
+            val hits = result.events.filterIsInstance<BattleEvent.SkillDamage>()
+                .filter {
+                    ClientBattleTextReplayProtocol.position(it.source) == 4 &&
+                        it.skillId == 211961
+                }
+                .map {
+                    "r${it.round}:p${ClientBattleTextReplayProtocol.position(it.target)}=" +
+                        "${it.damage}"
+                }
+            val summary = OfficialReportFixture.fullBattleSummary(result)
+            "seed=$seed p3=${summary.finalTroopsByPosition.getValue(3)} fenji=$hits"
+        }
+
+        assertTrue(
+            officialFenjiHits.size in hitCounts.min()..hitCounts.max() &&
+                officialFenjiHits.sumOf { it.params[3].toInt() } in
+                damageTotals.min()..damageTotals.max() &&
+                official.finalTroopsByPosition.getValue(3) in
+                finalTroops.min()..finalTroops.max(),
+            "official hits=${officialFenjiHits.size} " +
+                "damage=${officialFenjiHits.sumOf { it.params[3].toInt() }} " +
+                "p3=${official.finalTroopsByPosition.getValue(3)}\n" +
+                "simulated hits=${hitCounts.min()}..${hitCounts.max()} " +
+                "damage=${damageTotals.min()}..${damageTotals.max()} " +
+                "p3=${finalTroops.min()}..${finalTroops.max()}\n$diagnostics",
+        )
+    }
+
+    @Test
+    fun `liangyuan source six recovery reproduces official defender total`() {
+        val report = java.nio.file.Path.of(
+            "assent/cfg/paper/11/cap_20260311223101614_0000000b_zlib.json",
+        )
+        val config = BattleConfigRepository.loadDefault()
+        val actions = OfficialReportFixture.read(report)
+        val request = OfficialReportFixture.reconstructBattleRequest(actions, config)
+        val simulations = (0 until 32).map { seed ->
+            seed to BattleEngine.resolve(request, config, SeededBattleRandom(seed))
+        }
+        val recoveryTotals = simulations.map { (_, result) ->
+            result.events.filterIsInstance<BattleEvent.Recovery>()
+                .filter {
+                    ClientBattleTextReplayProtocol.position(it.source) == 6 &&
+                        it.skillId == 297322
+                }
+                .sumOf(BattleEvent.Recovery::amount)
+        }
+        val diagnostics = simulations.joinToString(separator = "\n") { (seed, result) ->
+            val recoveries = result.events.filterIsInstance<BattleEvent.Recovery>()
+                .filter {
+                    ClientBattleTextReplayProtocol.position(it.source) == 6 &&
+                        it.skillId == 297322
+                }
+            val recoveryByRound = recoveries.groupBy(BattleEvent.Recovery::round)
+                .mapValues { (_, events) -> events.sumOf(BattleEvent.Recovery::amount) }
+                .toSortedMap()
+            val targetSixTrace = result.events.mapNotNull { event ->
+                when (event) {
+                    is BattleEvent.NormalAttack -> event.takeIf {
+                        ClientBattleTextReplayProtocol.position(it.target) == 6
+                    }?.let {
+                        "r${it.round}:NormalAttack source=" +
+                            "${ClientBattleTextReplayProtocol.position(it.source)} " +
+                            "damage=${it.damage} targetTroopsAfter=${it.targetTroopsAfter}"
+                    }
+                    is BattleEvent.SkillDamage -> event.takeIf {
+                        ClientBattleTextReplayProtocol.position(it.target) == 6
+                    }?.let {
+                        "r${it.round}:SkillDamage source=" +
+                            "${ClientBattleTextReplayProtocol.position(it.source)} " +
+                            "skillId=${it.skillId} effectId=${it.effectId} " +
+                            "damage=${it.damage} targetTroopsAfter=${it.targetTroopsAfter}"
+                    }
+                    is BattleEvent.OngoingDamage -> event.takeIf {
+                        ClientBattleTextReplayProtocol.position(it.target) == 6
+                    }?.let {
+                        "r${it.round}:OngoingDamage source=" +
+                            "${ClientBattleTextReplayProtocol.position(it.source)} " +
+                            "skillId=${it.skillId} status=${it.status} " +
+                            "damage=${it.damage} targetTroopsAfter=${it.targetTroopsAfter}"
+                    }
+                    is BattleEvent.Recovery -> event.takeIf {
+                        ClientBattleTextReplayProtocol.position(it.target) == 6
+                    }?.let {
+                        "r${it.round}:Recovery source=" +
+                            "${ClientBattleTextReplayProtocol.position(it.source)} " +
+                            "skillId=${it.skillId} amount=${it.amount} " +
+                            "targetTroopsAfter=${it.targetTroopsAfter}"
+                    }
+                    else -> null
+                }
+            }
+            "seed=$seed skill297322Total=" +
+                "${recoveries.sumOf(BattleEvent.Recovery::amount)} " +
+                "skill297322ByRound=$recoveryByRound trace=$targetSixTrace"
+        }
+        val officialLiangyuanRecovery = actions
+            .filter {
+                it.id == ClientBattleTextReplayProtocol.RECOVERY &&
+                    it.params.getOrNull(1) == "297322"
+            }
+            .sumOf { it.params[3].toInt() }
+
+        assertEquals(227, officialLiangyuanRecovery)
+        assertTrue(
+            officialLiangyuanRecovery in recoveryTotals.min()..recoveryTotals.max(),
+            "297322 recovery=$officialLiangyuanRecovery/" +
+                "${recoveryTotals.min()}..${recoveryTotals.max()}\n$diagnostics",
+        )
+    }
+
+    @Test
+    fun `xinzhan attack recovery contributes to official defender total`() {
+        val report = java.nio.file.Path.of(
+            "assent/cfg/paper/11/cap_20260311223101614_0000000b_zlib.json",
+        )
+
+        val official = OfficialReportFixture.fullBattleSummary(
+            OfficialReportFixture.read(report),
+        )
+
+        assertEquals(7_941, official.recoveryBySide.getValue(Side.DEFENDER))
+    }
+
+    @Test
+    fun `jiufazhongyuan opponent attacker damage reaches official total`() {
+        val report = java.nio.file.Path.of(
+            "assent/cfg/paper/11/cap_20260311223101614_0000000b_zlib.json",
+        )
+        val config = BattleConfigRepository.loadDefault()
+        val actions = OfficialReportFixture.read(report)
+        val official = OfficialReportFixture.fullBattleSummary(actions)
+        val request = OfficialReportFixture.reconstructBattleRequest(actions, config)
+        val simulations = (0 until 32).map { seed ->
+            seed to BattleEngine.resolve(request, config, SeededBattleRandom(seed))
+        }
+        val attackerDamage = simulations.map { (_, result) ->
+            OfficialReportFixture.fullBattleSummary(result)
+                .damageBySide.getValue(Side.ATTACKER)
+        }
+        val diagnostics = simulations.joinToString(separator = "\n") { (seed, result) ->
+            val bySourceSkillAndRound = result.events.mapNotNull { event ->
+                when (event) {
+                    is BattleEvent.NormalAttack -> event.takeIf {
+                        it.source.side == Side.ATTACKER
+                    }?.let {
+                        Triple(
+                            "p${ClientBattleTextReplayProtocol.position(it.source)}/normal",
+                            it.round,
+                            it.damage,
+                        )
+                    }
+                    is BattleEvent.SkillDamage -> event.takeIf {
+                        it.source.side == Side.ATTACKER
+                    }?.let {
+                        Triple(
+                            "p${ClientBattleTextReplayProtocol.position(it.source)}/" +
+                                "${it.skillId}/${it.effectId}",
+                            it.round,
+                            it.damage,
+                        )
+                    }
+                    is BattleEvent.OngoingDamage -> event.takeIf {
+                        it.source.side == Side.ATTACKER
+                    }?.let {
+                        Triple(
+                            "p${ClientBattleTextReplayProtocol.position(it.source)}/" +
+                                "${it.skillId}/${it.status}",
+                            it.round,
+                            it.damage,
+                        )
+                    }
+                    else -> null
+                }
+            }.groupBy { (sourceAndSkill, round) -> sourceAndSkill to round }
+                .mapValues { (_, events) -> events.sumOf { it.third } }
+                .toSortedMap(compareBy({ it.first }, { it.second }))
+            "seed=$seed attackerDamage=" +
+                OfficialReportFixture.fullBattleSummary(result)
+                    .damageBySide.getValue(Side.ATTACKER) +
+                " breakdown=$bySourceSkillAndRound"
+        }
+        val officialAttackerDamage = official.damageBySide.getValue(Side.ATTACKER)
+
+        assertTrue(
+            officialAttackerDamage in attackerDamage.min()..attackerDamage.max(),
+            "ATTACKER damage=$officialAttackerDamage/" +
+                "${attackerDamage.min()}..${attackerDamage.max()}\n$diagnostics",
+        )
+    }
+
+    @Test
     fun `xuanwei paper can defeat attacker front before its first action`() {
         val report = java.nio.file.Path.of(
             "assent/cfg/paper/6231/cap_20260312004747562_00001857_zlib.json",
@@ -1306,6 +1541,57 @@ class OfficialFullBattleReportDiffTest {
             officialDamage in simulatedDamage.min()..simulatedDamage.max(),
             "official=$officialDamage simulated=${simulatedDamage.min()}.." +
                 "${simulatedDamage.max()}\n$summaries",
+        )
+    }
+
+    @Test
+    fun `xuanwei paper attacker base normal attack matches the official damage`() {
+        val report = java.nio.file.Path.of(
+            "assent/cfg/paper/6231/cap_20260311230758305_00001857_zlib.json",
+        )
+        val config = BattleConfigRepository.loadDefault()
+        val actions = OfficialReportFixture.read(report)
+        var round = 0
+        var actor = 0
+        val officialDamage = actions.single { action ->
+            when (action.id) {
+                ClientBattleTextReplayProtocol.ROUND -> round = action.params[0].toInt()
+                ClientBattleTextReplayProtocol.HERO_ACTION_START ->
+                    actor = action.params[0].toInt()
+            }
+            round == 2 &&
+                actor == 1 &&
+                action.id == ClientBattleTextReplayProtocol.NORMAL_DAMAGE &&
+                action.params[0].toInt() == 5
+        }.params[1].toInt()
+        assertEquals(724, officialDamage)
+
+        val request = OfficialReportFixture.reconstructBattleRequest(actions, config)
+        val simulations = (0 until 32).map { seed ->
+            seed to BattleEngine.resolve(request, config, SeededBattleRandom(seed))
+        }
+        val damage = simulations.flatMap { (_, result) ->
+            result.events.filterIsInstance<BattleEvent.NormalAttack>()
+                .filter {
+                    ClientBattleTextReplayProtocol.position(it.source) == 1 &&
+                        ClientBattleTextReplayProtocol.position(it.target) == 5
+                }
+                .map(BattleEvent.NormalAttack::damage)
+        }
+        val diagnostics = simulations.joinToString(separator = "\n") { (seed, result) ->
+            val attacks = result.events.filterIsInstance<BattleEvent.NormalAttack>()
+                .filter { ClientBattleTextReplayProtocol.position(it.source) == 1 }
+                .map {
+                    "r${it.round}:p${ClientBattleTextReplayProtocol.position(it.target)}=" +
+                        "${it.damage}"
+                }
+            "seed=$seed attacks=$attacks"
+        }
+
+        assertTrue(
+            damage.isNotEmpty() && officialDamage in damage.min()..damage.max(),
+            "official=$officialDamage simulated=${damage.minOrNull()}.." +
+                "${damage.maxOrNull()}\n$diagnostics",
         )
     }
 

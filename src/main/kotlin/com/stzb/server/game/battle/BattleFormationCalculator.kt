@@ -575,12 +575,38 @@ class BattleFormationCalculator(
                 val amount = detail.constantParam * level
                 when (detail.effectId) {
                     122 -> when (skillId) {
+                        450011 -> (
+                            spec.initialSkillId
+                                ?: config.hero(spec.heroId)?.initialSkillId
+                            )?.takeIf { it > 0 }?.let { initialSkillId ->
+                            BattleModifier.RoundMainSkillProbabilityPercent(
+                                percent = level,
+                                skillId = initialSkillId,
+                                rounds = config.skillDetails(skillId)
+                                    .mapTo(linkedSetOf()) { it.delayRound + 1 },
+                                requiredEffectId = 301,
+                            )
+                        }
                         450018 -> BattleModifier.DamageTakenPercent(
                             percent = -level,
                             requiredSourceInherentStatBelowTarget =
                                 BattleStat.DEFENSE,
                         )
+                        450019 -> BattleModifier.TargetStatusCountDamageDealtPercent(
+                            percentPerStatus = level,
+                            countedStatuses = JIXU_COUNTED_STATUSES,
+                            maxStatuses = 5,
+                        )
                         450020 -> BattleModifier.HurtStackingDamageTakenPercent(level)
+                        450022 -> (
+                            spec.initialSkillId
+                                ?: config.hero(spec.heroId)?.initialSkillId
+                            )?.takeIf { it > 0 }?.let { initialSkillId ->
+                            BattleModifier.MainSkillRecoveryNextDamageTakenPercent(
+                                percent = level,
+                                skillId = initialSkillId,
+                            )
+                        }
                         450038 ->
                             BattleModifier.NextStrategyDamageAfterNormalAttackPercent(level)
                         450042 ->
@@ -938,6 +964,16 @@ class BattleFormationCalculator(
         val EQUIPMENT_RUNTIME_CHILD_EFFECT_IDS = setOf(122, 123)
         val PREPARATION_MODIFIER_EFFECTS = setOf(522, 524, 531, 533)
         val SURFACE_MODIFIER_EFFECTS = setOf(522, 524, 531, 533)
+        val JIXU_COUNTED_STATUSES = setOf(
+            BattleStatus.CONFUSION,
+            BattleStatus.BERSERK,
+            BattleStatus.HESITATION,
+            BattleStatus.DISARM,
+            BattleStatus.PANIC,
+            BattleStatus.SHAKE,
+            BattleStatus.BURN,
+            BattleStatus.HEX,
+        )
         val PRIMARY_STATS = listOf(
             BattleStat.ATTACK,
             BattleStat.DEFENSE,

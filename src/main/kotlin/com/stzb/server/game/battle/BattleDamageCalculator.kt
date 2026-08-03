@@ -93,6 +93,13 @@ object BattleDamageCalculator {
             .filterIsInstance<BattleModifier.DamageDealtPercent>()
             .filter { it.matches(school, origin, tags, skillId, targetConditions) }
             .sumOf { it.percent }
+        val targetStatusDealt = source.modifiers
+            .filterIsInstance<BattleModifier.TargetStatusCountDamageDealtPercent>()
+            .sumOf { modifier ->
+                target.activeStatuses.count(modifier.countedStatuses::contains)
+                    .coerceAtMost(modifier.maxStatuses) *
+                    modifier.percentPerStatus
+            }
         val taken = target.modifiers
             .filterIsInstance<BattleModifier.DamageTakenPercent>()
             .filter {
@@ -123,6 +130,7 @@ object BattleDamageCalculator {
         return (
             100 +
                 dealt +
+                targetStatusDealt +
                 taken +
                 troopCounterDealt +
                 troopCounterTaken

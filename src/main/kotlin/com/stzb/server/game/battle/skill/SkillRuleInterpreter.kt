@@ -919,7 +919,8 @@ class SkillRuleInterpreter private constructor(
             .filter { it.skillId == null || it.skillId == rule.skillId }
             .filter { it.skillIds.isEmpty() || rule.skillId in it.skillIds }
             .filter { it.skillKind == null || it.skillKind == rule.kind }
-        val modifier = matchingModifiers.sumOf { it.percent }
+        val modifier = matchingModifiers.sumOf { it.percent } +
+            roundMainSkillProbabilityModifier(context, source, rule.skillId)
         if (matchingModifiers.isNotEmpty()) {
             context.skillProbabilityUses.consume(
                 context.source,
@@ -960,9 +961,19 @@ class SkillRuleInterpreter private constructor(
             detail.raw.probabilityInit +
                 (level - 1) * (detail.raw.probabilityMax - detail.raw.probabilityInit) / 9.0
             ).toInt().coerceIn(0, 100)
-        if (configured >= 100) return true
+        val rootRule = graph.rule(context.rootSkillId)
+        val mainSkillModifier = if (
+            rootRule?.kind !in setOf(SkillKind.ACTIVE, SkillKind.PURSUIT)
+        ) {
+            roundMainSkillProbabilityModifier(context, source, context.rootSkillId)
+        } else {
+            0
+        }
+        val configuredWithMainSkill =
+            (configured + mainSkillModifier).coerceIn(0, 100)
+        if (configuredWithMainSkill >= 100) return true
         val moraleAdjusted = moraleAdjustedProbability(
-            configured = configured,
+            configured = configuredWithMainSkill,
             source = source,
             context = context,
         )
@@ -971,6 +982,35 @@ class SkillRuleInterpreter private constructor(
             .filter { it.detailId == detail.detailId }
             .sumOf { it.percent }
         return context.random.nextInt(100) < (moraleAdjusted + modifier).coerceIn(0, 100)
+    }
+
+    private fun roundMainSkillProbabilityModifier(
+        context: SkillBattleContext,
+        source: BattleHero,
+        skillId: Int,
+    ): Int =
+        liveModifiers(context, source)
+            .filterIsInstance<BattleModifier.RoundMainSkillProbabilityPercent>()
+            .filter { modifier ->
+                modifier.skillId == skillId &&
+                    context.round in modifier.rounds &&
+                    skillTreeContainsEffect(skillId, modifier.requiredEffectId)
+            }
+            .sumOf(BattleModifier.RoundMainSkillProbabilityPercent::percent)
+
+    private fun skillTreeContainsEffect(
+        skillId: Int,
+        effectId: Int,
+        visited: MutableSet<Int> = linkedSetOf(),
+    ): Boolean {
+        if (!visited.add(skillId)) return false
+        val rule = graph.rule(skillId) ?: return false
+        return rule.details.any { detail ->
+            detail.effectId == effectId ||
+                detail.childSkillIds.any { childSkillId ->
+                    skillTreeContainsEffect(childSkillId, effectId, visited)
+                }
+        }
     }
 
     internal fun moraleAdjustedProbabilityForEngine(

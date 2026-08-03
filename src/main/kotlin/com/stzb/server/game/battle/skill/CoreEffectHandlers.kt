@@ -672,11 +672,7 @@ class DefaultBattleValueCalculator(
 
     override fun recovery(invocation: EffectInvocation): Int {
         val source = invocation.liveHero(invocation.context.source)
-        val entryTroops = invocation.context.battleView
-            .entryState(invocation.context.source)
-            ?.troops
-            ?: source.troops
-        val base = (entryTroops * 300.0 / (3_500 + entryTroops)).roundToInt()
+        val base = (source.troops * 300.0 / (3_500 + source.troops)).roundToInt()
         val rate = recoveryRate(invocation, source) / 100.0
         return (base * rate).toInt().coerceAtLeast(0)
     }
@@ -807,14 +803,26 @@ private class CoreEffectHandler(
     ): List<BattleStateChange> {
         val effectId = invocation.rule.effectId
         val sourceHero = invocation.liveHero(invocation.context.source)
-        val potency = invocation.withValueDelta(
-            invocation.valueOverride
-                ?: calculator.effectValue(
+        val basePotency = invocation.valueOverride ?: if (
+            effectId == 401 &&
+            invocation.rule.raw.calcPos == EMERGENCY_RECOVERY_CALC_POSITION &&
+            invocation.context.trigger == BattleTrigger.BATTLE_COMMAND
+        ) {
+            TypedBattlePotency.rate(
+                configuredBattleRate(
                 invocation.rule,
                 sourceHero,
                 invocation.rootSkillLevel(sourceHero),
-            ).requireResolved(invocation),
-        )
+                ),
+            )
+        } else {
+            calculator.effectValue(
+                invocation.rule,
+                sourceHero,
+                invocation.rootSkillLevel(sourceHero),
+            ).requireResolved(invocation)
+        }
+        val potency = invocation.withValueDelta(basePotency)
         return when (effectId) {
             98 -> listOf(
                 ModifierEffectChange(

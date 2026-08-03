@@ -2231,7 +2231,7 @@ class CompleteSkillEngineIntegrationTest {
         val request = BattleRequest(
             attacker = BattleTeam(listOf(ownerHero)),
             defender = BattleTeam(listOf(targetHero)),
-            maxRounds = 10,
+            maxRounds = 8,
         )
         val engine = DefaultCompleteSkillEngine.create(request, config)
         val owner = engine.state.view.heroes().single { it.heroId == ownerHero.id }
@@ -3286,6 +3286,49 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `jiufazhongyuan registers initial layers without preparation damage`() {
+        val ownerHero = hero(100806, 100, listOf(200290), position = 1).copy(
+            skillLevels = listOf(10),
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(ownerHero)),
+            defender = BattleTeam(listOf(hero(200001, 10))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        val preparation = engine.prepareBattle(context)
+
+        listOf(20029002, 20029003).forEach { detailId ->
+            assertEquals(
+                1,
+                engine.state.effectStore.effectsFor(owner)
+                    .single { it.detailId == detailId }
+                    .stacks,
+                "detailId=$detailId preparation=$preparation",
+            )
+        }
+        assertTrue(
+            preparation.none {
+                it is BattleEvent.SkillDamage && it.skillId == 210290
+            },
+            "preparation=$preparation",
+        )
+    }
+
+    @Test
     fun `jiufazhongyuan adds one physical and strategy damage layer each round`() {
         val ownerHero = hero(100806, 100, listOf(200290), position = 1).copy(
             skillLevels = listOf(10),
@@ -4239,6 +4282,170 @@ class CompleteSkillEngineIntegrationTest {
         assertTrue(
             engine.state.effectStore.effectsFor(owner).any {
                 it.detailId == 20073001
+            },
+        )
+    }
+
+    @Test
+    fun `shanmou equipment raises physical main skill chance only in rounds four and six`() {
+        val ownerTeam = BattleTeamBuilder(
+            config,
+            BattleEquipmentRepository.loadDefault(),
+        ).build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100494,
+                    position = 1,
+                    troops = 10_000,
+                    initialSkillId = 200730,
+                    skillLevels = listOf(10),
+                    equipmentFeatureSkillIds = listOf(450011),
+                    equipmentFeatureSkillLevels = listOf(2),
+                ),
+            ),
+        )
+        val request = BattleRequest(
+            attacker = ownerTeam,
+            defender = BattleTeam(listOf(hero(200001, 10_000, position = 1))),
+            maxRounds = 6,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(51),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_PASSIVE,
+            battleView = engine.state.view,
+        )
+        engine.prepareBattle(context)
+
+        val damageByRound = (3..6).associateWith { round ->
+            engine.trigger(
+                BattleTrigger.ROUND_START,
+                context.copy(
+                    round = round,
+                    trigger = BattleTrigger.ROUND_START,
+                ),
+            ).filterIsInstance<BattleEvent.SkillDamage>()
+                .count { it.skillId == 210730 }
+        }
+
+        assertEquals(
+            mapOf(3 to 0, 4 to 1, 5 to 0, 6 to 1),
+            damageByRound,
+        )
+    }
+
+    @Test
+    fun `jishi equipment stacks main skill recovery reduction onto the next hit`() {
+        val built = BattleTeamBuilder(
+            config,
+            BattleEquipmentRepository.loadDefault(),
+        ).build(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100016,
+                    position = 0,
+                    troops = 10_000,
+                    equipmentFeatureSkillIds = listOf(450022),
+                    equipmentFeatureSkillLevels = listOf(10),
+                ),
+            ),
+        )
+        val allyHero = hero(100017, 90, position = 1).copy(
+            troops = 8_000,
+            maxTroops = 10_000,
+        )
+        val request = BattleRequest(
+            attacker = built.copy(heroes = built.heroes + allyHero),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 2,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 0
+        }
+        val ally = engine.state.view.heroes().single {
+            it.side == Side.ATTACKER && it.position == 1
+        }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = owner,
+            rootSkillId = 200016,
+            currentSkillId = 200016,
+            trigger = BattleTrigger.RECOVERY_AFTER,
+            battleView = engine.state.view,
+        )
+
+        fun recover(rootSkillId: Int) {
+            val troops = requireNotNull(engine.state.view.state(ally)).troops
+            engine.applyChanges(
+                listOf(
+                    TroopRecoveryChange(
+                        source = owner,
+                        target = ally,
+                        amount = 100,
+                        troopsAfter = troops + 100,
+                        skillId = rootSkillId,
+                        effectId = 401,
+                    ),
+                ),
+                context.copy(
+                    rootSkillId = rootSkillId,
+                    currentSkillId = rootSkillId,
+                ),
+            )
+        }
+
+        fun nextDamageReduction(): Int =
+            engine.liveHero(ally).modifiers
+                .filterIsInstance<BattleModifier.DamageTakenPercent>()
+                .filter { it.school == null && it.origin == null && it.tag == null }
+                .sumOf(BattleModifier.DamageTakenPercent::percent)
+
+        recover(200001)
+        assertEquals(0, nextDamageReduction())
+
+        recover(200016)
+        recover(200016)
+
+        assertEquals(-20, nextDamageReduction())
+        val reduction = engine.state.effectStore.effectsFor(ally).single {
+            it.skillId == 451022 && it.detailId == 45102201
+        }
+        assertEquals(2, reduction.stacks)
+        assertEquals(1, reduction.remainingHits)
+        assertTrue(
+            BattleDamageCalculator.physical(
+                source = engine.liveHero(enemy),
+                target = engine.liveHero(ally),
+            ) < BattleDamageCalculator.physical(
+                source = engine.liveHero(enemy),
+                target = engine.liveHero(ally).copy(modifiers = emptyList()),
+            ),
+        )
+
+        engine.applyNormalDamage(
+            round = 1,
+            source = enemy,
+            target = ally,
+            amount = 100,
+            context = context.copy(source = enemy),
+        )
+
+        assertEquals(0, nextDamageReduction())
+        assertTrue(
+            engine.state.effectStore.effectsFor(ally).none {
+                it.skillId == 451022 && it.detailId == 45102201
             },
         )
     }
@@ -5831,6 +6038,189 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `xinzhan recovers allied physical damage source but not strategy damage`() {
+        val ownerHero = hero(100275, 100, listOf(200275), position = 2).copy(
+            skillLevels = listOf(10),
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(
+                listOf(
+                    ownerHero,
+                    hero(100001, 90, position = 1),
+                ),
+            ),
+            defender = BattleTeam(
+                listOf(hero(200001, 10, position = 2)),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.heroId == ownerHero.id }
+        val ally = engine.state.view.heroes().single { it.heroId == BattleHeroId(100001) }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        val preparation = engine.prepareBattle(context)
+
+        val lifeStealEffects = engine.state.effectStore.effectsFor(ally).filter {
+            it.source == owner &&
+                it.rootSkillId == 200275 &&
+                it.skillId == 212275 &&
+                it.effectId == 542
+        }
+        assertEquals(
+            1,
+            lifeStealEffects.size,
+            "preparation=$preparation effects=${engine.state.effectStore.effectsFor(ally)}",
+        )
+        val lifeSteal = lifeStealEffects.single()
+        assertEquals(35, lifeSteal.effectiveStrength)
+        engine.applyNormalDamage(
+            round = 1,
+            source = enemy,
+            target = ally,
+            amount = 500,
+            context = context.copy(
+                round = 1,
+                source = enemy,
+                trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+            ),
+        )
+
+        val physicalEvents = engine.applyNormalDamage(
+            round = 1,
+            source = ally,
+            target = enemy,
+            amount = 400,
+            context = context.copy(
+                round = 1,
+                source = ally,
+                trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+            ),
+        )
+
+        val physicalRecoveries = physicalEvents.filterIsInstance<BattleEvent.Recovery>()
+            .filter { it.skillId == 212275 }
+        assertEquals(
+            listOf(
+                BattleEvent.Recovery(
+                    round = 1,
+                    source = owner,
+                    target = ally,
+                    amount = 140,
+                    targetTroopsAfter = 9_640,
+                    skillId = 212275,
+                ),
+            ),
+            physicalRecoveries,
+            "physicalEvents=$physicalEvents",
+        )
+        val strategyEvents = engine.applyChanges(
+            listOf(
+                TroopDamageChange(
+                    source = ally,
+                    target = enemy,
+                    amount = 100,
+                    troopsAfter = 9_500,
+                    school = DamageSchool.STRATEGY,
+                    origin = DamageOrigin.ACTIVE,
+                    tags = emptySet(),
+                    skillId = 900001,
+                    effectId = 302,
+                ),
+            ),
+            context.copy(
+                round = 1,
+                source = ally,
+                trigger = BattleTrigger.DAMAGE_BEFORE,
+            ),
+        )
+
+        assertTrue(
+            strategyEvents.none {
+                it is BattleEvent.Recovery && it.skillId == 212275
+            },
+            "strategyEvents=$strategyEvents",
+        )
+    }
+
+    @Test
+    fun `generic attack recovery effect consumes its registered rate`() {
+        val ownerHero = hero(100009, 100, listOf(200009), position = 2).copy(
+            skillLevels = listOf(10),
+        )
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(ownerHero)),
+            defender = BattleTeam(listOf(hero(200001, 10, position = 2))),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+
+        val preparation = engine.prepareBattle(context)
+        val lifeStealEffects = engine.state.effectStore.effectsFor(owner).filter {
+            it.rootSkillId == 200009 &&
+                it.skillId == 200009 &&
+                it.effectId == 542
+        }
+        assertEquals(
+            1,
+            lifeStealEffects.size,
+            "preparation=$preparation effects=${engine.state.effectStore.effectsFor(owner)}",
+        )
+        val lifeSteal = lifeStealEffects.single()
+        assertEquals(50, lifeSteal.effectiveStrength)
+        engine.applyNormalDamage(
+            round = 1,
+            source = enemy,
+            target = owner,
+            amount = 500,
+            context = context.copy(
+                round = 1,
+                source = enemy,
+                trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+            ),
+        )
+
+        val events = engine.applyNormalDamage(
+            round = 1,
+            source = owner,
+            target = enemy,
+            amount = 400,
+            context = context.copy(
+                round = 1,
+                trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+            ),
+        )
+
+        val recoveries = events.filterIsInstance<BattleEvent.Recovery>()
+            .filter { it.skillId == 200009 }
+        assertEquals(listOf(200), recoveries.map(BattleEvent.Recovery::amount), "events=$events")
+    }
+
+    @Test
     fun `shoujing triggers its configured children once at rounds six and eight`() {
         val request = BattleRequest(
             attacker = BattleTeam(
@@ -7344,6 +7734,84 @@ class CompleteSkillEngineIntegrationTest {
         engine.finishRound(3)
         assertEquals(0, dealt(DamageSchool.PHYSICAL))
         assertEquals(0, dealt(DamageSchool.STRATEGY))
+    }
+
+    @Test
+    fun `liangyuan recovers before owner actions in configured even rounds`() {
+        val ownerHero = hero(100001, 200, listOf(296322), position = 0)
+            .copy(skillLevels = listOf(10))
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(ownerHero)),
+            defender = BattleTeam(listOf(hero(200001, 100, position = 0))),
+            maxRounds = 8,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val owner = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val enemy = engine.state.view.heroes().single { it.side == Side.DEFENDER }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 0,
+            source = owner,
+            rootSkillId = 0,
+            currentSkillId = 0,
+            trigger = BattleTrigger.BATTLE_PASSIVE,
+            battleView = engine.state.view,
+        )
+
+        val preparation = engine.prepareBattle(context)
+        engine.applyNormalDamage(
+            round = 1,
+            source = enemy,
+            target = owner,
+            amount = 2_000,
+            context = context.copy(
+                round = 1,
+                source = enemy,
+                trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+            ),
+        )
+        val actionEvents = (1..8).flatMap { round ->
+            val actionContext = context.copy(
+                round = round,
+                trigger = BattleTrigger.ACTION_BEFORE,
+            )
+            engine.trigger(BattleTrigger.ACTION_BEFORE, actionContext) +
+                engine.trigger(BattleTrigger.ACTION_BEFORE, actionContext)
+        }
+
+        assertTrue(
+            preparation.none {
+                it is BattleEvent.SkillTriggered && it.skillId == 297322 ||
+                    it is BattleEvent.Recovery && it.skillId == 297322
+            },
+            "preparation=$preparation actionEvents=$actionEvents",
+        )
+        val triggers = actionEvents.filterIsInstance<BattleEvent.SkillTriggered>()
+            .filter { it.skillId == 297322 }
+        assertEquals(
+            listOf(2, 4, 6, 8),
+            triggers.map(BattleEvent.SkillTriggered::round),
+            "preparation=$preparation actionEvents=$actionEvents",
+        )
+        triggers.forEach { event ->
+            assertEquals(owner, event.source)
+            assertEquals(296322, event.rootSkillId)
+            assertEquals(BattleTrigger.BATTLE_PASSIVE, event.trigger)
+        }
+        val recoveries = actionEvents.filterIsInstance<BattleEvent.Recovery>()
+            .filter { it.skillId == 297322 }
+        assertEquals(
+            listOf(2, 4, 6, 8),
+            recoveries.map(BattleEvent.Recovery::round),
+            "actionEvents=$actionEvents",
+        )
+        recoveries.forEach { event ->
+            assertEquals(owner, event.source)
+            assertEquals(owner, event.target)
+            assertTrue(event.amount > 0, "event=$event")
+        }
     }
 
     @Test

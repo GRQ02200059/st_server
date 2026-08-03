@@ -101,6 +101,11 @@ sealed interface BattleModifier {
         val skillIds: Set<Int> = emptySet(),
         val targetCondition: DamageTargetCondition? = null,
     ) : BattleModifier
+    data class TargetStatusCountDamageDealtPercent(
+        val percentPerStatus: Int,
+        val countedStatuses: Set<BattleStatus>,
+        val maxStatuses: Int,
+    ) : BattleModifier
     data class DamageTakenPercent(
         val school: DamageSchool? = null,
         val origin: DamageOrigin? = null,
@@ -143,6 +148,12 @@ sealed interface BattleModifier {
         val skillKind: SkillKind? = null,
         val skillIds: Set<Int> = emptySet(),
     ) : BattleModifier
+    data class RoundMainSkillProbabilityPercent(
+        val percent: Int,
+        val skillId: Int,
+        val rounds: Set<Int>,
+        val requiredEffectId: Int,
+    ) : BattleModifier
     data class EffectProbabilityPercent(
         val detailId: Int,
         val percent: Int,
@@ -151,6 +162,10 @@ sealed interface BattleModifier {
     data class DamageRateMaximumPercent(val percent: Int) : BattleModifier
     data class RecoveryDealtPercent(val percent: Int) : BattleModifier
     data class RecoveryTakenPercent(val percent: Int) : BattleModifier
+    data class MainSkillRecoveryNextDamageTakenPercent(
+        val percent: Int,
+        val skillId: Int,
+    ) : BattleModifier
     data class DefenseIgnorePercent(
         val percent: Int,
         val stat: BattleStat = BattleStat.DEFENSE,

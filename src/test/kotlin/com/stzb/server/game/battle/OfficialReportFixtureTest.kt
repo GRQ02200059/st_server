@@ -207,4 +207,45 @@ class OfficialReportFixtureTest {
             ),
         )
     }
+
+    @Test
+    fun `target replay separates adjacent invocations that hit the same target`() {
+        val config = BattleConfigRepository.loadDefault()
+        val graph = SkillRuleCatalog.build(
+            SkillScope(setOf(200987), emptySet()),
+            config,
+        )
+        val strategyRule = graph.details.single { it.detailId == 21198723 }
+        val source = BattleHeroRef(Side.DEFENDER, 0, BattleHeroId(6))
+        val base = BattleHeroRef(Side.ATTACKER, 0, BattleHeroId(1))
+        val front = BattleHeroRef(Side.ATTACKER, 2, BattleHeroId(3))
+        val context = SkillBattleContext(
+            request = BattleRequest(BattleTeam(emptyList()), BattleTeam(emptyList())),
+            runtime = SkillRuntimeState(),
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 200987,
+            currentSkillId = 211987,
+            trigger = BattleTrigger.NORMAL_ATTACK_AFTER,
+        )
+        val decisions = OfficialReportFixture.targetDecisions(
+            OfficialReportFixture.parseText(
+                "1o6,211987,1,834,6523,11#" +
+                    "1o6,211987,1,639,5884,11#" +
+                    "1o6,211987,3,500,7535,11",
+            ),
+        )
+        fun select() = decisions.select(
+            BattleTargetDecisionRequest(
+                strategyRule,
+                context,
+                listOf(base, front),
+                limit = 2,
+            ),
+        )
+
+        assertEquals(listOf(base), select())
+        assertEquals(listOf(base, front), select())
+    }
 }

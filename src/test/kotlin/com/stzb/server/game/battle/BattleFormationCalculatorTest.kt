@@ -406,6 +406,204 @@ class BattleFormationCalculatorTest {
     }
 
     @Test
+    fun `jixu feature damage bonus follows target status count capped at five`() {
+        val baseline = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 10_000,
+                ),
+            ),
+        ).heroes.single()
+        val equipped = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 1,
+                    troops = 10_000,
+                    equipmentFeatureSkillIds = listOf(450019),
+                    equipmentFeatureSkillLevels = listOf(9),
+                ),
+            ),
+        ).heroes.single()
+        val twoRelevantStatuses = baseline.copy(
+            activeStatuses = setOf(
+                BattleStatus.PANIC,
+                BattleStatus.CONFUSION,
+                BattleStatus.ATTACK_DEBUFF,
+            ),
+        )
+        val sixRelevantStatuses = baseline.copy(
+            activeStatuses = setOf(
+                BattleStatus.PANIC,
+                BattleStatus.SHAKE,
+                BattleStatus.BURN,
+                BattleStatus.HEX,
+                BattleStatus.CONFUSION,
+                BattleStatus.HESITATION,
+            ),
+        )
+
+        fun withExpectedBonus(percent: Int) = baseline.copy(
+            modifiers = baseline.modifiers +
+                BattleModifier.DamageDealtPercent(percent = percent),
+        )
+
+        assertEquals(
+            BattleDamageCalculator.physical(
+                source = withExpectedBonus(18),
+                target = twoRelevantStatuses,
+            ),
+            BattleDamageCalculator.physical(
+                source = equipped,
+                target = twoRelevantStatuses,
+            ),
+        )
+        assertEquals(
+            BattleDamageCalculator.strategy(
+                source = withExpectedBonus(18),
+                target = twoRelevantStatuses,
+                ratePercent = 100,
+            ),
+            BattleDamageCalculator.strategy(
+                source = equipped,
+                target = twoRelevantStatuses,
+                ratePercent = 100,
+            ),
+        )
+        assertEquals(
+            BattleDamageCalculator.physical(
+                source = withExpectedBonus(45),
+                target = sixRelevantStatuses,
+            ),
+            BattleDamageCalculator.physical(
+                source = equipped,
+                target = sixRelevantStatuses,
+            ),
+        )
+        assertEquals(
+            BattleDamageCalculator.strategy(
+                source = withExpectedBonus(45),
+                target = sixRelevantStatuses,
+                ratePercent = 100,
+            ),
+            BattleDamageCalculator.strategy(
+                source = equipped,
+                target = sixRelevantStatuses,
+                ratePercent = 100,
+            ),
+        )
+    }
+
+    @Test
+    fun `pozhen feature raises only damage against nearest living enemy`() {
+        val baseline = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 0,
+                    troops = 10_000,
+                ),
+            ),
+        ).heroes.single()
+        val equipped = calculator.calculate(
+            listOf(
+                BattleHeroSpec(
+                    heroId = 100648,
+                    position = 0,
+                    troops = 10_000,
+                    equipmentFeatureSkillIds = listOf(450041),
+                    equipmentFeatureSkillLevels = listOf(12),
+                ),
+            ),
+        ).heroes.single()
+        val near = baseline.copy(
+            id = BattleHeroId(200001),
+            position = 2,
+        )
+        val far = baseline.copy(
+            id = BattleHeroId(200002),
+            position = 0,
+        )
+        val enemies = listOf(far, near)
+        val resolver = BattleActionResolver()
+        val expectedSource = baseline.copy(
+            modifiers = baseline.modifiers +
+                BattleModifier.DamageDealtPercent(percent = 12),
+        )
+
+        assertEquals(
+            resolver.normalAttackDamage(
+                source = expectedSource,
+                target = near,
+                random = FixedBattleRandom(0),
+                enemies = enemies,
+            ),
+            resolver.normalAttackDamage(
+                source = equipped,
+                target = near,
+                random = FixedBattleRandom(0),
+                enemies = enemies,
+            ),
+        )
+        assertEquals(
+            resolver.normalAttackDamage(
+                source = baseline,
+                target = far,
+                random = FixedBattleRandom(0),
+                enemies = enemies,
+            ),
+            resolver.normalAttackDamage(
+                source = equipped,
+                target = far,
+                random = FixedBattleRandom(0),
+                enemies = enemies,
+            ),
+        )
+        assertEquals(
+            BattleDamageCalculator.strategy(
+                source = expectedSource,
+                target = near,
+                ratePercent = 100,
+                targetConditions = BattleDamageCalculator.targetConditions(
+                    near,
+                    enemies,
+                ),
+            ),
+            BattleDamageCalculator.strategy(
+                source = equipped,
+                target = near,
+                ratePercent = 100,
+                targetConditions = BattleDamageCalculator.targetConditions(
+                    near,
+                    enemies,
+                ),
+            ),
+        )
+        assertEquals(
+            BattleDamageCalculator.strategy(
+                source = baseline,
+                target = far,
+                ratePercent = 100,
+                targetConditions = BattleDamageCalculator.targetConditions(
+                    far,
+                    enemies,
+                ),
+            ),
+            BattleDamageCalculator.strategy(
+                source = equipped,
+                target = far,
+                ratePercent = 100,
+                targetConditions = BattleDamageCalculator.targetConditions(
+                    far,
+                    enemies,
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `buqu feature preserves its per hurt damage reduction level`() {
         val hero = calculator.calculate(
             listOf(

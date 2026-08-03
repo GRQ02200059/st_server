@@ -47,6 +47,7 @@ internal object ClientBattleTextReplayProtocol {
     const val HEX_ONGOING_DAMAGE = 243
     const val RECOVERY = 63
     const val ONGOING_RECOVERY = 64
+    const val ATTACK_DAMAGE_RECOVERY = 202
     const val STATUS = 102
     const val STATUS_REMOVED = 102
     const val DAMAGE_EVADED = 110

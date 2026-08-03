@@ -596,6 +596,47 @@ class CoreEffectHandlersTest {
     }
 
     @Test
+    fun `recovery uses live source troops instead of entry troops`() {
+        val entrySource = hero(id = 1, position = 2, troops = 9_300)
+        val liveSource = entrySource.copy(troops = 7_313)
+        val target = hero(id = 2, position = 2)
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(entrySource)),
+            defender = BattleTeam(listOf(target)),
+        )
+        val context = SkillBattleContext(
+            request = request,
+            runtime = SkillRuntimeState(),
+            random = FixedBattleRandom(0),
+            round = 6,
+            source = sourceRef,
+            rootSkillId = 1,
+            currentSkillId = 1,
+            trigger = BattleTrigger.RECOVERY_AFTER,
+            battleView = TestBattleView(
+                states = mapOf(
+                    sourceRef to liveSource.toState(woundedTroops = 0),
+                    targetRef to target.toState(woundedTroops = 0),
+                ),
+                entryStates = mapOf(
+                    sourceRef to entrySource.toState(woundedTroops = 0),
+                    targetRef to target.toState(woundedTroops = 0),
+                ),
+            ),
+        )
+
+        val amount = DefaultBattleValueCalculator().recovery(
+            EffectInvocation(
+                rule = rule(401, constant = 60),
+                context = context,
+                callPath = emptyList(),
+            ),
+        )
+
+        assertEquals(121, amount)
+    }
+
+    @Test
     fun `rest schedules recovery while unrecoverable effect blocks both recovery families`() {
         val effectStore = BattleEffectStore()
         val registry = registry(effectStore)
@@ -1561,6 +1602,7 @@ class CoreEffectHandlersTest {
 
     private inner class TestBattleView(
         private val states: Map<BattleHeroRef, SkillBattleHeroState>,
+        private val entryStates: Map<BattleHeroRef, SkillBattleHeroState> = states,
     ) : SkillBattleView {
         override val capabilities = setOf(
             SkillBattleViewCapability.HERO_ROSTER,
@@ -1569,7 +1611,7 @@ class CoreEffectHandlersTest {
         )
 
         override fun heroes() = states.keys.toList()
-        override fun entryState(ref: BattleHeroRef) = states[ref]
+        override fun entryState(ref: BattleHeroRef) = entryStates[ref]
         override fun state(ref: BattleHeroRef) = states[ref]
         override fun metadata(ref: BattleHeroRef): SkillBattleHeroMetadata? = null
         override fun accumulatedDamageDealt(ref: BattleHeroRef) = 0
