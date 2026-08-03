@@ -1,5 +1,6 @@
 import copy
 from collections import Counter
+import hashlib
 import json
 import sys
 import tempfile
@@ -330,6 +331,83 @@ class ProbePlanTest(unittest.TestCase):
                 item["cmd"]
                 for item in build_auto_probe_batch(rows)
             ],
+        )
+
+    def test_real_unqualified_manifest_is_complete_and_exports_new_safe_reads(self):
+        root = Path(__file__).resolve().parent.parent
+        current = json.loads(
+            (
+                root
+                / "src/main/resources/protocol/"
+                "client-9.2.4-command-inventory.json"
+            ).read_text(encoding="utf-8")
+        )
+        manifest = json.loads(
+            (
+                root
+                / "tools/protocol/"
+                "client-9.2.4-unqualified-command-probes.json"
+            ).read_text(encoding="utf-8")
+        )
+
+        rows = validate_explicit_probe_plan(manifest, current)
+        batch = build_auto_probe_batch(rows)
+
+        self.assertEqual(18, len(rows))
+        self.assertEqual(
+            [
+                671,
+                885,
+                2_628,
+                3_611,
+                3_674,
+                3_801,
+                3_864,
+                3_990,
+                4_000,
+                4_091,
+                4_203,
+                4_204,
+                5_140,
+                6_130,
+                6_156,
+                6_220,
+                6_260,
+                6_291,
+            ],
+            [row["id"] for row in rows],
+        )
+        self.assertEqual(
+            {
+                "MUTATING": 6,
+                "READ_ONLY_CONTEXTUAL": 3,
+                "READ_ONLY_STATIC": 9,
+            },
+            dict(
+                sorted(
+                    Counter(
+                        row["classification"]
+                        for row in rows
+                    ).items()
+                )
+            ),
+        )
+        self.assertEqual(
+            [671, 2_628, 3_611, 3_801, 3_864, 6_130, 6_220, 6_291],
+            [item["cmd"] for item in batch],
+        )
+        self.assertEqual(
+            "b6ee66e31ac96374bf744c54b1a73f2171240c8e6614f517498b69825dcb6ef5",
+            hashlib.sha256(
+                (
+                    json.dumps(
+                        batch,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    + "\n"
+                ).encode("utf-8")
+            ).hexdigest(),
         )
 
     def test_validate_accepts_exact_delta_in_manifest_order(self):
