@@ -92,6 +92,86 @@ class ClientProtocolInventoryTests(unittest.TestCase):
             found["unresolvedRequestSources"],
         )
 
+    def test_scan_includes_game_unqualified_calls_and_excludes_noise(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            game_source = root / "Game.UI" / "Panel.cs"
+            game_source.parent.mkdir()
+            game_source.write_text(
+                """class Panel {
+    void Go() {
+        Send(51, null);
+        Send<List<List<int>>>(52, null);
+        AddObserver(53, OnPacket);
+        Send(NetCommandDef.SYMBOLIC_REQUEST, null);
+        AddObserver(NetCommandDef.SYMBOLIC_PUSH, OnPacket);
+        Send(dynamicCmd, null);
+    }
+    protected void Send(int cmd, object data) {}
+}
+""",
+                encoding="utf-8",
+            )
+            plain_game_source = root / "Game" / "Plain.cs"
+            plain_game_source.parent.mkdir()
+            plain_game_source.write_text(
+                "class Plain {\n"
+                "    void Go() {\n"
+                "        Send(56, null);\n"
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            noise_source = root / "Safaia" / "Noise.cs"
+            noise_source.parent.mkdir()
+            noise_source.write_text(
+                "class Noise {\n"
+                "    void Go() {\n"
+                "        Send(51, null);\n"
+                "        AddObserver(53, OnPacket);\n"
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+
+            found = scan_client_sources(
+                root,
+                {
+                    51: ["NUMERIC_REQUEST"],
+                    52: ["NESTED_REQUEST"],
+                    53: ["NUMERIC_PUSH"],
+                    54: ["SYMBOLIC_REQUEST"],
+                    55: ["SYMBOLIC_PUSH"],
+                    56: ["PLAIN_GAME_REQUEST"],
+                },
+            )
+
+        self.assertEqual(
+            ["Game.UI/Panel.cs:3"],
+            found[51]["requestSources"],
+        )
+        self.assertEqual(
+            ["Game.UI/Panel.cs:4"],
+            found[52]["requestSources"],
+        )
+        self.assertEqual(
+            ["Game.UI/Panel.cs:5"],
+            found[53]["receiveSources"],
+        )
+        self.assertEqual(
+            ["Game.UI/Panel.cs:6"],
+            found[54]["requestSources"],
+        )
+        self.assertEqual(
+            ["Game.UI/Panel.cs:7"],
+            found[55]["receiveSources"],
+        )
+        self.assertEqual(
+            ["Game/Plain.cs:3"],
+            found[56]["requestSources"],
+        )
+        self.assertEqual([], found["unresolvedRequestSources"])
+
     def test_inventory_contains_constants_sources_and_capture_counts_in_id_order(self):
         discovered = {
             42: {"requestSources": ["A.cs:1"], "receiveSources": []},

@@ -22,6 +22,16 @@ OBSERVER_RE = re.compile(
     r"\.AddObserver\s*\(\s*(?:NetCommandDef\.)?"
     r"([A-Za-z_][A-Za-z0-9_]*|\d+)\b",
 )
+UNQUALIFIED_SEND_RE = re.compile(
+    r"^[ \t]*Send(?:<[^\r\n]+?>)?[ \t]*\([ \t]*"
+    r"(?:NetCommandDef\.)?([A-Za-z_][A-Za-z0-9_]*|\d+)\b",
+    re.MULTILINE,
+)
+UNQUALIFIED_OBSERVER_RE = re.compile(
+    r"^[ \t]*AddObserver[ \t]*\([ \t]*"
+    r"(?:NetCommandDef\.)?([A-Za-z_][A-Za-z0-9_]*|\d+)\b",
+    re.MULTILINE,
+)
 
 
 def parse_command_constants(text):
@@ -52,6 +62,11 @@ def _resolve_command(token, names_by_id):
     return None
 
 
+def _is_game_source(root, path):
+    top = path.relative_to(root).parts[0]
+    return top == "Game" or top.startswith("Game.")
+
+
 def scan_client_sources(root, names_by_id):
     """Discover literal/symbolic request and receive command sites."""
     root = Path(root)
@@ -73,6 +88,18 @@ def scan_client_sources(root, names_by_id):
             command_id = _resolve_command(match.group(1), names_by_id)
             if command_id is not None:
                 receives[command_id].add(_source_ref(root, path, text, match.start()))
+        if _is_game_source(root, path):
+            for pattern, target in (
+                (UNQUALIFIED_SEND_RE, requests),
+                (UNQUALIFIED_OBSERVER_RE, receives),
+            ):
+                for match in pattern.finditer(text):
+                    command_id = _resolve_command(match.group(1), names_by_id)
+                    if command_id is None:
+                        continue
+                    target[command_id].add(
+                        _source_ref(root, path, text, match.start()),
+                    )
 
     discovered = {
         command_id: {
