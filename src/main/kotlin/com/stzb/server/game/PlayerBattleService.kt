@@ -129,24 +129,7 @@ class PlayerBattleService(
             )
         }
         var attacker = builder.build(
-            participants.map { participant ->
-                BattleHeroSpec(
-                    heroId = participant.heroId,
-                    position = participant.position,
-                    troops = participant.troops.coerceAtMost(PlayerHero.MAX_TROOPS),
-                    level = participant.level,
-                    extraSkillIds = participant.skillIds.drop(1).filter { it > 0 },
-                    skillLevels = participant.skillIds.filter { it > 0 }
-                        .map { PlayerHero.MAX_SKILL_LEVEL },
-                    heroType = participant.heroType,
-                    surfaceSkillId = participant.activeFeatureId,
-                    attributePoints = participant.attributePoints,
-                    advanceLevel = participant.advanceNum,
-                    equipmentIds = participant.equipmentIds,
-                    equipmentFeatureSkillIds = participant.equipmentFeatureSkillIds,
-                    equipmentFeatureSkillLevels = participant.equipmentFeatureSkillLevels,
-                )
-            },
+            participants.map(BattleSpecFactory::fromMarchHero),
         )
         var result: BattleResult? = null
         var report = null as com.stzb.server.game.battle.ClientBattleReport?
@@ -170,21 +153,8 @@ class PlayerBattleService(
                         .firstOrNull { it.position == participant.position }
                         ?.troops
                         ?: 0
-                    BattleHeroSpec(
-                        heroId = participant.heroId,
-                        position = participant.position,
-                        troops = remainingTroops,
-                        level = participant.level,
-                        extraSkillIds = participant.skillIds.drop(1).filter { it > 0 },
-                        skillLevels = participant.skillIds.filter { it > 0 }
-                            .map { PlayerHero.MAX_SKILL_LEVEL },
-                        heroType = participant.heroType,
-                        surfaceSkillId = participant.activeFeatureId,
-                        attributePoints = participant.attributePoints,
-                        advanceLevel = participant.advanceNum,
-                        equipmentIds = participant.equipmentIds,
-                        equipmentFeatureSkillIds = participant.equipmentFeatureSkillIds,
-                        equipmentFeatureSkillLevels = participant.equipmentFeatureSkillLevels,
+                    BattleSpecFactory.fromMarchHero(
+                        participant.copy(troops = remainingTroops),
                     )
                 },
             )
