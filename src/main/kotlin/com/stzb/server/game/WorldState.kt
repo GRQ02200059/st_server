@@ -57,6 +57,14 @@ data class LandClaim(
     val claimedAtSec: Int,
 )
 
+data class GarrisonSnapshot(
+    val wid: Int,
+    val ownerUserId: Int,
+    val armyId: Int,
+    val specs: List<com.stzb.server.game.battle.BattleHeroSpec>,
+    val residedAtSec: Int,
+)
+
 data class WorldStateSnapshot(
     val version: Int = 1,
     val cities: List<WorldCity> = emptyList(),
@@ -159,6 +167,7 @@ class WorldService(
     private val lock = ReentrantReadWriteLock()
     private val citiesByUser = LinkedHashMap<Int, WorldCity>()
     private val landsByWid = LinkedHashMap<Int, LandClaim>()
+    private val garrisonsByWid = LinkedHashMap<Int, GarrisonSnapshot>()
 
     init {
         val snapshot = repository.load()
@@ -232,6 +241,18 @@ class WorldService(
 
     fun ownerOf(wid: Int): LandClaim? = lock.read { landsByWid[wid] }
 
+    fun putGarrison(snapshot: GarrisonSnapshot): Unit = lock.write {
+        garrisonsByWid[snapshot.wid] = snapshot
+    }
+
+    fun garrisonAt(wid: Int): GarrisonSnapshot? = lock.read { garrisonsByWid[wid] }
+
+    fun removeGarrison(wid: Int): GarrisonSnapshot? = lock.write {
+        garrisonsByWid.remove(wid)
+    }
+
+    fun garrisons(): List<GarrisonSnapshot> = lock.read { garrisonsByWid.values.toList() }
+
     private fun allocateCityWid(): Int =
         GameHome.spawnCandidates()
             .firstOrNull(::isCityFootprintAvailable)
@@ -290,6 +311,14 @@ object WorldStateRepository {
     fun projection(): WorldProjection = service.projection()
 
     fun ownerOf(wid: Int): LandClaim? = service.ownerOf(wid)
+
+    fun putGarrison(snapshot: GarrisonSnapshot): Unit = service.putGarrison(snapshot)
+
+    fun garrisonAt(wid: Int): GarrisonSnapshot? = service.garrisonAt(wid)
+
+    fun removeGarrison(wid: Int): GarrisonSnapshot? = service.removeGarrison(wid)
+
+    fun garrisons(): List<GarrisonSnapshot> = service.garrisons()
 
     private fun defaultService(): WorldService {
         val root = Path.of(System.getenv("STZB_DATA_DIR") ?: "data")
