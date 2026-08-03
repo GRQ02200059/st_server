@@ -11,7 +11,7 @@ object CommandCoverageReport {
             }
 
         return buildString {
-            appendLine("# 9.2.2 Command Coverage")
+            appendLine("# ${registry.clientVersion} Command Coverage")
             appendLine()
             appendLine(
                 "| cmd | names | direction | domain | status | request sources | receive sources | captures send/recv |",

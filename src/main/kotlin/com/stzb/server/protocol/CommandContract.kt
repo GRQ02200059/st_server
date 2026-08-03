@@ -73,12 +73,13 @@ class CommandContractRegistry(
     inventory: ClientCommandInventory,
     overrides: Collection<CommandContract>,
 ) {
+    val clientVersion: String = inventory.clientVersion
     private val byId: Map<Int, CommandContract>
     private val inventoryById: Map<Int, ClientCommandInventoryEntry>
 
     init {
-        require(inventory.clientVersion == CLIENT_VERSION) {
-            "unsupported client inventory: ${inventory.clientVersion}"
+        require(clientVersion in SUPPORTED_CLIENT_VERSIONS) {
+            "unsupported client inventory: $clientVersion"
         }
         require(inventory.commands.map(ClientCommandInventoryEntry::id).distinct().size == inventory.commands.size) {
             "duplicate command ids in client inventory"
@@ -146,18 +147,31 @@ class CommandContractRegistry(
     }
 
     companion object {
-        private const val CLIENT_VERSION = "9.2.2"
-        private const val INVENTORY_RESOURCE =
-            "protocol/client-9.2.2-command-inventory.json"
+        const val ACTIVE_CLIENT_VERSION = "9.2.4"
+        private val SUPPORTED_CLIENT_VERSIONS = setOf("9.2.2", "9.2.4")
         private val mapper = jacksonObjectMapper()
 
-        fun loadFromClasspath(): ClientCommandInventory =
-            requireNotNull(
+        fun loadFromClasspath(
+            clientVersion: String = ACTIVE_CLIENT_VERSION,
+        ): ClientCommandInventory {
+            require(clientVersion in SUPPORTED_CLIENT_VERSIONS) {
+                "unsupported client inventory: $clientVersion"
+            }
+            val resource = "protocol/client-$clientVersion-command-inventory.json"
+            val inventory = requireNotNull(
                 CommandContractRegistry::class.java.classLoader
-                    .getResourceAsStream(INVENTORY_RESOURCE),
+                    .getResourceAsStream(resource),
             ) {
-                "missing protocol inventory resource: $INVENTORY_RESOURCE"
-            }.use(mapper::readValue)
+                "missing protocol inventory resource: $resource"
+            }.use { stream ->
+                mapper.readValue<ClientCommandInventory>(stream)
+            }
+            require(inventory.clientVersion == clientVersion) {
+                "inventory version mismatch: requested=$clientVersion " +
+                    "actual=${inventory.clientVersion}"
+            }
+            return inventory
+        }
     }
 }
 

@@ -3,7 +3,9 @@ package com.stzb.server.protocol
 object CommandContractCatalog {
     val registry: CommandContractRegistry by lazy {
         CommandContractRegistry(
-            inventory = CommandContractRegistry.loadFromClasspath(),
+            inventory = CommandContractRegistry.loadFromClasspath(
+                CommandContractRegistry.ACTIVE_CLIENT_VERSION,
+            ),
             overrides = mergedOverrides(),
         )
     }

@@ -981,11 +981,11 @@ class CommandContractRegistryTest {
     }
 
     @Test
-    fun `world boss top three rank exposes an anonymous handler owned activity contract`() {
+    fun `world boss top three rank exposes a readable handler owned activity contract`() {
         assertEquals(8_009, Cmd.WORLD_BOSS_TOP_THREE_RANK)
 
         val contract = CommandContractCatalog.registry.contract(Cmd.WORLD_BOSS_TOP_THREE_RANK)
-        assertEquals(emptyList(), contract?.names)
+        assertEquals(listOf("WORLD_BOSS_RANKING_LIST"), contract?.names)
         assertEquals(CommandDirection.CLIENT_REQUEST, contract?.direction)
         assertEquals(CommandDomain.ACTIVITY, contract?.domain)
         assertEquals(CommandStatus.PROVISIONAL, contract?.status)
@@ -1037,16 +1037,53 @@ class CommandContractRegistryTest {
     }
 
     @Test
-    fun `production registry contains every generated 9 2 2 inventory command`() {
+    fun `production registry contains every generated 9 2 4 inventory command`() {
         val registry = CommandContractCatalog.registry
         val all = registry.all()
 
-        assertTrue(all.size >= 2_591)
+        assertEquals(2_655, all.size)
         assertEquals(all.map(CommandContract::id).sorted(), all.map(CommandContract::id))
         assertNotNull(registry.contract(Cmd.GET_WORLD_SCENCE_INFO))
         assertNotNull(registry.contract(Cmd.SEND_WORLD_SCENCE_FULL_INFO))
         assertNotNull(registry.contract(Cmd.SYS_NOTIFY_DB_UPDATE))
         assertNotNull(registry.contract(2_100))
+    }
+
+    @Test
+    fun `versioned inventories load explicitly and production activates 9 2 4`() {
+        val legacy = CommandContractRegistry.loadFromClasspath("9.2.2")
+        val current = CommandContractRegistry.loadFromClasspath("9.2.4")
+
+        assertEquals("9.2.2", legacy.clientVersion)
+        assertEquals(2_594, legacy.commands.size)
+        assertEquals("9.2.4", current.clientVersion)
+        assertEquals(2_655, current.commands.size)
+        assertEquals("9.2.4", CommandContractCatalog.registry.clientVersion)
+        assertEquals(2_655, CommandContractCatalog.registry.all().size)
+        assertFailsWith<IllegalArgumentException> {
+            CommandContractRegistry.loadFromClasspath("9.9.9")
+        }
+    }
+
+    @Test
+    fun `active inventory exposes representative 9 2 4 commands`() {
+        val registry = CommandContractCatalog.registry
+        val expected = linkedMapOf(
+            2_630 to ("NZZZ_SILK_BAG_SELECT" to CommandDirection.CLIENT_REQUEST),
+            3_720 to ("QUERY_UNION_WEIXIN_GROUP_INFO" to CommandDirection.CLIENT_REQUEST),
+            4_389 to ("IO_MOD_CLAIM_NEWBIE_REWARD" to CommandDirection.SERVER_PUSH),
+            8_009 to ("WORLD_BOSS_RANKING_LIST" to CommandDirection.CLIENT_REQUEST),
+            8_041 to ("INNER_CITY_BUILD_SPEEDUP" to CommandDirection.CLIENT_REQUEST),
+        )
+
+        expected.forEach { (id, expectedValue) ->
+            val contract = assertNotNull(registry.contract(id), "cmd=$id")
+            assertEquals(listOf(expectedValue.first), contract.names, "cmd=$id")
+            assertEquals(expectedValue.second, contract.direction, "cmd=$id")
+            if (id != 8_009) {
+                assertEquals(CommandStatus.UNIMPLEMENTED, contract.status, "cmd=$id")
+            }
+        }
     }
 
     @Test
@@ -1101,7 +1138,7 @@ class CommandContractRegistryTest {
     @Test
     fun `exact contracts require ownership shape projection and evidence`() {
         val inventory = ClientCommandInventory(
-            clientVersion = "9.2.2",
+            clientVersion = "9.2.4",
             commands = listOf(ClientCommandInventoryEntry(id = 1)),
         )
 
