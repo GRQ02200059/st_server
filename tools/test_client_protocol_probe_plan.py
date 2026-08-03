@@ -12,6 +12,7 @@ from tools.client_protocol_probe_plan import (
     ProbePlanError,
     build_auto_probe_batch,
     main,
+    validate_explicit_probe_plan,
     validate_probe_plan,
 )
 
@@ -54,6 +55,59 @@ def row(
 
 
 class ProbePlanTest(unittest.TestCase):
+    def test_cli_exports_explicit_validated_batch(self):
+        with tempfile.TemporaryDirectory() as raw_root:
+            root = Path(raw_root)
+            current_path = root / "current.json"
+            manifest_path = root / "manifest.json"
+            output_path = root / "batch.json"
+            current_path.write_text(
+                json.dumps(
+                    inventory(
+                        "9.2.4",
+                        [(1, "OLD"), (42, "QUERY")],
+                    )
+                ),
+                encoding="utf-8",
+            )
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "clientVersion": "9.2.4",
+                        "scope": "EXPLICIT",
+                        "commands": [
+                            row(
+                                42,
+                                "QUERY",
+                                "READ_ONLY_STATIC",
+                                auto_probe=True,
+                                probe_payload=None,
+                            ),
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            exit_code = main(
+                [
+                    "--current-inventory",
+                    str(current_path),
+                    "--manifest",
+                    str(manifest_path),
+                    "--output",
+                    str(output_path),
+                ]
+            )
+
+            output_text = output_path.read_text(encoding="utf-8")
+            self.assertEqual(0, exit_code)
+            self.assertEqual(
+                [{"cmd": 42, "payload": None}],
+                json.loads(output_text),
+            )
+            self.assertTrue(output_text.endswith("\n"))
+
     def test_cli_exports_validated_batch(self):
         with tempfile.TemporaryDirectory() as raw_root:
             root = Path(raw_root)
@@ -113,6 +167,117 @@ class ProbePlanTest(unittest.TestCase):
                 json.loads(output_text),
             )
             self.assertTrue(output_text.endswith("\n"))
+
+    def test_validate_explicit_plan_accepts_inventory_subset(self):
+        rows = validate_explicit_probe_plan(
+            manifest={
+                "clientVersion": "9.2.4",
+                "scope": "EXPLICIT",
+                "commands": [
+                    row(
+                        42,
+                        "QUERY",
+                        "READ_ONLY_STATIC",
+                        auto_probe=True,
+                        probe_payload=None,
+                    ),
+                    row(43, "WRITE", "MUTATING"),
+                ],
+            },
+            current_inventory=inventory(
+                "9.2.4",
+                [(1, "OLD"), (42, "QUERY"), (43, "WRITE")],
+            ),
+        )
+
+        self.assertEqual([42, 43], [item["id"] for item in rows])
+        self.assertEqual(
+            [{"cmd": 42, "payload": None}],
+            build_auto_probe_batch(rows),
+        )
+
+    def test_rejects_invalid_explicit_probe_plans(self):
+        current = inventory(
+            "9.2.4",
+            [(1, "OLD"), (42, "QUERY"), (43, "WRITE")],
+        )
+        valid = {
+            "clientVersion": "9.2.4",
+            "scope": "EXPLICIT",
+            "commands": [
+                row(
+                    42,
+                    "QUERY",
+                    "READ_ONLY_STATIC",
+                    auto_probe=True,
+                    probe_payload=[],
+                ),
+                row(43, "WRITE", "MUTATING"),
+            ],
+        }
+        cases = {}
+
+        def add_case(name, mutate):
+            manifest = copy.deepcopy(valid)
+            mutate(manifest)
+            cases[name] = manifest
+
+        add_case("missing scope", lambda value: value.pop("scope"))
+        add_case(
+            "wrong scope",
+            lambda value: value.update(scope="ADDED"),
+        )
+        add_case(
+            "version mismatch",
+            lambda value: value.update(clientVersion="9.9.9"),
+        )
+        add_case(
+            "unknown id",
+            lambda value: value["commands"][1].update(
+                id=99,
+                names=["UNKNOWN"],
+            ),
+        )
+        add_case(
+            "name mismatch",
+            lambda value: value["commands"][0].update(names=["WRONG"]),
+        )
+        add_case(
+            "duplicate id",
+            lambda value: value["commands"].append(
+                copy.deepcopy(value["commands"][1]),
+            ),
+        )
+        add_case(
+            "unsorted ids",
+            lambda value: value.update(
+                commands=list(reversed(value["commands"])),
+            ),
+        )
+        add_case(
+            "invalid classification",
+            lambda value: value["commands"][0].update(
+                classification="MAYBE",
+            ),
+        )
+        add_case(
+            "static payload missing",
+            lambda value: value["commands"][0].pop("probePayload"),
+        )
+        add_case(
+            "payload on non-static row",
+            lambda value: value["commands"][1].update(probePayload=[]),
+        )
+
+        def make_unsafe_auto_probe(value):
+            value["commands"][1]["autoProbe"] = True
+
+        add_case("unsafe auto probe", make_unsafe_auto_probe)
+
+        for name, manifest in cases.items():
+            with self.subTest(name=name):
+                with self.assertRaises(ProbePlanError):
+                    validate_explicit_probe_plan(manifest, current)
 
     def test_real_manifest_covers_added_ids_and_exports_only_safe_literals(self):
         root = Path(__file__).resolve().parent.parent

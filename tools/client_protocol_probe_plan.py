@@ -58,30 +58,7 @@ def _require_non_empty_string_list(command_id, row, field):
         )
 
 
-def validate_probe_plan(manifest, baseline_inventory, current_inventory):
-    """Validate manifest provenance and return rows sorted by command ID."""
-    if not isinstance(manifest, dict):
-        raise ProbePlanError("probe manifest must be an object")
-
-    baseline_by_id = _inventory_by_id(
-        baseline_inventory,
-        "baseline",
-    )
-    current_by_id = _inventory_by_id(current_inventory, "current")
-    baseline_version = baseline_inventory.get("clientVersion")
-    current_version = current_inventory.get("clientVersion")
-    if manifest.get("baselineVersion") != baseline_version:
-        raise ProbePlanError(
-            "probe baseline version does not match baseline inventory",
-        )
-    if manifest.get("clientVersion") != current_version:
-        raise ProbePlanError(
-            "probe client version does not match current inventory",
-        )
-
-    expected_ids = set(current_by_id) - set(baseline_by_id)
-
-    commands = manifest.get("commands")
+def _validate_command_rows(commands, current_by_id, expected_ids=None):
     if not isinstance(commands, list):
         raise ProbePlanError("probe manifest commands must be a list")
 
@@ -104,15 +81,20 @@ def validate_probe_plan(manifest, baseline_inventory, current_inventory):
         raise ProbePlanError("probe manifest command ids must be sorted")
 
     actual_ids = set(manifest_by_id)
-    if actual_ids != expected_ids:
+    if expected_ids is not None and actual_ids != expected_ids:
         missing = sorted(expected_ids - actual_ids)
         extra = sorted(actual_ids - expected_ids)
         raise ProbePlanError(
             f"probe manifest delta mismatch: missing={missing} extra={extra}",
         )
+    unknown = sorted(actual_ids - set(current_by_id))
+    if unknown:
+        raise ProbePlanError(
+            f"probe manifest has unknown command ids: {unknown}",
+        )
 
     validated = []
-    for command_id in sorted(actual_ids):
+    for command_id in manifest_ids:
         row = manifest_by_id[command_id]
         expected_names = current_by_id[command_id].get("names")
         if row.get("names") != expected_names:
@@ -158,6 +140,54 @@ def validate_probe_plan(manifest, baseline_inventory, current_inventory):
     return validated
 
 
+def validate_probe_plan(manifest, baseline_inventory, current_inventory):
+    """Validate an added-since-baseline manifest."""
+    if not isinstance(manifest, dict):
+        raise ProbePlanError("probe manifest must be an object")
+
+    baseline_by_id = _inventory_by_id(
+        baseline_inventory,
+        "baseline",
+    )
+    current_by_id = _inventory_by_id(current_inventory, "current")
+    baseline_version = baseline_inventory.get("clientVersion")
+    current_version = current_inventory.get("clientVersion")
+    if manifest.get("baselineVersion") != baseline_version:
+        raise ProbePlanError(
+            "probe baseline version does not match baseline inventory",
+        )
+    if manifest.get("clientVersion") != current_version:
+        raise ProbePlanError(
+            "probe client version does not match current inventory",
+        )
+
+    return _validate_command_rows(
+        manifest.get("commands"),
+        current_by_id,
+        expected_ids=set(current_by_id) - set(baseline_by_id),
+    )
+
+
+def validate_explicit_probe_plan(manifest, current_inventory):
+    """Validate an explicit active-inventory command tranche."""
+    if not isinstance(manifest, dict):
+        raise ProbePlanError("probe manifest must be an object")
+    if manifest.get("scope") != "EXPLICIT":
+        raise ProbePlanError(
+            "explicit probe manifest scope must be EXPLICIT",
+        )
+
+    current_by_id = _inventory_by_id(current_inventory, "current")
+    if manifest.get("clientVersion") != current_inventory.get("clientVersion"):
+        raise ProbePlanError(
+            "probe client version does not match current inventory",
+        )
+    return _validate_command_rows(
+        manifest.get("commands"),
+        current_by_id,
+    )
+
+
 def build_auto_probe_batch(validated_commands):
     """Return capture_send.py rows for explicitly approved static queries."""
     return [
@@ -184,7 +214,6 @@ def main(argv=None):
     parser.add_argument(
         "--baseline-inventory",
         type=Path,
-        required=True,
     )
     parser.add_argument(
         "--current-inventory",
@@ -195,11 +224,16 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
 
-    rows = validate_probe_plan(
-        load_json(args.manifest),
-        load_json(args.baseline_inventory),
-        load_json(args.current_inventory),
-    )
+    manifest = load_json(args.manifest)
+    current = load_json(args.current_inventory)
+    if args.baseline_inventory is None:
+        rows = validate_explicit_probe_plan(manifest, current)
+    else:
+        rows = validate_probe_plan(
+            manifest,
+            load_json(args.baseline_inventory),
+            current,
+        )
     batch = build_auto_probe_batch(rows)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
