@@ -377,6 +377,13 @@ class NetworkResponsePolicyTest {
     }
 
     @Test
+    fun `invitational team log requires its explicit handler`() {
+        val commandId = 3_519
+        assertNull(NetworkResponsePolicy.observedShapeBody(commandId, "[0,20000]"))
+        assertTrue(commandId !in NetworkResponsePolicy.observedShapeCommandIds())
+    }
+
+    @Test
     fun `union nearby player list requires its explicit handler`() {
         assertNull(NetworkResponsePolicy.observedShapeBody(Cmd.UNION_NEARBY_PLAYER_LIST))
         assertTrue(Cmd.UNION_NEARBY_PLAYER_LIST !in NetworkResponsePolicy.observedShapeCommandIds())
