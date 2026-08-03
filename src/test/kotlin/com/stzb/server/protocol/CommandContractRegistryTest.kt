@@ -1087,6 +1087,35 @@ class CommandContractRegistryTest {
     }
 
     @Test
+    fun `active inventory includes unqualified request and observer evidence`() {
+        val registry = CommandContractCatalog.registry
+        val collectedFamily = assertNotNull(registry.contract(6_156))
+        val regionBet = assertNotNull(registry.contract(6_128))
+        val collectedFamilyInventory =
+            assertNotNull(registry.inventoryEntry(6_156))
+        val regionBetInventory =
+            assertNotNull(registry.inventoryEntry(6_128))
+
+        assertEquals(
+            CommandDirection.CLIENT_REQUEST,
+            collectedFamily.direction,
+        )
+        assertEquals(CommandDirection.DUPLEX, regionBet.direction)
+        assertEquals(
+            listOf(
+                "Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/" +
+                    "InviteSeasonFamilyList.cs:425",
+            ),
+            collectedFamilyInventory.requestSources,
+        )
+        assertTrue(
+            "Game.UI.GamePlay.Systems/Tenth.UI/" +
+                "InviteSeasonTeamBornMiniMap3DMainUI.cs:559" in
+                regionBetInventory.receiveSources,
+        )
+    }
+
+    @Test
     fun `existing handler and emitted commands stay provisional until audited`() {
         val registry = CommandContractCatalog.registry
 

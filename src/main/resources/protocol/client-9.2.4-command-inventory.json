@@ -3672,6 +3672,9 @@
         "Game.Data.GamePlay/Tenth.Data/CardRecordData.cs:36",
         "Game.Data.GamePlay/Tenth.Data/HeadIconDataManager.cs:59",
         "Game.Data.GamePlay/Tenth.Data/HeroData.cs:265",
+        "Game.UI.GamePlay.Heros/Tenth.UI/HeroTitleOverviewUI.cs:130",
+        "Game.UI.GamePlay.Heros/Tenth.UI/PictorialOverview.cs:139",
+        "Game.UI.GamePlay.Heros/Tenth.UI/PictorialOverview.cs:145",
         "Game.UI.GamePlay.Systems/Tenth.UI/FamilyUncollectedCardUI.cs:78"
       ]
     },
@@ -3944,7 +3947,9 @@
       "names": [
         "RANK_LIST"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Heros/Tenth.UI/HeroAchieveRankingMainUI.cs:162"
+      ],
       "requestSources": [
         "Game.Data.GamePlay/Tenth.Data/RankingData.cs:1047",
         "Game.Data.GamePlay/Tenth.Data/RankingData.cs:1068",
@@ -5329,13 +5334,17 @@
       "receiveSources": [
         "Game.UI.GamePlay.Activity/Tenth.Data/ActivitySevenDayTrialMainUI.cs:252",
         "Game.UI.GamePlay.Activity/Tenth.UI.SeventhAnniversary/MemoryBookMainUI.cs:125",
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityBindMainUI.cs:115",
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityCharge66CardForReceiveRewardsUI.cs:30",
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityChargeFund2020UI.cs:369",
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityHeroCollectUI.cs:48",
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivitySeasonFundUI.cs:57",
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityUpdateRewardUI.cs:44",
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityWtwlUI2025.cs:106",
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityZlfmUI.cs:64",
         "Game.UI.GamePlay.Activity/Tenth.UI/ChargeActivityItemFund2020UI.cs:509",
         "Game.UI.GamePlay.Activity/Tenth.UI/GagRewardPreviewUI.cs:58",
+        "Game.UI.GamePlay.Activity/Tenth.UI/MemoryBook8thMainUI.cs:101",
         "Game.UI.GamePlay.Activity/Tenth.UI/MemoryBookMainUI.cs:97",
         "Game.UI.GamePlay.Activity/Tenth.UI/MemoryBookMainUINinth.cs:64"
       ],
@@ -5606,6 +5615,8 @@
         "Game.UI.GamePlay/Tenth.UI/FacadeSaleCompBase.cs:240",
         "Game.UI.GamePlay/Tenth.UI/FacadeSaleCompBase.cs:248",
         "Game.UI.GamePlay/Tenth.UI/HistoryBookMainUI.cs:198",
+        "Game.UI.GamePlay/Tenth.UI/LoginServerListUI.cs:790",
+        "Game.UI.GamePlay/Tenth.UI/LoginServerListUIClassical.cs:320",
         "Game.UI.GamePlay/Tenth.UI/MilitaryReviewView.cs:51",
         "Game.UI.GamePlay/Tenth.UI/NewbieAllianceInviteUI.cs:348",
         "Game.UI.GamePlay/Tenth.UI/NewbieAllianceInviteUI.cs:363",
@@ -5678,7 +5689,9 @@
       "names": [
         "USER_NOTIFY_SET"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Heros/Tenth.UI/ArmyListUI.cs:331"
+      ],
       "requestSources": [
         "Game.ConfigAndSdk/Tenth.UI/MinigamePushUtils.cs:104",
         "Game.Data.GamePlay/Tenth.UI/SysSettingData.cs:224",
@@ -6434,7 +6447,9 @@
       "names": [
         "APPLY_NEW_SEASON"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/TransferApplyTypeView.cs:230"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Seasons/Tenth.UI/TransferApplySeasonView.cs:1974",
         "Game.UI.GamePlay.Seasons/Tenth.UI/TransferApplyTypeView.cs:191"
@@ -6521,7 +6536,9 @@
       "names": [
         "CREATE_NEWSEASON_GROUP"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/TransferApplyTypeView.cs:234"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Seasons/Tenth.UI/TransferTeamCreateUI.cs:678"
       ]
@@ -6553,6 +6570,7 @@
         "QUIT_NEW_SEASON_GROUP"
       ],
       "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/TransferTeamMainUI.cs:116",
         "Game.UI.GamePlay.Systems/Tenth.UI/MainUI.cs:478"
       ],
       "requestSources": [
@@ -6605,7 +6623,9 @@
       "names": [
         "CHANGE_NEW_SEASON_GROUP_LEADER"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/TransferTeamMainUI.cs:117"
+      ],
       "requestSources": [
         "Game.UI.GamePlay/Tenth.UI/TeamMemberSettingUI.cs:174"
       ]
@@ -6642,7 +6662,9 @@
       "names": [
         "INVITE_TO_JOIN_NEW_SEASON_GROUP_ONE_KEY"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/TransferTeamInviteView.cs:76"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Seasons/Tenth.UI/TransferTeamInviteView.cs:615"
       ]
@@ -6740,7 +6762,9 @@
       "names": [
         "NEW_SEASON_GROUP_KICK_MEMBER"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/TransferTeamMainUI.cs:115"
+      ],
       "requestSources": [
         "Game.UI.GamePlay/Tenth.UI/TeamMemberSettingUI.cs:142"
       ]
@@ -6766,7 +6790,9 @@
       "names": [
         "GET_SEASON_REWARD"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/TransferSeasonRewardsView.cs:128"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Seasons/Tenth.UI/ChooseSeasonRewardConfirmUI.cs:158",
         "Game.UI.GamePlay.Seasons/Tenth.UI/TransferSeasonRewardsView.cs:992"
@@ -8317,7 +8343,8 @@
       ],
       "receiveSources": [
         "Game.Data.GamePlay/Tenth.Data/ModGameRoomData.cs:63",
-        "Game.Data.GamePlay/Tenth.Data/ModGameRoomGlobalNotice.cs:24"
+        "Game.Data.GamePlay/Tenth.Data/ModGameRoomGlobalNotice.cs:24",
+        "Game.UI.GamePlay.Activity/Tenth.UI/ModGameRoomUI.cs:263"
       ],
       "requestSources": []
     },
@@ -9505,7 +9532,8 @@
         "MC_MINER_DIG"
       ],
       "receiveSources": [
-        "Game.UI.GamePlay.Activity/Tenth.UI/McMinePanel.cs:940"
+        "Game.UI.GamePlay.Activity/Tenth.UI/McMinePanel.cs:940",
+        "Game.UI.GamePlay.Activity/Tenth.UI/ModMcMainUI.cs:1862"
       ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/AutoDigBgEngine.cs:173",
@@ -9519,7 +9547,9 @@
       "names": [
         "MC_MINER_ENTER"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ModMcMainUI.cs:1859"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ModMcMainUI.cs:2111",
         "Game.UI.GamePlay.Activity/Tenth.UI/ModMcMainUI.cs:416"
@@ -9594,7 +9624,8 @@
       ],
       "receiveSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/AutoDigBgEngine.cs:101",
-        "Game.UI.GamePlay.Activity/Tenth.UI/McMinePanel.cs:936"
+        "Game.UI.GamePlay.Activity/Tenth.UI/McMinePanel.cs:936",
+        "Game.UI.GamePlay.Activity/Tenth.UI/ModMcMainUI.cs:1860"
       ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ModMcMainUI.cs:1248"
@@ -9655,7 +9686,9 @@
       "names": [
         "MC_MINER_EXTRA_MINE_MESSAGE"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ModMcMainUI.cs:1861"
+      ],
       "requestSources": []
     },
     {
@@ -9718,7 +9751,10 @@
         "REQUEST_HERO_RESET_LIST"
       ],
       "receiveSources": [],
-      "requestSources": []
+      "requestSources": [
+        "Game.UI.GamePlay.Heros/Tenth.UI/CardOperateHeroRetrieve.cs:1152",
+        "Game.UI.GamePlay.Heros/Tenth.UI/CardOperateHeroRetrieve.cs:159"
+      ]
     },
     {
       "captureReceiveCount": 0,
@@ -10712,7 +10748,9 @@
       "names": [
         "SEND_TENTH_ANNIVERSARY_RED_PACKET"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityRedPacketListUI.cs:66"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/RedPacketSendUI.cs:218"
       ]
@@ -10724,7 +10762,9 @@
       "names": [
         "GET_TENTH_ANNIVERSARY_RED_PACKET_LIST"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityRedPacketListUI.cs:65"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityRedPacketListUI.cs:108"
       ]
@@ -12384,7 +12424,8 @@
       ],
       "receiveSources": [
         "Game.Data.GamePlay/Tenth.Data/InviteSeasonData.cs:143",
-        "Game.UI.GamePlay.Seasons/Tenth.UI/InviteTeamCollectionView.cs:78"
+        "Game.UI.GamePlay.Seasons/Tenth.UI/InviteTeamCollectionView.cs:78",
+        "Game.UI.GamePlay.Seasons/Tenth.UI/InviteTeamInfoView.cs:120"
       ],
       "requestSources": [
         "Game.Data.GamePlay/Tenth.Data/InviteSeasonCampusData.cs:364",
@@ -12573,7 +12614,9 @@
       "names": [
         "SAND_TABLE_ROOM_JOIN_ROOM"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ModGameRoomListUI.cs:62"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ModGameJoinPasswdRoomUI.cs:119",
         "Game.UI.GamePlay.Activity/Tenth.UI/ModGameJoinPasswdRoomUI.cs:130",
@@ -12732,7 +12775,9 @@
       "names": [
         "INVITATIONAL_APPLY"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/InviteTeamInfoView.cs:119"
+      ],
       "requestSources": [
         "Game.Data.GamePlay/Tenth.Data/InviteSeasonCampusData.cs:297",
         "Game.Data.GamePlay/Tenth.Data/InviteSeasonData.cs:1440",
@@ -13007,7 +13052,10 @@
       "names": [
         "INVITATIONAL_CAMPUS_REGION_BET"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/InvitesSeasonCampusMiniMapMainUI.cs:270",
+        "Game.UI.GamePlay.Systems/Tenth.UI/InviteSeasonCampusBornMiniMap3DMainUI.cs:595"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Seasons/Tenth.UI/InviteSeasonCampusScoreBet.cs:28"
       ]
@@ -13239,6 +13287,7 @@
       ],
       "receiveSources": [],
       "requestSources": [
+        "Game.UI.GamePlay.Heros/Tenth.UI/ArmyConsultOverviewUI.cs:194",
         "Game.UI.GamePlay.Heros/Tenth.UI/ArmyConsultSubviewArmySuggestion.cs:176"
       ]
     },
@@ -13900,7 +13949,9 @@
         "GRAIN_FULL_ACTIVITY_DRAW"
       ],
       "receiveSources": [],
-      "requestSources": []
+      "requestSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityXiaoManMainUI.cs:135"
+      ]
     },
     {
       "captureReceiveCount": 0,
@@ -14579,7 +14630,9 @@
       "names": [
         "LIDONG_COMMIT"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityLidongUI.cs:122"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityLidongUI.cs:1087",
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityLidongUI.cs:351"
@@ -14592,7 +14645,9 @@
       "names": [
         "DAXUE_END_GAME"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityDaxueYanzhiUI.cs:104"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityDaxueYanzhiUI.cs:562"
       ]
@@ -14852,7 +14907,9 @@
       "names": [
         "DAHAN_END_GAME"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityDahanUI.cs:147"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityDahanUI.cs:332",
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityDahanUI.cs:351",
@@ -14867,7 +14924,9 @@
       "names": [
         "DAHAN_ZAN_PAPER_CUR"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityDahanSeeUI.cs:78"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityDahanSeeUI.cs:427"
       ]
@@ -14879,7 +14938,9 @@
       "names": [
         "DAHAN_SEE_PAPER_CUR"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityDahanSeeUI.cs:77"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityDahanSeeUI.cs:89"
       ]
@@ -15165,7 +15226,9 @@
         "GEAR_RECORD"
       ],
       "receiveSources": [],
-      "requestSources": []
+      "requestSources": [
+        "Game.UI.GamePlay.Heros/Tenth.UI/PictorialOverview.cs:135"
+      ]
     },
     {
       "captureReceiveCount": 0,
@@ -15946,7 +16009,9 @@
         "FAMILY_GET_APPLY_RECORD"
       ],
       "receiveSources": [],
-      "requestSources": []
+      "requestSources": [
+        "Game.UI.GamePlay.Systems/Tenth.UI/FamilyApplyProcessUI.cs:108"
+      ]
     },
     {
       "captureReceiveCount": 0,
@@ -17422,7 +17487,10 @@
         "FAMILY_INVITATIONAL_GET_WORLD_EVENT"
       ],
       "receiveSources": [],
-      "requestSources": []
+      "requestSources": [
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonGameMapData.cs:1750",
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonGameMapData.cs:1770"
+      ]
     },
     {
       "captureReceiveCount": 0,
@@ -17542,6 +17610,11 @@
         "Game.Data.GamePlay/Tenth.Data/InviteNewPaperData.cs:218"
       ],
       "requestSources": [
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonGameMapData.cs:1430",
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonGameMapData.cs:1742",
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonGameMapData.cs:1759",
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonGameMapData.cs:1763",
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonGameMapData.cs:1767",
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityWatchingNewPaperUtil.cs:88",
         "Game.UI.GamePlay.Seasons/Tenth.UI/CampusWatchingGuidelinesMainUI.cs:224",
         "Game.UI.GamePlay.Seasons/Tenth.UI/CampusWatchingGuidelinesMainUI.cs:231"
@@ -18300,7 +18373,9 @@
       "names": [
         "TRAVEL_SCENIC_SEND_CHANGE"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay/Tenth.UI/UnionScenicMainUI.cs:342"
+      ],
       "requestSources": []
     },
     {
@@ -18464,6 +18539,7 @@
       ],
       "receiveSources": [],
       "requestSources": [
+        "Game.UI.GamePlay.Systems/Tenth.UI/FamilyPrayMainUI.cs:297",
         "Game/Tenth.GMTools/Commands.cs:15141"
       ]
     },
@@ -18802,7 +18878,9 @@
       "names": [
         "FAMILY_SCENE_EMOTION"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Systems/Tenth.UI/FamilyCourtyardMainView.cs:228"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Systems/Tenth.UI/FamilyBanquetMainView.cs:1471",
         "Game.UI.GamePlay.Systems/Tenth.UI/FamilyCourtyardMainView.cs:1887"
@@ -19585,7 +19663,9 @@
         "SOLAR_TERM_BOOK_WRITE_MSG"
       ],
       "receiveSources": [],
-      "requestSources": []
+      "requestSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/SolartermBookMsgUI.cs:196"
+      ]
     },
     {
       "captureReceiveCount": 0,
@@ -19595,7 +19675,9 @@
         "SOLAR_TERM_BOOK_DEL_MSG"
       ],
       "receiveSources": [],
-      "requestSources": []
+      "requestSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/SolartermBookMsgUI.cs:169"
+      ]
     },
     {
       "captureReceiveCount": 0,
@@ -19936,7 +20018,9 @@
       "names": [
         "INVITE_TO_JOIN_NEW_SEASON_GROUP_FAMILY"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/TransferTeamInviteView.cs:77"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Seasons/Tenth.UI/TransferTeamInviteView.cs:1439"
       ]
@@ -21415,7 +21499,9 @@
       "names": [
         "GET_BIND_ACCOUNT_AWARD"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityWelfareBindAccount.cs:65"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityWelfareBindAccount.cs:373"
       ]
@@ -21439,7 +21525,9 @@
       "names": [
         "GET_BIND_ACCOUNT_AWARD_2"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityWelfareBindAccount.cs:66"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityWelfareBindAccount.cs:381"
       ]
@@ -22193,7 +22281,9 @@
       "names": [
         "CHECK_ADD_WEIXIN"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityBindMainUI.cs:116"
+      ],
       "requestSources": [
         "Game.Data.GamePlay/Tenth.Data/ActivityBindUtil.cs:1376",
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityBindMainUI.cs:80",
@@ -23737,7 +23827,9 @@
       "names": [
         "ACTIVITY_2024_XIA_ZHI_FINISH_GAME"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityXiazhiMainUI.cs:88"
+      ],
       "requestSources": [
         "Game.Data.GamePlay/Tenth.Data/ActivityXiazhiData.cs:73"
       ]
@@ -23825,7 +23917,10 @@
       "names": [
         "SUMMER_FARM_VISIT"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivitySummer2024MainUI.cs:583",
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivitySummer2024MainUI.cs:596"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/Summer2024FriendList.cs:444",
         "Game.UI.GamePlay.Activity/Tenth.UI/Summer2024LandTipsPanel.cs:580",
@@ -24278,6 +24373,7 @@
       ],
       "requestSources": [
         "Game.Data.GamePlay/Tenth.Data/InviteNewPaperData.cs:168",
+        "Game.Data.GamePlay/Tenth.Data/InviteSeasonGameMapData.cs:1791",
         "Game.Data.GamePlay/Tenth.Data/RankingData.cs:2243",
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityWatchingNewPaperUtil.cs:114",
         "Game.UI.GamePlay.Seasons/Tenth.UI/CampusRankBase.cs:116",
@@ -24654,7 +24750,9 @@
       "names": [
         "ANNIVERSARY_COMPETITION_ALL_GROUP"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/SixSkillsFamilyList.cs:54"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/SixSkillsFamilyList.cs:80",
         "Game.UI.GamePlay.Activity/Tenth.UI/SixSkillsWatchingMainUI.cs:148",
@@ -24682,7 +24780,10 @@
       "names": [
         "ANNIVERSARY_COMPETITION_SUPPORT_GROUP"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/SixSkillsFamilyList.cs:55",
+        "Game.UI.GamePlay.Activity/Tenth.UI/SixSkillsWatchingMainUI.cs:129"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/SixSkillsFamilyList.cs:303",
         "Game.UI.GamePlay.Activity/Tenth.UI/SixSkillsWatchingMainUI.cs:1240"
@@ -26416,7 +26517,9 @@
       "names": [
         "BIND_ACTIVITY_FOLLOW"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityBindMainUI.cs:117"
+      ],
       "requestSources": [
         "Game.Data.GamePlay/Tenth.Data/ActivityBindUtil.cs:1617",
         "Game.Data.GamePlay/Tenth.Data/ActivityBindUtil.cs:1676",
@@ -26481,7 +26584,9 @@
       "names": [
         "NEW_COMER_GET_PERSONAL_ACCESS"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/TransferSeasonRewardsView.cs:129"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Seasons/Tenth.UI/ChooseSeasonRewardConfirmUI.cs:150"
       ]
@@ -26847,7 +26952,9 @@
       "names": [
         "TEAM_INVITATIONAL_QUERY_REGION_BET"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Systems/Tenth.UI/InviteSeasonTeamBornMiniMap3DMainUI.cs:559"
+      ],
       "requestSources": [
         "Game.Data.GamePlay/Tenth.Data/InviteSeasonTeamBornMapData.cs:266"
       ]
@@ -26876,6 +26983,7 @@
       ],
       "requestSources": [
         "Game.Data.GamePlay/Tenth.Data/InviteSeasonBornMapData.cs:439",
+        "Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonMainView.cs:1043",
         "Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonMainView.cs:359",
         "Game.UI.GamePlay.Seasons/Tenth.UI/InviteSeasonApplyView.cs:1035",
         "Game.UI.GamePlay.Seasons/Tenth.UI/InviteSeasonApplyView.cs:358",
@@ -27190,7 +27298,9 @@
         "INVITATIONAL_2026_GET_COLLECT_FAMILY"
       ],
       "receiveSources": [],
-      "requestSources": []
+      "requestSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI.Invite2026/InviteSeasonFamilyList.cs:425"
+      ]
     },
     {
       "captureReceiveCount": 0,
@@ -27494,6 +27604,7 @@
       ],
       "receiveSources": [],
       "requestSources": [
+        "Game.UI.GamePlay.Heros/Tenth.UI/ArmyExchangeView.cs:2161",
         "Game.UI.GamePlay.Heros/Tenth.UI/MutualAidNeedTab.cs:267",
         "Game.UI.GamePlay.Heros/Tenth.UI/MutualAidNeedTab.cs:275"
       ]
@@ -27813,7 +27924,9 @@
       "names": [
         "UNION_STATION_PLAYER_INTERACT"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay/Tenth.UI/UnionStationMainView.cs:244"
+      ],
       "requestSources": [
         "Game.UI.GamePlay/Tenth.UI/UnionStationMainView.cs:1698"
       ]
@@ -27862,7 +27975,8 @@
         "UNION_STATION_PLAYER_DANMU_CHANGE"
       ],
       "receiveSources": [
-        "Game.Data.GamePlay/Tenth.Data/UnionStationRecordData.cs:56"
+        "Game.Data.GamePlay/Tenth.Data/UnionStationRecordData.cs:56",
+        "Game.UI.GamePlay/Tenth.UI/UnionStationMainView.cs:245"
       ],
       "requestSources": []
     },
@@ -27988,7 +28102,9 @@
         "RESOURCE_SHI_CANG"
       ],
       "receiveSources": [],
-      "requestSources": []
+      "requestSources": [
+        "Game.UI.GamePlay.Systems/Tenth.UI/RoleForcesRealWarehouseUI.cs:264"
+      ]
     },
     {
       "captureReceiveCount": 0,
@@ -28363,7 +28479,9 @@
         "REGION_CHAMPION_GET_MATCH_INFO"
       ],
       "receiveSources": [],
-      "requestSources": []
+      "requestSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/BczhTournamentBracketMainUI.cs:42"
+      ]
     },
     {
       "captureReceiveCount": 0,
@@ -28885,7 +29003,10 @@
       "names": [
         "TEMP_WAREHOUSE_GET_HEROCARD"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Heros/Tenth.UI/CardLibraryTempWarehouseUI.cs:162",
+        "Game.UI.GamePlay.Heros/Tenth.UI/CardOverviewUI.cs:3435"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Heros/Tenth.UI/CardLibraryTempWarehouseSelectUI.cs:271"
       ]
@@ -30194,7 +30315,9 @@
       "names": [
         "PAY_TEAM_GET_RED_PACKET_LIST"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityNewyearFestival2026TeamRedPacketListUI.cs:60"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityNewyearFestival2026TeamRedPacketListUI.cs:105"
       ]
@@ -31245,7 +31368,9 @@
       "names": [
         "GET_NEW_SEASON_UNION_LIST"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/SeaTransferTeamListView.cs:266"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Seasons/Tenth.UI/SeaTransferTeamListView.cs:260",
         "Game.UI.GamePlay.Seasons/Tenth.UI/SeaTransferTeamListView.cs:477",
@@ -32086,7 +32211,9 @@
       "names": [
         "WAIT_SERVER_GET_GROUP_LIST"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ActivityBackflowTeamlistUI.cs:167"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityBackflowTeamlistUI.cs:150",
         "Game.UI.GamePlay.Activity/Tenth.UI/ActivityBackflowTeamlistUI.cs:183",
@@ -32112,7 +32239,9 @@
       "names": [
         "WAIT_SERVER_LAED_HELP_PAY"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Seasons/Tenth.UI/TransferTeamMainUI.cs:118"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Seasons/Tenth.UI/TransferTeamWarfareHelpReadyUI.cs:140",
         "Game.UI.GamePlay/Tenth.UI/TeamMemberSettingUI.cs:200"
@@ -32364,6 +32493,7 @@
         "GAG_SELL"
       ],
       "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ModTycBagUI.cs:187",
         "Game.UI.GamePlay.Activity/Tenth.UI/ModTycGuideMgr.cs:85"
       ],
       "requestSources": [
@@ -32781,7 +32911,9 @@
       "names": [
         "GAG_BAIT"
       ],
-      "receiveSources": [],
+      "receiveSources": [
+        "Game.UI.GamePlay.Activity/Tenth.UI/ModTycFishMainUI.cs:215"
+      ],
       "requestSources": [
         "Game.UI.GamePlay.Activity/Tenth.UI/ModTycBagUI.cs:1729"
       ]
@@ -33172,6 +33304,7 @@
         "Game.UI.GamePlay.Heros/Tenth.Data/CardOpRequest.cs:84",
         "Game.UI.GamePlay.Heros/Tenth.UI/SkillOperateObserver.cs:94",
         "Game.UI.GamePlay.Systems/Tenth.UI/ChatFastOperationPanel.cs:126",
+        "Game.UI.GamePlay.Systems/Tenth.UI/MailSendPanel.cs:238",
         "Game.UI.GamePlay/Tenth.UI/HewenRedpacketView.cs:184",
         "Game/Tenth/GlobalNotify.cs:148"
       ],
