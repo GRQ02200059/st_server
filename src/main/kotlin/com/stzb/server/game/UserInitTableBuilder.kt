@@ -829,10 +829,13 @@ object UserInitTableBuilder {
             .arr
 
     /** Tb_user_stuff_temp_ex: 0=userid,82~84/117~119=社区红点相关。
-     *  CommunityData.NeedRedTips 直接读取本表行; 全部置 0 表示无红点。 */
+     *  CommunityData.NeedRedTips 直接读取本表行; 全部置 0 表示无红点。
+     *  index 27 = researched_policy: "policyId,time;" 对。100002 = 助守(ZHU_SHOU),
+     *  客户端 LandOperationDefine 用它作为"驻守"地块操作按钮的显示门槛。 */
     private fun tbUserStuffTempEx(userId: Int): ArrayNode =
         row("Tb_user_stuff_temp_ex")
             .i(0, userId)
+            .s(27, "100002,0;")             // researched_policy: 解锁"驻守"操作
             .i(82, 0)                     // community_blink_begin_time
             .i(83, 0)                     // community_blink_time_out
             .i(84, 0)                     // community_blink_type

@@ -845,6 +845,26 @@ class UserInitTableBuilderTest {
         }
     }
 
+    @Test
+    fun `login snapshot grants the zhu shou policy so the garrison option appears`() {
+        val snapshot = UserInitTableBuilder.build(
+            userId = 42,
+            cityWid = 10001,
+            roleName = "主公",
+            serverOpenTime = 1_700_000_000L,
+        )
+
+        val userStuffTempEx = snapshot.drop(1)
+            .associateBy { it[0].asText() }
+            .getValue("Tb_user_stuff_temp_ex")[1][0]
+        // researched_policy (index 27): "policyId,time;" pairs. 100002 = ZHU_SHOU (助守),
+        // the client gate that makes the "驻守" land-operation button appear.
+        assertTrue(
+            userStuffTempEx[27].asText().split(";").any { it.startsWith("100002,") },
+            "researched_policy must contain ZHU_SHOU (100002) so the client shows the garrison option",
+        )
+    }
+
     private fun cardExtractRows(snapshot: com.fasterxml.jackson.databind.node.ArrayNode) =
         snapshot.drop(1)
             .associateBy { it[0].asText() }
