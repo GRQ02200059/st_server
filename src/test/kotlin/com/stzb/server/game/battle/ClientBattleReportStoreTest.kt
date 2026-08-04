@@ -287,7 +287,7 @@ class ClientBattleReportStoreTest {
 
         assertEquals(4, gearRows.size)
         assertEquals("0,0,0", gearRows[0])
-        assertEquals("1024,0,10101", gearRows[1])
+        assertEquals("1024,0,10111", gearRows[1])
         assertEquals("0,0,0", gearRows[2])
         assertEquals("0,0,0", gearRows[3])
 

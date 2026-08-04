@@ -42,10 +42,12 @@ class BattleEquipmentRepositoryTest {
     }
 
     @Test
-    fun `resolves default weapon feature ids from client config`() {
-        assertEquals(10101, repo.defaultFeatureIdForGear(1024))
-        assertEquals(30101, repo.defaultFeatureIdForGear(1025))
-        assertEquals(40101, repo.defaultFeatureIdForGear(1028))
+    fun `resolves default hongji weapon feature ids from client config`() {
+        // Default 词条 is the advance==1 (红极/鸿级) row of the weapon's gear
+        // type, taking the smallest id, and it renders unlocked in reports.
+        assertEquals(10111, repo.defaultFeatureIdForGear(1024))
+        assertEquals(30111, repo.defaultFeatureIdForGear(1025))
+        assertEquals(40111, repo.defaultFeatureIdForGear(1028))
     }
 
     @Test

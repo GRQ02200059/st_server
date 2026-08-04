@@ -135,8 +135,12 @@ class BattleEquipmentRepository private constructor(
                 GearFeatureRow(id, gearType, level, advance, visible)
             }
             return rows.groupBy { it.gearType }.mapValues { (_, typeRows) ->
-                (typeRows.filter { it.advance == 0 && it.level == 1 && it.visible == 1 }
-                    .minByOrNull { it.id }
+                // Prefer the 红极/鸿级 (advance == 1) feature, taking the smallest
+                // id; it renders unlocked in reports. Fall back to the base
+                // default only when a gear type has no hongji row.
+                (typeRows.filter { it.advance == 1 }.minByOrNull { it.id }
+                    ?: typeRows.filter { it.advance == 0 && it.level == 1 && it.visible == 1 }
+                        .minByOrNull { it.id }
                     ?: typeRows.filter { it.advance == 0 && it.level == 1 }.minByOrNull { it.id }
                     ?: typeRows.minByOrNull { it.id })!!.id
             }
