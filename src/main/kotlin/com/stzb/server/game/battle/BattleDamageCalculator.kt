@@ -202,15 +202,15 @@ object BattleDamageCalculator {
         target: BattleHero,
         targetTeam: Collection<BattleHero>,
     ): Set<DamageTargetCondition> {
-        val minimumTroops = targetTeam.asSequence()
-            .map(BattleHero::troops)
-            .filter { it > 0 }
-            .minOrNull()
+        val living = targetTeam.filter { it.troops > 0 }
+        val minimumTroops = living.minOfOrNull(BattleHero::troops)
             ?: return emptySet()
-        return if (target.troops == minimumTroops) {
-            setOf(DamageTargetCondition.LOWEST_TROOPS)
-        } else {
-            emptySet()
+        val nearestPosition = living.maxOfOrNull(BattleHero::position)
+        return buildSet {
+            if (target.troops == minimumTroops) add(DamageTargetCondition.LOWEST_TROOPS)
+            if (target.troops > 0 && target.position == nearestPosition) {
+                add(DamageTargetCondition.NEAREST_ENEMY)
+            }
         }
     }
 }

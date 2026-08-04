@@ -609,6 +609,10 @@ class BattleFormationCalculator(
                         }
                         450038 ->
                             BattleModifier.NextStrategyDamageAfterNormalAttackPercent(level)
+                        450041 -> BattleModifier.DamageDealtPercent(
+                            percent = level,
+                            targetCondition = DamageTargetCondition.NEAREST_ENEMY,
+                        )
                         450042 ->
                             BattleModifier.TroopLossRecoveryTakenPercent(level)
                         in 460061..460064 ->

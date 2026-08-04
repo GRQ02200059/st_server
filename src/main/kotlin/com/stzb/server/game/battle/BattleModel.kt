@@ -82,6 +82,7 @@ enum class DamageTag {
 
 enum class DamageTargetCondition {
     LOWEST_TROOPS,
+    NEAREST_ENEMY,
 }
 
 enum class BattleTargetingKind {
