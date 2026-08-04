@@ -10430,6 +10430,73 @@ class CompleteSkillEngineIntegrationTest {
     }
 
     @Test
+    fun `split army splashes every enemy adjacent to the primary normal attack target`() {
+        // Round-scoped 分兵 (effect 545) must splash a normal attack to EVERY living enemy
+        // adjacent to the primary target (formation distance 1), not just one secondary.
+        val request = BattleRequest(
+            attacker = BattleTeam(listOf(hero(100479, 200, position = 1))),
+            defender = BattleTeam(
+                listOf(
+                    hero(200001, 30, position = 0),
+                    hero(200002, 20, position = 1),
+                    hero(200003, 10, position = 2),
+                ),
+            ),
+            maxRounds = 1,
+        )
+        val engine = DefaultCompleteSkillEngine.create(request, config)
+        val source = engine.state.view.heroes().single { it.side == Side.ATTACKER }
+        val middle = engine.state.view.heroes()
+            .single { it.side == Side.DEFENDER && it.position == 1 }
+        val context = SkillBattleContext(
+            request = request,
+            runtime = engine.state.runtime,
+            random = FixedBattleRandom(0),
+            round = 1,
+            source = source,
+            rootSkillId = 200225,
+            currentSkillId = 200225,
+            trigger = BattleTrigger.BATTLE_COMMAND,
+            battleView = engine.state.view,
+        )
+        // Seed a round-scoped 分兵 (545) on the source, matching 200225 横扫 semantics.
+        engine.applyChanges(
+            listOf(
+                ApplyBattleEffectChange(
+                    PersistentEffectSpec(
+                        source = source,
+                        target = source,
+                        rootSkillId = 200225,
+                        skillId = 210225,
+                        skillKind = SkillKind.COMMAND,
+                        rawSkillType = 2,
+                        detailId = 21022501,
+                        effectId = 545,
+                        category = com.stzb.server.game.battle.EffectCategory.BENEFICIAL,
+                        conflict = 0,
+                        replaceType = 0,
+                        bindFlag = 0,
+                        maxStacks = 1,
+                        delayRound = 0,
+                        delayHit = 0,
+                        availableRounds = 1,
+                        availableHit = 0,
+                        clearPerHit = false,
+                        startBoundary = EffectStartBoundary.IMMEDIATE,
+                        potency = TypedBattlePotency.rate(75),
+                    ),
+                ),
+            ),
+            context,
+        )
+
+        // With the middle defender as the primary target, 分兵 must strike BOTH neighbours
+        // (positions 0 and 2), closest-first, and never the primary itself.
+        val splitTargets = engine.splitAttackTargets(source, middle).map { it.position }
+        assertEquals(listOf(0, 2), splitTargets.sorted())
+    }
+
+    @Test
     fun `secondary attack runs damage before hooks before calculating damage`() {
         val actorHero = hero(100017, 190, listOf(200225), position = 1)
         val result = BattleEngine.resolve(

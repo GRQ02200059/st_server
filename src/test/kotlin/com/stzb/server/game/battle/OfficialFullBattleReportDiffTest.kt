@@ -2005,37 +2005,6 @@ class OfficialFullBattleReportDiffTest {
         )
     }
 
-    @Test
-    fun `blowout attacker predeath output diagnostic`() {
-        val report = java.nio.file.Path.of(
-            "assent/cfg/paper/6231/cap_20260312004747562_00001857_zlib.json",
-        )
-        val config = BattleConfigRepository.loadDefault()
-        val actions = OfficialReportFixture.read(report)
-        val request = OfficialReportFixture.reconstructBattleRequest(actions, config)
-        val diag = (0 until 4).joinToString("\n") { seed ->
-            val result = BattleEngine.resolve(request, config, SeededBattleRandom(seed))
-            val order = result.events.filterIsInstance<BattleEvent.HeroActionStart>()
-                .filter { it.round == 1 }
-                .joinToString(",") { "p${ClientBattleTextReplayProtocol.position(it.source)}" }
-            val atkByPos = (1..3).associateWith { pos ->
-                val n = result.events.filterIsInstance<BattleEvent.NormalAttack>()
-                    .count { ClientBattleTextReplayProtocol.position(it.source) == pos }
-                val nd = result.events.filterIsInstance<BattleEvent.NormalAttack>()
-                    .filter { ClientBattleTextReplayProtocol.position(it.source) == pos }
-                    .sumOf(BattleEvent.NormalAttack::damage)
-                val s = result.events.filterIsInstance<BattleEvent.SkillDamage>()
-                    .count { ClientBattleTextReplayProtocol.position(it.source) == pos }
-                val sd = result.events.filterIsInstance<BattleEvent.SkillDamage>()
-                    .filter { ClientBattleTextReplayProtocol.position(it.source) == pos }
-                    .sumOf(BattleEvent.SkillDamage::damage)
-                "n$n/${nd}s$s/$sd"
-            }
-            "seed=$seed r1order=$order atk=$atkByPos"
-        }
-        assertTrue(false, "OFFICIAL r1order=p5,p4,p6,p2,p1 (p3 wiped, 0 actions); atk total 282\n$diag")
-    }
-
     private fun BattleResult.troopsAfterFirstRound(
         clientPosition: Int,
         initialTroops: Int,

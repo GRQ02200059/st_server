@@ -3573,6 +3573,45 @@ class DefaultCompleteSkillEngine private constructor(
             ?.let { BattleHeroRef(primary.side, it.position, it.id) }
     }
 
+    /**
+     * Ordered split-army (分兵) targets for a landed normal attack.
+     *
+     * Round-scoped 分兵 (200225/200956/… , effect 545 with a round lifetime) is an AoE that
+     * splashes EVERY living enemy adjacent to the primary target (formation distance 1),
+     * closest-to-primary first. Hit-scoped 散射 (297108, effect 545 with a hit lifetime) keeps
+     * its historical single secondary against the nearest reachable enemy regardless of
+     * adjacency. Sources without an active 545 effect yield no split.
+     */
+    fun splitAttackTargets(
+        source: BattleHeroRef,
+        primary: BattleHeroRef,
+    ): List<BattleHeroRef> {
+        val split = state.effectStore.effectsFor(source).lastOrNull { it.effectId == 545 }
+            ?: return emptyList()
+        val roundScoped = split.remainingRounds != null
+        if (!roundScoped) {
+            return listOfNotNull(secondaryTarget(source, primary))
+        }
+        val sourceHero = liveHero(source)
+        val allies = state.view.heroes()
+            .filter { it.side == source.side }
+            .map(::liveHero)
+        val enemies = state.view.heroes()
+            .filter { it.side == primary.side }
+            .map(::liveHero)
+        return actionResolver.normalAttackTargetsInRange(sourceHero, enemies, allies)
+            .asSequence()
+            .map { it.first }
+            .filter { it.position != primary.position || it.id != primary.heroId }
+            .filter { kotlin.math.abs(it.position - primary.position) <= 1 }
+            .sortedWith(
+                compareBy<BattleHero> { kotlin.math.abs(it.position - primary.position) }
+                    .thenBy { it.position },
+            )
+            .map { BattleHeroRef(primary.side, it.position, it.id) }
+            .toList()
+    }
+
     fun reactiveAttack(
         round: Int,
         source: BattleHeroRef,

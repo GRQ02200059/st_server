@@ -171,18 +171,17 @@ object BattleEngine {
                                     random,
                                     actorContext,
                                 )
-                                if (!engine.baseDefeated()) {
-                                    engine.secondaryTarget(actor, target)
-                                        ?.takeIf { permission.secondaryAttack }
-                                        ?.let { secondary ->
-                                            events += engine.reactiveAttack(
-                                                round,
-                                                actor,
-                                                secondary,
-                                                545,
-                                                actorContext,
-                                            )
-                                        }
+                                if (!engine.baseDefeated() && permission.secondaryAttack) {
+                                    for (secondary in engine.splitAttackTargets(actor, target)) {
+                                        if (engine.baseDefeated()) break
+                                        events += engine.reactiveAttack(
+                                            round,
+                                            actor,
+                                            secondary,
+                                            545,
+                                            actorContext,
+                                        )
+                                    }
                                 }
                                 if (!engine.baseDefeated()) {
                                     val targetContext = context(
