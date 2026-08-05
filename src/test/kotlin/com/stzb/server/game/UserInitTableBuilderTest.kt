@@ -1,5 +1,6 @@
 package com.stzb.server.game
 
+import com.stzb.server.game.battle.BattleHeroSpec
 import com.stzb.server.protocol.GameServerConfig
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
@@ -863,6 +864,50 @@ class UserInitTableBuilderTest {
             userStuffTempEx[27].asText().split(";").any { it.startsWith("100002,") },
             "researched_policy must contain ZHU_SHOU (100002) so the client shows the garrison option",
         )
+    }
+
+    @Test
+    fun `login snapshot keeps a settled garrison army at the target wid`() {
+        val root = createTempDirectory("stzb-login-garrison-army")
+        try {
+            WorldStateRepository.configure(root)
+            PlayerStateRepository.configure(FilePlayerRepository(root))
+            val state = PlayerStateRepository.getOrCreate(
+                userId = 842,
+                cityWid = 15061542,
+                roleName = "守军",
+            )
+            val armyId = state.primaryArmyId()
+            WorldStateRepository.putGarrison(
+                GarrisonSnapshot(
+                    wid = 15051542,
+                    ownerUserId = state.userId,
+                    armyId = armyId,
+                    specs = listOf(BattleHeroSpec(heroId = 100021, position = 0, troops = 5000)),
+                    residedAtSec = 1_700_000_200,
+                ),
+            )
+
+            val army = UserInitTableBuilder.build(
+                userId = state.userId,
+                cityWid = state.cityWid,
+                roleName = state.roleName,
+                serverOpenTime = 1_700_000_000L,
+            ).drop(1)
+                .associateBy { it[0].asText() }
+                .getValue("Tb_army")[1]
+                .first { it[0].asInt() == armyId }
+
+            assertEquals(15051542, army[2].asInt())
+            assertEquals(15051542, army[4].asInt())
+            assertEquals(5, army[11].asInt())
+            assertEquals(0, army[13].asInt())
+            assertEquals(15051542, army[14].asInt())
+            assertEquals(1_700_000_200, army[15].asInt())
+        } finally {
+            PlayerStateRepository.reset()
+            WorldStateRepository.reset()
+        }
     }
 
     private fun cardExtractRows(snapshot: com.fasterxml.jackson.databind.node.ArrayNode) =

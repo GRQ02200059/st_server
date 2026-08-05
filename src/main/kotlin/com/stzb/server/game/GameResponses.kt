@@ -300,6 +300,7 @@ object GameResponses {
         removedArmyId: Int?,
     ) =
         nf.objectNode().apply {
+            val garrisons = WorldStateRepository.garrisons()
             marches.forEach { march ->
                 putArray(march.armyId.toString()).apply {
                 add(1) // 0 state: IN_EXPEDITION
@@ -338,7 +339,7 @@ object GameResponses {
             }
             // Static player garrisons stored in WorldState are visible to everyone,
             // independent of the owner being online, so other players can attack them.
-            WorldStateRepository.garrisons().forEach { g ->
+            garrisons.forEach { g ->
                 putArray(g.armyId.toString()).apply {
                     add(5)              // 0 state: RESIDE
                     add(g.ownerUserId)  // 1 user id
@@ -374,7 +375,10 @@ object GameResponses {
                     add("")             // 31 battle show
                 }
             }
-            removedArmyId?.takeIf { removedId -> marches.none { it.armyId == removedId } }
+            removedArmyId?.takeIf { removedId ->
+                marches.none { it.armyId == removedId } &&
+                    garrisons.none { it.armyId == removedId }
+            }
                 ?.let { putArray(it.toString()).add(0) }
         }
 
@@ -1116,23 +1120,35 @@ object GameResponses {
     private fun tbArmy(state: PlayerState, armyId: Int): ArrayNode {
         val team = state.teamHeroes(armyId)
         val march = state.activeMarch(armyId)
+        val garrison = if (march == null) WorldStateRepository.garrisonFor(state.userId, armyId) else null
+        val resideWid = march?.fromWid ?: garrison?.wid ?: state.cityWid
+        val armyState = when {
+            march != null -> 1
+            garrison != null -> 5
+            else -> 0
+        }
+        val stayWid = when {
+            march != null -> 0
+            garrison != null -> garrison.wid
+            else -> state.cityWid
+        }
         return nf.arrayNode().apply {
             add(armyId)                      // 0 armyid
             add(state.userId)                // 1 userid
-            add(march?.fromWid ?: state.cityWid) // 2 reside_wid
+            add(resideWid)                   // 2 reside_wid
             add(0)                           // 3 city_type
-            add(march?.fromWid ?: state.cityWid) // 4 last_reside_wid
+            add(resideWid)                   // 4 last_reside_wid
             add(team.getOrElse(2) { 0 })     // 5 front_heroid_u
             add(team.getOrElse(1) { 0 })     // 6 middle_heroid_u
             add(team.getOrElse(0) { 0 })     // 7 base_heroid_u
             add(0)                           // 8 counsellor_heroid_u
             add(0)                           // 9 army_formation_id
             add("")                          // 10 army_formation_effect
-            add(if (march == null) 0 else 1) // 11 state: IN_EXPEDITION
+            add(armyState)                   // 11 state
             add(0)                           // 12 wait_count
             add(march?.targetWid ?: 0)       // 13 target_wid
-            add(if (march == null) state.cityWid else 0) // 14 stay_wid
-            add(march?.beginSec ?: 0)        // 15 reside_time
+            add(stayWid)                     // 14 stay_wid
+            add(march?.beginSec ?: garrison?.residedAtSec ?: 0) // 15 reside_time
             add(march?.beginSec ?: 0)        // 16 begin_time
             add(march?.endSec ?: 0)          // 17 end_time
             add(100)

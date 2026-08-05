@@ -247,6 +247,10 @@ class WorldService(
 
     fun garrisonAt(wid: Int): GarrisonSnapshot? = lock.read { garrisonsByWid[wid] }
 
+    fun garrisonFor(ownerUserId: Int, armyId: Int): GarrisonSnapshot? = lock.read {
+        garrisonsByWid.values.firstOrNull { it.ownerUserId == ownerUserId && it.armyId == armyId }
+    }
+
     fun removeGarrison(wid: Int): GarrisonSnapshot? = lock.write {
         garrisonsByWid.remove(wid)
     }
@@ -315,6 +319,9 @@ object WorldStateRepository {
     fun putGarrison(snapshot: GarrisonSnapshot): Unit = service.putGarrison(snapshot)
 
     fun garrisonAt(wid: Int): GarrisonSnapshot? = service.garrisonAt(wid)
+
+    fun garrisonFor(ownerUserId: Int, armyId: Int): GarrisonSnapshot? =
+        service.garrisonFor(ownerUserId, armyId)
 
     fun removeGarrison(wid: Int): GarrisonSnapshot? = service.removeGarrison(wid)
 

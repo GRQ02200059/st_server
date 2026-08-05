@@ -45,4 +45,56 @@ class GameResponsesGarrisonTest {
         assertEquals(810, garrisonArmy[1].asInt()) // userId = defender
         assertEquals(wid, garrisonArmy[10].asInt()) // reside_wid
     }
+
+    @Test
+    fun `army upsert keeps a settled garrison army at the target wid`() {
+        val targetWid = 15051541
+        val state = PlayerState(userId = 811, cityWid = 15061541, roleName = "守军")
+        val armyId = state.primaryArmyId()
+        WorldStateRepository.putGarrison(
+            GarrisonSnapshot(
+                wid = targetWid,
+                ownerUserId = state.userId,
+                armyId = armyId,
+                specs = listOf(BattleHeroSpec(heroId = 100021, position = 0, troops = 5000)),
+                residedAtSec = 1_700_000_100,
+            ),
+        )
+
+        val row = mapper.readTree(GameResponses.armyUpsertNotify(state, armyId))[0][2]
+
+        assertEquals(targetWid, row[2].asInt()) // reside_wid
+        assertEquals(targetWid, row[4].asInt()) // last_reside_wid
+        assertEquals(5, row[11].asInt()) // state = RESIDE
+        assertEquals(0, row[13].asInt()) // target_wid
+        assertEquals(targetWid, row[14].asInt()) // stay_wid
+        assertEquals(1_700_000_100, row[15].asInt()) // reside_time
+    }
+
+    @Test
+    fun `world scene does not remove a settled garrison army for its owner`() {
+        val targetWid = 15051543
+        val armyId = 150615431
+        WorldStateRepository.putGarrison(
+            GarrisonSnapshot(
+                wid = targetWid,
+                ownerUserId = 812,
+                armyId = armyId,
+                specs = listOf(BattleHeroSpec(heroId = 100021, position = 0, troops = 5000)),
+                residedAtSec = 1_700_000_300,
+            ),
+        )
+
+        val army = mapper.readTree(
+            GameResponses.worldSceneFullInfo(
+                userId = 812,
+                cityWid = 15061543,
+                roleName = "守军",
+                removedArmyId = armyId,
+            ),
+        )[6][armyId.toString()]
+
+        assertEquals(5, army[0].asInt())
+        assertEquals(targetWid, army[10].asInt())
+    }
 }

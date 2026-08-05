@@ -538,23 +538,35 @@ object UserInitTableBuilder {
     private fun tbArmy(state: PlayerState, armyId: Int): ArrayNode {
         val team = state.teamHeroes(armyId)
         val march = state.activeMarch(armyId)
+        val garrison = if (march == null) WorldStateRepository.garrisonFor(state.userId, armyId) else null
+        val resideWid = march?.fromWid ?: garrison?.wid ?: state.cityWid
+        val armyState = when {
+            march != null -> 1
+            garrison != null -> 5
+            else -> 0
+        }
+        val stayWid = when {
+            march != null -> 0
+            garrison != null -> garrison.wid
+            else -> state.cityWid
+        }
         return row("Tb_army")
             .i(0, armyId)
             .i(1, state.userId)
-            .i(2, march?.fromWid ?: state.cityWid) // reside_wid
+            .i(2, resideWid)                       // reside_wid
             .i(3, 0)
-            .i(4, march?.fromWid ?: state.cityWid) // last_reside_wid
+            .i(4, resideWid)                       // last_reside_wid
             .i(5, team.getOrElse(2) { 0 })      // front_heroid_u
             .i(6, team.getOrElse(1) { 0 })      // middle_heroid_u
             .i(7, team.getOrElse(0) { 0 })      // base_heroid_u
             .i(8, 0)                            // counsellor_heroid_u
             .i(9, 0)                            // army_formation_id
             .s(10, "")                         // army_formation_effect
-            .i(11, if (march == null) 0 else 1) // state: IN_EXPEDITION
+            .i(11, armyState)                   // state
             .i(12, 0)                           // wait_count
             .i(13, march?.targetWid ?: 0)       // target_wid
-            .i(14, if (march == null) state.cityWid else 0) // stay_wid
-            .i(15, march?.beginSec ?: 0)        // reside_time
+            .i(14, stayWid)                     // stay_wid
+            .i(15, march?.beginSec ?: garrison?.residedAtSec ?: 0) // reside_time
             .i(16, march?.beginSec ?: 0)        // begin_time
             .i(17, march?.endSec ?: 0)          // end_time
             .i(18, 100)
