@@ -581,7 +581,7 @@ class GameResponsesTest {
         assertEquals(10002, row[0].asInt())
         assertEquals(2, row[1].asInt())
         assertEquals(42, row[6].asInt())
-        assertEquals(1, row[11].asInt())
+        assertEquals(0, row[11].asInt())
         assertEquals(10001, row[21].asInt())
         assertEquals(0, row[22].asInt())
     }

@@ -960,7 +960,7 @@ object GameResponses {
                             add(0)        // 8 union_id
                             add(0)        // 9 clan_id
                             add(userId)   // 10 op_userid
-                            add(1)        // 11 force_type = normal
+                            add(0)        // 11 force_type = UserForceType.NORMAL
                             add(100)      // 12 durability_cur
                             add(100)      // 13 durability_max
                             add(0)        // 14 durability_time
